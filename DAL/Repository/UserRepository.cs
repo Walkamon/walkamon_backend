@@ -113,11 +113,6 @@ namespace DAL.Repository
             await _context.SaveChangesAsync();
         }
 
-        public Task AddAsync(User user)
-        {
-            return _context.Users.AddAsync(user).AsTask();
-        }
-
         public Task AddOtpAsync(OtpRequest otpRequest)
         {
             return _context.OtpRequests.AddAsync(otpRequest).AsTask();

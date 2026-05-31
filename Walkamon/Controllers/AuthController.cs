@@ -15,6 +15,21 @@ public class AuthController : ControllerBase
         _authService = authService;
     }
 
+    [HttpPost("login")]
+    [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Login(LoginRequest request)
+    {
+        var result = await _authService.LoginAsync(request);
+
+        return Ok(new ApiResponse<LoginResponse>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Login success",
+            Data = result
+        });
+    }
+
     [HttpPost("register")]
     [ProducesResponseType(typeof(ApiResponse<OtpSentResponse>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]

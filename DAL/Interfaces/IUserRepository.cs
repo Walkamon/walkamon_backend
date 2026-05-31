@@ -25,8 +25,6 @@ public interface IUserRepository : IGenericRepository<User>
 
     Task CleanupExpiredPendingRegistrationsAsync(DateTime createdBeforeUtc);
 
-    Task AddAsync(User user);
-
     Task AddOtpAsync(OtpRequest otpRequest);
 
     Task SaveChangesAsync();

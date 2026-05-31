@@ -7,41 +7,39 @@ using DAL.Interfaces;
 using DAL.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using BLL.Exceptions;
-using BLL.Interfaces;
-using DAL.DTO;
-using DAL.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
-//using BLL.Exception;
-namespace BLL.Service;
-//        private readonly IConfiguration _configuration;
 
-//        public AuthService(
-//            IUserRepository userRepository,
-//            IGenericRepository<Role> roleRepository,
-//            IConfiguration configuration)
-//        {
-//            _userRepository = userRepository;
-//            _roleRepository = roleRepository;
-//            _configuration = configuration;
-//        }
-        private readonly IConfiguration _configuration;
+namespace BLL.Service;
+
+public class AuthService : IAuthService
+{
     private const string VerifyEmailPurposeCode = "verify_email";
     private const string UserRoleCode = "0";
     private static readonly string[] PolicySettingKeys =
     [
+        "otp_verify_email_expire_minutes",
+        "otp_max_attempts",
+        "otp_resend_cooldown_seconds",
+        "otp_send_ip_window_minutes",
+        "otp_send_ip_max_count",
+        "pending_registration_ttl_hours"
+    ];
+
+    private readonly IEmailSender _emailSender;
+    private readonly IConfiguration _configuration;
+    private readonly IUserRepository _userRepository;
+
     public AuthService(
         IUserRepository userRepository,
-        IEmailSender emailSender)
-          IConfiguration configuration)
+        IEmailSender emailSender,
+        IConfiguration configuration)
     {
         _userRepository = userRepository;
         _emailSender = emailSender;
-          _configuration = configuration;
+        _configuration = configuration;
     }
 
     public async Task<OtpSentResponse> RegisterAsync(
@@ -212,6 +210,84 @@ namespace BLL.Service;
         return ToOtpSentResponse(replacement, policy.ResendCooldownSeconds);
     }
 
+    public async Task<LoginResponse> LoginAsync(LoginRequest request)
+    {
+        var user = await _userRepository.GetByEmailAsync(request.Email);
+
+        if (user == null)
+        {
+            throw new NotFoundException("User not found");
+        }
+
+        if (user.StatusCode.Equals("disabled", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BadRequestException("Account has been locked");
+        }
+
+        if (user.LockoutEndAt.HasValue && user.LockoutEndAt > DateTime.UtcNow)
+        {
+            var remainingMinutes = Math.Max(
+                1,
+                (int)Math.Ceiling((user.LockoutEndAt.Value - DateTime.UtcNow).TotalMinutes));
+
+            throw new BadRequestException(
+                $"Account is locked. Try again after {remainingMinutes} minute(s)");
+        }
+
+        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        {
+            user.AccessFailedCount++;
+
+            if (user.AccessFailedCount >= 5)
+            {
+                user.LockoutEndAt = DateTime.UtcNow.AddMinutes(5);
+                _userRepository.Update(user);
+                await _userRepository.SaveAsync();
+
+                throw new BadRequestException(
+                    "Account locked for 5 minutes because too many failed login attempts");
+            }
+
+            _userRepository.Update(user);
+            await _userRepository.SaveAsync();
+
+            throw new BadRequestException(
+                $"Wrong password. Remaining attempts: {5 - user.AccessFailedCount}");
+        }
+
+        user.AccessFailedCount = 0;
+        user.LockoutEndAt = null;
+        user.LastLoginAt = DateTime.UtcNow;
+
+        _userRepository.Update(user);
+        await _userRepository.SaveAsync();
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.UserId.ToString()),
+            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Role, user.Role.RoleName)
+        };
+
+        var key = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(
+            issuer: _configuration["Jwt:Issuer"],
+            audience: _configuration["Jwt:Audience"],
+            claims: claims,
+            expires: DateTime.UtcNow.AddDays(7),
+            signingCredentials: credentials);
+
+        return new LoginResponse
+        {
+            UserId = user.UserId,
+            Email = user.Email,
+            Role = user.Role.RoleName,
+            Jwt = new JwtSecurityTokenHandler().WriteToken(token)
+        };
+    }
+
     private static User CreatePendingUser(
         int roleId,
         string email,
@@ -243,7 +319,7 @@ namespace BLL.Service;
             }
         };
     }
-        "otp_send_ip_max_count",
+
     private static void UpdatePendingUser(
         User user,
         string email,
@@ -268,7 +344,7 @@ namespace BLL.Service;
         OtpPolicy policy)
     {
         var plaintextOtp = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
-    private readonly IEmailSender _emailSender;
+
         var otp = new OtpRequest
         {
             User = user,
@@ -286,7 +362,7 @@ namespace BLL.Service;
 
         return (otp, plaintextOtp);
     }
-//            var checkEmail =
+
     private async Task SendOtpOrCancelAsync(
         OtpRequest otp,
         string email,
@@ -304,11 +380,11 @@ namespace BLL.Service;
             throw new AppSystemException("Unable to send verification email");
         }
     }
-//                throw new ConflictException("Email already exists");
+
     private async Task<OtpPolicy> GetPolicyAsync()
     {
         var settings = await _userRepository.GetSystemSettingsAsync(PolicySettingKeys);
-//            {
+
         return new OtpPolicy(
             ReadPositiveInt(settings, "otp_verify_email_expire_minutes"),
             ReadPositiveInt(settings, "otp_max_attempts"),
@@ -317,7 +393,7 @@ namespace BLL.Service;
             ReadPositiveInt(settings, "otp_send_ip_max_count"),
             ReadPositiveInt(settings, "pending_registration_ttl_hours"));
     }
-//            }
+
     private async Task EnsureIpRateLimitAsync(
         string requestedIp,
         DateTime now,
@@ -326,7 +402,7 @@ namespace BLL.Service;
         var count = await _userRepository.CountRecentEmailVerificationOtpsByIpAsync(
             requestedIp,
             now.AddMinutes(-policy.IpWindowMinutes));
-//                Username = request.Username,
+
         if (count >= policy.IpMaxCount)
         {
             throw new TooManyRequestsException(
@@ -348,7 +424,7 @@ namespace BLL.Service;
 
         return parsed;
     }
-//        {
+
     private static void EnsureCooldownElapsed(
         DateTime createdAt,
         DateTime now,
@@ -356,7 +432,7 @@ namespace BLL.Service;
     {
         var retryAfterSeconds = (int)Math.Ceiling(
             (createdAt.AddSeconds(cooldownSeconds) - now).TotalSeconds);
-//            {
+
         if (retryAfterSeconds > 0)
         {
             throw new TooManyRequestsException(
@@ -364,13 +440,13 @@ namespace BLL.Service;
                 retryAfterSeconds);
         }
     }
-//            bool checkPassword =
+
     private static void CancelOtp(OtpRequest otp, DateTime now)
     {
         otp.StatusCode = "cancelled";
         otp.UpdatedAt = now;
     }
-//            }
+
     private static bool IsPendingRegistration(User user)
     {
         return user.StatusCode == "disabled" && !user.EmailConfirmed;
@@ -385,12 +461,12 @@ namespace BLL.Service;
             ResendAvailableAtUtc = otp.CreatedAt.AddSeconds(cooldownSeconds)
         };
     }
-//                new Claim(ClaimTypes.Name, user.Username)
+
     private static byte[] HashOtp(string otp)
     {
         return SHA256.HashData(Encoding.UTF8.GetBytes(otp));
     }
-//                claims.Add(new Claim(ClaimTypes.Role, role));
+
     private static bool IsUniqueConstraintViolation(DbUpdateException exception)
     {
         return exception.InnerException is SqlException sqlException
@@ -404,125 +480,4 @@ namespace BLL.Service;
         int IpWindowMinutes,
         int IpMaxCount,
         int PendingRegistrationTtlHours);
-}
-public async Task<LoginResponse> LoginAsync(LoginRequest request)
-{
-    var user = await _userRepository.GetByEmailAsync(
-        request.Email
-    );
-
-    if (user == null)
-    {
-        throw new NotFoundException(
-            "User not found"
-        );
-    }
-
-
-    if (user.StatusCode.Equals(
-        "disabled",
-        StringComparison.OrdinalIgnoreCase))
-    {
-        throw new BadRequestException(
-            "Account has been locked"
-        );
-    }
-
-
-    if (user.LockoutEndAt.HasValue &&
-        user.LockoutEndAt > DateTime.UtcNow)
-    {
-        var remain =
-            (user.LockoutEndAt.Value - DateTime.UtcNow)
-            .Minutes;
-
-        throw new BadRequestException(
-            $"Account is locked. Try again after {remain} minute(s)"
-        );
-    }
-
-    bool verifyPassword =
-        BCrypt.Net.BCrypt.Verify(
-            request.Password,
-            user.PasswordHash
-        );
-
-    if (!verifyPassword)
-    {
-        user.AccessFailedCount++;
-
-        if (user.AccessFailedCount >= 5)
-        {
-            user.LockoutEndAt =
-                DateTime.UtcNow.AddMinutes(5);
-
-            _userRepository.Update(user);
-            await _userRepository.SaveAsync();
-
-            throw new BadRequestException(
-                "Account locked for 5 minutes because too many failed login attempts"
-            );
-        }
-
-        _userRepository.Update(user);
-        await _userRepository.SaveAsync();
-
-        throw new BadRequestException(
-            $"Wrong password. Remaining attempts: {5 - user.AccessFailedCount}"
-        );
-    }
-
-
-    user.AccessFailedCount = 0;
-    user.LockoutEndAt = null;
-    user.LastLoginAt = DateTime.UtcNow;
-
-    _userRepository.Update(user);
-    await _userRepository.SaveAsync();
-
-    var claims = new List<Claim>
-{
-    new Claim(
-        ClaimTypes.NameIdentifier,
-        user.UserId.ToString()
-    ),
-
-    new Claim(
-        ClaimTypes.Email,
-        user.Email
-    ),
-
-    new Claim(
-        ClaimTypes.Role,
-        user.Role.RoleName
-    )
-};
-
-    var key = new SymmetricSecurityKey(
-        Encoding.UTF8.GetBytes(
-            _configuration["Jwt:Key"]!
-        )
-    );
-
-    var credentials = new SigningCredentials(
-        key,
-        SecurityAlgorithms.HmacSha256
-    );
-
-    var token = new JwtSecurityToken(
-        issuer: _configuration["Jwt:Issuer"],
-        audience: _configuration["Jwt:Audience"],
-        claims: claims,
-        expires: DateTime.UtcNow.AddDays(7),
-        signingCredentials: credentials
-    );
-
-    return new LoginResponse
-    {
-        UserId = user.UserId,
-        Email = user.Email,
-        Role = user.Role.RoleName,
-        Jwt = new JwtSecurityTokenHandler()
-            .WriteToken(token)
-    };
 }
