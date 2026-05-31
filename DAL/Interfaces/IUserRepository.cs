@@ -2,8 +2,10 @@ using DAL.Models;
 
 namespace DAL.Interfaces;
 
-public interface IUserRepository
+public interface IUserRepository : IGenericRepository<User>
 {
+    Task<User?> GetByEmailAsync(string email);
+
     Task<User?> GetUserByNormalizedEmailAsync(string normalizedEmail);
 
     Task<bool> UsernameExistsAsync(string normalizedUsername, Guid? excludedUserId = null);
