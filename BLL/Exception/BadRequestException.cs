@@ -1,5 +1,5 @@
 ﻿
-namespace BLL.Exception
+namespace BLL.Exceptions
 {
     public class BadRequestException : AppException
     {

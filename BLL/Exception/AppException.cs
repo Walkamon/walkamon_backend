@@ -1,11 +1,13 @@
-﻿
-public abstract class AppException : Exception
+﻿namespace BLL.Exceptions
 {
-    public int StatusCode { get; }
-
-    protected AppException(string message, int statusCode)
-        : base(message)
+    public abstract class AppException : Exception
     {
-        StatusCode = statusCode;
+        public int StatusCode { get; }
+
+        protected AppException(string message, int statusCode)
+            : base(message)
+        {
+            StatusCode = statusCode;
+        }
     }
 }

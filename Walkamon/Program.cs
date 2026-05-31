@@ -1,77 +1,69 @@
-
-
+using BLL.Interfaces;
+using BLL.Options;
+using BLL.Service;
+using BLL.Validations;
+using DAL.Data;
 using DAL.Interfaces;
-
-
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using DAL.Repository;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using System;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+#region Controllers
+
 builder.Services.AddControllers();
 
-//builder.Services.AddDbContext<WalkamonContext>(
-//    options =>
-//        options.UseSqlServer(
-//            builder.Configuration
-//            .GetConnectionString(
-//                "DefaultConnection"
-//            )
-//        )
-//);
+builder.Services.AddFluentValidationAutoValidation();
 
-//builder.Services.AddScoped(
-//    typeof(IGenericRepository<>),
-//   // typeof(GenericRepository<>)
-//);
+builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
 
-//builder.Services.AddScoped<
-//    IUserRepository,
-//    UserRepository>();
+#endregion
 
-//builder.Services.AddScoped<
-//    IAuthService,
-//    AuthService>();
+#region Database
 
-builder.Services
-.AddAuthentication(
-    JwtBearerDefaults.AuthenticationScheme
-)
-.AddJwtBearer(options =>
-{
-    options.TokenValidationParameters =
-        new TokenValidationParameters
-        {
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
+builder.Services.AddDbContext<WalkamonContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection")
+    ));
 
-            IssuerSigningKey =
-                new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(
-                        builder.Configuration["Jwt:Key"]
-                    )
-                )
-        };
-});
+#endregion
+
+#region Dependency Injection
+
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+
+builder.Services.AddScoped<IAuthService, AuthService>();
+
+builder.Services.Configure<SmtpOptions>(
+    builder.Configuration.GetSection(SmtpOptions.SectionName));
+
+builder.Services.AddScoped<IEmailSender, GmailSmtpEmailSender>();
+
+#endregion
+
+#region Swagger
+
+builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen();
 
+#endregion
+
 var app = builder.Build();
+
+#region Middleware
 
 app.UseSwagger();
 
 app.UseSwaggerUI();
 
-app.UseAuthentication();
+app.UseHttpsRedirection();
 
 app.UseMiddleware<ExceptionMiddleware>();
 
-app.UseAuthorization();
+#endregion
 
 app.MapControllers();
 

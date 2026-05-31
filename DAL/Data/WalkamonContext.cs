@@ -437,6 +437,10 @@ public partial class WalkamonContext : DbContext
 
             entity.HasIndex(e => e.RequestCode, "UQ_otp_requests_request_code").IsUnique();
 
+            entity.HasIndex(e => e.UserId, "UX_otp_requests_verify_email_pending_user")
+                .IsUnique()
+                .HasFilter("([purpose_code]='verify_email' AND [status_code]='pending')");
+
             entity.Property(e => e.OtpRequestId).HasColumnName("otp_request_id");
             entity.Property(e => e.AttemptCount).HasColumnName("attempt_count");
             entity.Property(e => e.CreatedAt)
