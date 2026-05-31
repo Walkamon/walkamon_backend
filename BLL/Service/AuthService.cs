@@ -25,12 +25,38 @@ namespace BLL.Service
 
         public async Task<LoginResponse> LoginAsync(LoginRequest request)
         {
-          
-            var user = await _userRepository.GetByEmailAsync(request.Email);
+            var user = await _userRepository.GetByEmailAsync(
+                request.Email
+            );
 
             if (user == null)
             {
-                throw new NotFoundException("User not found");
+                throw new NotFoundException(
+                    "User not found"
+                );
+            }
+
+           
+            if (user.StatusCode.Equals(
+                "disabled",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BadRequestException(
+                    "Account has been locked"
+                );
+            }
+
+            
+            if (user.LockoutEndAt.HasValue &&
+                user.LockoutEndAt > DateTime.UtcNow)
+            {
+                var remain =
+                    (user.LockoutEndAt.Value - DateTime.UtcNow)
+                    .Minutes;
+
+                throw new BadRequestException(
+                    $"Account is locked. Try again after {remain} minute(s)"
+                );
             }
 
             bool verifyPassword =
@@ -41,26 +67,54 @@ namespace BLL.Service
 
             if (!verifyPassword)
             {
-                throw new BadRequestException("Wrong password");
+                user.AccessFailedCount++;
+
+                if (user.AccessFailedCount >= 5)
+                {
+                    user.LockoutEndAt =
+                        DateTime.UtcNow.AddMinutes(5);
+
+                     _userRepository.Update(user);
+                    await _userRepository.SaveAsync();
+
+                    throw new BadRequestException(
+                        "Account locked for 5 minutes because too many failed login attempts"
+                    );
+                }
+
+                _userRepository.Update(user);
+                await _userRepository.SaveAsync();
+
+                throw new BadRequestException(
+                    $"Wrong password. Remaining attempts: {5 - user.AccessFailedCount}"
+                );
             }
-            Console.WriteLine(user.Email);
-            Console.WriteLine(user.Role == null);
-            Console.WriteLine(user.Role.RoleName);
-            Console.WriteLine(_configuration["Jwt:Key"]);
-            Console.WriteLine(_configuration["Jwt:Issuer"]);
-            Console.WriteLine(_configuration["Jwt:Audience"]);
+
+           
+            user.AccessFailedCount = 0;
+            user.LockoutEndAt = null;
+            user.LastLoginAt = DateTime.UtcNow;
+
+             _userRepository.Update(user);
+            await _userRepository.SaveAsync();
 
             var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.NameIdentifier,
-                    user.UserId.ToString()),
+    {
+        new Claim(
+            ClaimTypes.NameIdentifier,
+            user.UserId.ToString()
+        ),
 
-                new Claim(ClaimTypes.Email,
-                    user.Email),
+        new Claim(
+            ClaimTypes.Email,
+            user.Email
+        ),
 
-                new Claim(ClaimTypes.Role,
-                    user.Role.RoleName)
-            };
+        new Claim(
+            ClaimTypes.Role,
+            user.Role.RoleName
+        )
+    };
 
             var key = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(
@@ -80,7 +134,7 @@ namespace BLL.Service
                 expires: DateTime.UtcNow.AddDays(7),
                 signingCredentials: credentials
             );
-           
+
             return new LoginResponse
             {
                 UserId = user.UserId,
