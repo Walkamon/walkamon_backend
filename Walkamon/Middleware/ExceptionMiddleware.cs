@@ -1,6 +1,6 @@
 ﻿using System.Text.Json;
 using DAL.DTO;
-
+using BLL.Exceptions;
 public class ExceptionMiddleware
 {
     private readonly RequestDelegate _next;

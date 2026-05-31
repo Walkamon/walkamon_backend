@@ -1,77 +1,149 @@
-
-
+using BLL.Interfaces;
+using BLL.Service;
+using DAL.Data;
 using DAL.Interfaces;
-
-
+using DAL.Repository;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using System;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+#region Controllers
+
 builder.Services.AddControllers();
 
-//builder.Services.AddDbContext<WalkamonContext>(
-//    options =>
-//        options.UseSqlServer(
-//            builder.Configuration
-//            .GetConnectionString(
-//                "DefaultConnection"
-//            )
-//        )
-//);
+#endregion
 
-//builder.Services.AddScoped(
-//    typeof(IGenericRepository<>),
-//   // typeof(GenericRepository<>)
-//);
+#region Database
 
-//builder.Services.AddScoped<
-//    IUserRepository,
-//    UserRepository>();
+builder.Services.AddDbContext<WalkamonContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection")
+    ));
 
-//builder.Services.AddScoped<
-//    IAuthService,
-//    AuthService>();
+#endregion
+
+#region Dependency Injection
+
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+
+builder.Services.AddScoped<IAuthService, AuthService>();
+
+#endregion
+
+#region JWT
 
 builder.Services
-.AddAuthentication(
-    JwtBearerDefaults.AuthenticationScheme
-)
+.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
     options.TokenValidationParameters =
         new TokenValidationParameters
         {
-            ValidateIssuer = false,
-            ValidateAudience = false,
+            ValidateIssuer = true,
+            ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
 
             IssuerSigningKey =
                 new SymmetricSecurityKey(
                     Encoding.UTF8.GetBytes(
-                        builder.Configuration["Jwt:Key"]
-                    )
-                )
+                        builder.Configuration["Jwt:Key"]!
+                    ))
         };
+
+    options.Events = new JwtBearerEvents
+    {
+        OnChallenge = async context =>
+        {
+            context.HandleResponse();
+
+            context.Response.StatusCode = 401;
+            context.Response.ContentType = "application/json";
+
+            await context.Response.WriteAsJsonAsync(new
+            {
+                success = false,
+                message = "Unauthorized"
+            });
+        },
+
+        OnForbidden = async context =>
+        {
+            context.Response.StatusCode = 403;
+            context.Response.ContentType = "application/json";
+
+            await context.Response.WriteAsJsonAsync(new
+            {
+                success = false,
+                message = "Access denied"
+            });
+        }
+    };
 });
 
-builder.Services.AddSwaggerGen();
+#endregion
+
+#region Swagger
+
+builder.Services.AddEndpointsApiExplorer();
+
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("Bearer",
+        new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+        {
+            Name = "Authorization",
+            Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+            Description = "Enter JWT Token"
+        });
+
+    options.AddSecurityRequirement(
+        new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+        {
+            {
+                new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    Reference =
+                        new Microsoft.OpenApi.Models.OpenApiReference
+                        {
+                            Type =
+                                Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                            Id = "Bearer"
+                        }
+                },
+                Array.Empty<string>()
+            }
+        });
+});
+
+#endregion
 
 var app = builder.Build();
+
+#region Middleware
 
 app.UseSwagger();
 
 app.UseSwaggerUI();
 
-app.UseAuthentication();
+app.UseHttpsRedirection();
 
 app.UseMiddleware<ExceptionMiddleware>();
 
+app.UseAuthentication();
+
 app.UseAuthorization();
+
+#endregion
 
 app.MapControllers();
 

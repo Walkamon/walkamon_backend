@@ -1,4 +1,4 @@
-﻿namespace BLL.Exception
+﻿namespace BLL.Exceptions
 {
     public class ConflictException : AppException
     {

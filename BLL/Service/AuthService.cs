@@ -1,129 +1,93 @@
-﻿//using BLL.Interfaces;
-//using DAL.Interfaces;
-//using DAL.Model;
-//using DAL.DTO;
-//using Microsoft.Extensions.Configuration;
-//using Microsoft.IdentityModel.Tokens;
-//using System.IdentityModel.Tokens.Jwt;
-//using System.Security.Claims;
-//using System.Text;
-//using BLL.Exception;
-//namespace BLL.Service
-//{
-//    public class AuthService : IAuthService
-//    {
-//        private readonly IUserRepository _userRepository;
-//        private readonly IGenericRepository<Role> _roleRepository;
-//        private readonly IConfiguration _configuration;
+﻿using BLL.Exceptions;
+using BLL.Interfaces;
+using DAL.DTO;
+using DAL.Interfaces;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
-//        public AuthService(
-//            IUserRepository userRepository,
-//            IGenericRepository<Role> roleRepository,
-//            IConfiguration configuration)
-//        {
-//            _userRepository = userRepository;
-//            _roleRepository = roleRepository;
-//            _configuration = configuration;
-//        }
+namespace BLL.Service
+{
+    public class AuthService : IAuthService
+    {
+        private readonly IUserRepository _userRepository;
+        private readonly IConfiguration _configuration;
 
-    
-//        public async Task RegisterAsync(RegisterRequest request)
-//        {
-//            var checkUsername =
-//                await _userRepository.GetByEmailAsync(request.Username);
+        public AuthService(
+            IUserRepository userRepository,
+            IConfiguration configuration)
+        {
+            _userRepository = userRepository;
+            _configuration = configuration;
+        }
 
-//            if (checkUsername != null)
-//            {
-//                throw new ConflictException("Username already exists");
-//            }
+        public async Task<LoginResponse> LoginAsync(LoginRequest request)
+        {
+            var user = await _userRepository.GetByEmailAsync(request.Email);
 
-            
-//            var checkEmail =
-//                await _userRepository.GetByEmailAsync(request.Email);
+            if (user == null)
+            {
+                throw new NotFoundException("User not found");
+            }
 
-//            if (checkEmail != null)
-//            {
-//                throw new ConflictException("Email already exists");
-//            }
+            bool verifyPassword =
+                BCrypt.Net.BCrypt.Verify(
+                    request.Password,
+                    user.PasswordHash
+                );
 
-//            var role =
-//                (await _roleRepository.GetAllAsync())
-//                .FirstOrDefault(x => x.RoleName == "USER");
+            if (!verifyPassword)
+            {
+                throw new BadRequestException("Wrong password");
+            }
+            Console.WriteLine(user.Email);
+            Console.WriteLine(user.Role == null);
+            Console.WriteLine(user.Role.RoleName);
+            Console.WriteLine(_configuration["Jwt:Key"]);
+            Console.WriteLine(_configuration["Jwt:Issuer"]);
+            Console.WriteLine(_configuration["Jwt:Audience"]);
 
-//            if (role == null)
-//            {
-//                throw new NotFoundException("Default role USER not found");
-//            }
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier,
+                    user.UserId.ToString()),
 
-//            var user = new User
-//            {
-//                Username = request.Username,
-//                Email = request.Email,
-//                Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
-//                Roles = new List<Role>()
-//            };
+                new Claim(ClaimTypes.Email,
+                    user.Email),
 
-//            user.Roles.Add(role);
+                new Claim(ClaimTypes.Role,
+                    user.Role.RoleName)
+            };
 
-//            await _userRepository.AddAsync(user);
-//            await _userRepository.SaveAsync();
-//        }
+            var key = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(
+                    _configuration["Jwt:Key"]!
+                )
+            );
 
-//        public async Task<LoginResponse> LoginAsync(LoginRequest request)
-//        {
-//            var user =
-//                await _userRepository.GetByEmailAsync(request.Username);
+            var credentials = new SigningCredentials(
+                key,
+                SecurityAlgorithms.HmacSha256
+            );
 
-//            if (user == null)
-//            {
-//                throw new NotFoundException("User not found");
-//            }
-
-//            bool checkPassword =
-//                BCrypt.Net.BCrypt.Verify(request.Password, user.Password);
-
-//            if (!checkPassword)
-//            {
-//                throw new BadRequestException("Wrong password");
-//            }
-
-//            var roles = user.Roles
-//                .Select(x => x.RoleName)
-//                .ToList();
-
-//            var claims = new List<Claim>
-//            {
-//                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-//                new Claim(ClaimTypes.Name, user.Username)
-//            };
-
-//            foreach (var role in roles)
-//            {
-//                claims.Add(new Claim(ClaimTypes.Role, role));
-//            }
-
-//            var key = new SymmetricSecurityKey(
-//                Encoding.UTF8.GetBytes(_configuration["Jwt:Key"])
-//            );
-
-//            var creds = new SigningCredentials(
-//                key,
-//                SecurityAlgorithms.HmacSha256
-//            );
-
-//            var token = new JwtSecurityToken(
-//                claims: claims,
-//                expires: DateTime.UtcNow.AddDays(7),
-//                signingCredentials: creds
-//            );
-
-//            return new LoginResponse
-//            {
-//                UserId = user.Id,
-//                Username = user.Username,
-//                Roles = roles,
-//                Token = new JwtSecurityTokenHandler().WriteToken(token)
-//            };
-//        }
-//    }
-//}
+            var token = new JwtSecurityToken(
+                issuer: _configuration["Jwt:Issuer"],
+                audience: _configuration["Jwt:Audience"],
+                claims: claims,
+                expires: DateTime.UtcNow.AddDays(7),
+                signingCredentials: credentials
+            );
+           
+            return new LoginResponse
+            {
+                UserId = user.UserId,
+                Email = user.Email,
+                Role = user.Role.RoleName,
+                Jwt = new JwtSecurityTokenHandler()
+                    .WriteToken(token)
+            };
+        }
+    }
+}
