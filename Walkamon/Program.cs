@@ -1,8 +1,11 @@
 using BLL.Interfaces;
 using BLL.Service;
+using BLL.Validations;
 using DAL.Data;
 using DAL.Interfaces;
 using DAL.Repository;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -14,6 +17,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
+builder.Services.AddFluentValidationAutoValidation();
+
+builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
 #endregion
 
 #region Database
