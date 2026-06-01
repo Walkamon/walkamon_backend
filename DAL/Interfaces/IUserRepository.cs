@@ -28,4 +28,6 @@ public interface IUserRepository : IGenericRepository<User>
     Task AddOtpAsync(OtpRequest otpRequest);
 
     Task SaveChangesAsync();
+
+    Task<IEnumerable<User>> GetAllUsersAsync();
 }

@@ -45,6 +45,7 @@ builder.Services.Configure<SmtpOptions>(
 
 builder.Services.AddScoped<IEmailSender, GmailSmtpEmailSender>();
 
+builder.Services.AddScoped<IUserService, UserService>();
 #endregion
 
 #region JWT

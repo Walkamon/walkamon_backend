@@ -122,5 +122,12 @@ namespace DAL.Repository
         {
             return _context.SaveChangesAsync();
         }
+
+        public async Task<IEnumerable<User>> GetAllUsersAsync()
+        {
+            return await _context.Users
+        .Include(x => x.UserProfile)
+        .ToListAsync();
+        }
     }
 }
