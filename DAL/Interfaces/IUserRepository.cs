@@ -27,5 +27,7 @@
 
         Task AddOtpAsync(OtpRequest otpRequest);
 
-        Task SaveChangesAsync();
-    }
+    Task SaveChangesAsync();
+
+    Task<IEnumerable<User>> GetAllUsersAsync();
+}
