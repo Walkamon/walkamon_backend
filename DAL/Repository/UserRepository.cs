@@ -129,5 +129,12 @@ namespace DAL.Repository
         .Include(x => x.UserProfile)
         .ToListAsync();
         }
+
+        public async Task<User?> GetByIdWithProfileAsync(Guid id)
+        {
+            return await _context.Users
+                .Include(x => x.UserProfile)
+                .FirstOrDefaultAsync(x => x.UserId == id);
+        }
     }
 }

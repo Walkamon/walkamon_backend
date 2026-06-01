@@ -1,4 +1,4 @@
-namespace DAL.DTO;
+    namespace DAL.DTO;
 
 public class OtpSentResponse
 {
