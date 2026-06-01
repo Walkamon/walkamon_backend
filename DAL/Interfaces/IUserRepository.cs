@@ -1,31 +1,31 @@
-using DAL.Models;
+    using DAL.Models;
 
-namespace DAL.Interfaces;
+    namespace DAL.Interfaces;
 
-public interface IUserRepository : IGenericRepository<User>
-{
-    Task<User?> GetByEmailAsync(string email);
+    public interface IUserRepository : IGenericRepository<User>
+    {
+        Task<User?> GetByEmailAsync(string email);
 
-    Task<User?> GetUserByNormalizedEmailAsync(string normalizedEmail);
+        Task<User?> GetUserByNormalizedEmailAsync(string normalizedEmail);
 
-    Task<bool> UsernameExistsAsync(string normalizedUsername, Guid? excludedUserId = null);
+        Task<bool> UsernameExistsAsync(string normalizedUsername, Guid? excludedUserId = null);
 
-    Task<Role?> GetRoleByCodeAsync(string roleCode);
+        Task<Role?> GetRoleByCodeAsync(string roleCode);
 
-    Task<OtpRequest?> GetOtpRequestAsync(Guid requestCode);
+        Task<OtpRequest?> GetOtpRequestAsync(Guid requestCode);
 
-    Task<OtpRequest?> GetLatestPendingEmailVerificationOtpAsync(Guid userId);
+        Task<OtpRequest?> GetLatestPendingEmailVerificationOtpAsync(Guid userId);
 
-    Task<int> CountRecentEmailVerificationOtpsByIpAsync(
-        string requestedIp,
-        DateTime createdAfterUtc);
+        Task<int> CountRecentEmailVerificationOtpsByIpAsync(
+            string requestedIp,
+            DateTime createdAfterUtc);
 
-    Task<IReadOnlyDictionary<string, string>> GetSystemSettingsAsync(
-        IEnumerable<string> settingKeys);
+        Task<IReadOnlyDictionary<string, string>> GetSystemSettingsAsync(
+            IEnumerable<string> settingKeys);
 
-    Task CleanupExpiredPendingRegistrationsAsync(DateTime createdBeforeUtc);
+        Task CleanupExpiredPendingRegistrationsAsync(DateTime createdBeforeUtc);
 
-    Task AddOtpAsync(OtpRequest otpRequest);
+        Task AddOtpAsync(OtpRequest otpRequest);
 
-    Task SaveChangesAsync();
-}
+        Task SaveChangesAsync();
+    }
