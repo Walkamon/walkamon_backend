@@ -34,7 +34,7 @@ namespace BLL.Service
 
         public async Task<UserDetailResponse?> GetUserByIdAsync(Guid userId)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
+            var user = await _userRepository.GetByIdWithProfileAsync(userId);
 
             if (user == null)
                 return null;
