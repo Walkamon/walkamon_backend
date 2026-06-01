@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Walkamon.Controllers
 {
     [Route("api/admin/user")]
-    [Authorize(Roles = "admin")]
+    [Authorize(Roles = "Admin")]
     [ApiController]
     public class UserControllerForAdmin : BaseController
     {
@@ -38,6 +38,28 @@ namespace Walkamon.Controllers
             }
 
             return Ok(user);
+        }
+        [HttpPatch("{userId:guid}/disable")]
+        public async Task<IActionResult> DisableUser(Guid userId)
+        {
+            await _userService.DisableUserAsync(userId);
+
+            return Ok(new
+            {
+                Success = true,
+                Message = "User disabled successfully"
+            });
+        }
+        [HttpPatch("{userId:guid}/enable")]
+        public async Task<IActionResult> EnableUser(Guid userId)
+        {
+            await _userService.EnableUserAsync(userId);
+
+            return Ok(new
+            {
+                Success = true,
+                Message = "User enabled successfully"
+            });
         }
     }
 }

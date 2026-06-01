@@ -17,6 +17,43 @@ namespace BLL.Service
         {
             _userRepository = userRepository;
         }
+
+        public async Task DisableUserAsync(Guid userId)
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+
+            if (user == null)
+            {
+                throw new Exception("User not found");
+            }
+
+            user.StatusCode = "disabled";
+            user.DeletedAt = DateTime.UtcNow;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _userRepository.Update(user);
+
+            await _userRepository.SaveAsync();
+        }
+
+        public async Task EnableUserAsync(Guid userId)
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+
+            if (user == null)
+            {
+                throw new Exception("User not found");
+            }
+
+            user.StatusCode = "active";
+            user.DeletedAt = null;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _userRepository.Update(user);
+
+            await _userRepository.SaveAsync();
+        }
+
         public async Task<IEnumerable<UserListResponse>> GetAllUsersAsync()
         {
             var users = await _userRepository.GetAllUsersAsync();

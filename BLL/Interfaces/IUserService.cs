@@ -10,5 +10,8 @@ namespace BLL.Interfaces
     {
         Task<IEnumerable<UserListResponse>> GetAllUsersAsync();
         Task<UserDetailResponse?> GetUserByIdAsync(Guid userId);
+        Task DisableUserAsync(Guid userId);
+
+        Task EnableUserAsync(Guid userId);
     }
 }

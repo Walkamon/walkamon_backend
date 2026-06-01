@@ -219,6 +219,12 @@ public class AuthService : IAuthService
             throw new NotFoundException("User not found");
         }
 
+        if (!user.EmailConfirmed &&
+    user.StatusCode.Equals("active", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BadRequestException("Account is not activated");
+        }
+
         if (user.StatusCode.Equals("disabled", StringComparison.OrdinalIgnoreCase))
         {
             throw new BadRequestException("Account has been locked");
@@ -303,7 +309,7 @@ public class AuthService : IAuthService
             NormalizedEmail = normalizedEmail,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             EmailConfirmed = false,
-            StatusCode = "disabled",
+            StatusCode = "active",
             UserProfile = new UserProfile
             {
                 Username = username,
