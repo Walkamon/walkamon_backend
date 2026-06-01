@@ -30,4 +30,5 @@
     Task SaveChangesAsync();
 
     Task<IEnumerable<User>> GetAllUsersAsync();
+    Task<User?> GetByIdWithProfileAsync(Guid id);
 }
