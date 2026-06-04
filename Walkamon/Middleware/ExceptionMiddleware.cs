@@ -1,13 +1,20 @@
 ﻿using System.Text.Json;
 using DAL.DTO;
-
+using BLL.Exceptions;
 public class ExceptionMiddleware
 {
-    private readonly RequestDelegate _next;
+    private static readonly JsonSerializerOptions SerializerOptions =
+        new(JsonSerializerDefaults.Web);
 
-    public ExceptionMiddleware(RequestDelegate next)
+    private readonly RequestDelegate _next;
+    private readonly ILogger<ExceptionMiddleware> _logger;
+
+    public ExceptionMiddleware(
+        RequestDelegate next,
+        ILogger<ExceptionMiddleware> logger)
     {
         _next = next;
+        _logger = logger;
     }
 
    
@@ -19,6 +26,7 @@ public class ExceptionMiddleware
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Request failed");
             await HandleExceptionAsync(context, ex);
         }
     }
@@ -42,16 +50,28 @@ public class ExceptionMiddleware
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = statusCode;
 
+        object? data = null;
+        if (ex is TooManyRequestsException tooManyRequestsException)
+        {
+            context.Response.Headers.RetryAfter =
+                tooManyRequestsException.RetryAfterSeconds.ToString();
+            data = new
+            {
+                retryAfterSeconds = tooManyRequestsException.RetryAfterSeconds
+            };
+        }
+
         var response = new ApiResponse<object>
         {
             Success = false,
             Status = statusCode,
             Message = message,
+            Data = data,
             TraceId = context.TraceIdentifier
         };
 
         return context.Response.WriteAsync(
-            JsonSerializer.Serialize(response)
+            JsonSerializer.Serialize(response, SerializerOptions)
         );
     }
 }

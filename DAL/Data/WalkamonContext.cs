@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using DAL.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace DAL.Models;
+namespace DAL.Data;
 
 public partial class WalkamonContext : DbContext
 {
@@ -83,10 +84,7 @@ public partial class WalkamonContext : DbContext
 
     public virtual DbSet<Wallet> Wallets { get; set; }
 
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Server=MYDEVICE\\HUNGG;Database=Walkamon;User Id=sa;Password=123456;TrustServerCertificate=True;");
-
+    
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Achievement>(entity =>
@@ -438,6 +436,10 @@ public partial class WalkamonContext : DbContext
             entity.HasIndex(e => new { e.UserId, e.PurposeCode, e.StatusCode, e.ExpiresAt }, "IX_otp_requests_user_purpose_status");
 
             entity.HasIndex(e => e.RequestCode, "UQ_otp_requests_request_code").IsUnique();
+
+            entity.HasIndex(e => e.UserId, "UX_otp_requests_verify_email_pending_user")
+                .IsUnique()
+                .HasFilter("([purpose_code]='verify_email' AND [status_code]='pending')");
 
             entity.Property(e => e.OtpRequestId).HasColumnName("otp_request_id");
             entity.Property(e => e.AttemptCount).HasColumnName("attempt_count");

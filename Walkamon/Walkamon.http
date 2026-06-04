@@ -1,6 +1,34 @@
 @Walkamon_HostAddress = http://localhost:5054
 
-GET {{Walkamon_HostAddress}}/weatherforecast/
+POST {{Walkamon_HostAddress}}/api/auth/register
+Content-Type: application/json
 Accept: application/json
+
+{
+  "email": "walkamon01@example.com",
+  "username": "walkamon01",
+  "password": "Aa@123"
+}
+
+###
+
+POST {{Walkamon_HostAddress}}/api/auth/register/verify
+Content-Type: application/json
+Accept: application/json
+
+{
+  "requestCode": "replace-with-request-code",
+  "otp": "123456"
+}
+
+###
+
+POST {{Walkamon_HostAddress}}/api/auth/register/resend-otp
+Content-Type: application/json
+Accept: application/json
+
+{
+  "requestCode": "replace-with-request-code"
+}
 
 ###

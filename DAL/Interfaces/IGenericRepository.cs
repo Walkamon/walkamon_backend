@@ -1,17 +1,16 @@
-﻿namespace DAL.Interfaces
+namespace DAL.Interfaces;
+
+public interface IGenericRepository<T> where T : class
 {
-    public interface IGenericRepository<T> where T : class
-    {
-        Task<IEnumerable<T>> GetAllAsync();
+    Task<IEnumerable<T>> GetAllAsync();
 
-        Task<T> GetByIdAsync(long id);
+    Task<T> GetByIdAsync(Guid id);
 
-        Task AddAsync(T entity);
+    Task AddAsync(T entity);
 
-        void Update(T entity);
+    void Update(T entity);
 
-        void Delete(T entity);
+    void Delete(T entity);
 
-        Task SaveAsync();
-    }
+    Task SaveAsync();
 }

@@ -1,19 +1,13 @@
-﻿//using System;
-//using System.Collections.Generic;
-//using System.Linq;
-//using System.Text;
-//using System.Threading.Tasks;
+﻿namespace DAL.DTO
+{
+    public class LoginResponse
+    {
+        public Guid UserId { get; set; }
 
-//namespace DAL.DTO
-//{
-//    public class LoginResponse
-//    {
-//        public long UserId { get; set; }
+        public string Email { get; set; } = null!;
 
-//        public string Username { get; set; }
+        public string Role { get; set; } = null!;
 
-//        public List<string> Roles { get; set; }
-
-//        public string Token { get; set; }
-//    }
-//}
+        public string Jwt { get; set; } = null!;
+    }
+}
