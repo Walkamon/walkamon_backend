@@ -142,5 +142,12 @@ namespace DAL.Repository
                 .Include(x => x.UserProfile)
                 .FirstOrDefaultAsync(x => x.UserId == id);
         }
+
+        public async Task<User?> GetUserWithRoleAsync(Guid id)
+        {
+            return await _context.Users
+                .Include(x => x.Role)
+                .FirstOrDefaultAsync(x => x.UserId == id);
+        }
     }
 }

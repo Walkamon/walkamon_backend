@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using BLL.Exceptions;
 namespace BLL.Service
 {
     public class UserService : IUserService
@@ -20,11 +21,16 @@ namespace BLL.Service
 
         public async Task DisableUserAsync(Guid userId)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
+            var user = await _userRepository.GetUserWithRoleAsync(userId);
 
             if (user == null)
             {
-                throw new Exception("User not found");
+                throw new NotFoundException("User not found");
+            }
+
+            if (user.Role?.RoleName == "Admin")
+            {
+                throw new NotFoundException("Cannot disable Admin account");
             }
 
             user.StatusCode = "disabled";
@@ -42,7 +48,7 @@ namespace BLL.Service
 
             if (user == null)
             {
-                throw new Exception("User not found");
+                throw new NotFoundException("User not found");
             }
 
             user.StatusCode = "active";
