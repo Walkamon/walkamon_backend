@@ -9,13 +9,15 @@ public partial class UserProfile
 
     public string? Username { get; set; }
 
-    public string? NormalizedUsername { get; set; }
-
-    public string DisplayName { get; set; } = null!;
-
     public string? Bio { get; set; }
 
+    public string? Gender { get; set; }
+
+    public DateOnly? Dob { get; set; }
+
     public string? AvatarUrl { get; set; }
+
+    public bool HasSeenStory { get; set; }
 
     public string LanguageCode { get; set; } = null!;
 
@@ -23,17 +25,9 @@ public partial class UserProfile
 
     public string TimeZoneId { get; set; } = null!;
 
-    public string ProfileVisibilityCode { get; set; } = null!;
-
     public bool ShowActivityStats { get; set; }
 
-    public bool AllowFriendRequests { get; set; }
-
     public bool NotificationsEnabled { get; set; }
-
-    public byte? QuietHourStart { get; set; }
-
-    public byte? QuietHourEnd { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

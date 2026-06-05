@@ -13,8 +13,6 @@ public partial class ShopPurchase
 
     public int Quantity { get; set; }
 
-    public int ItemQuantitySnapshot { get; set; }
-
     public int UnitPriceAmount { get; set; }
 
     public DateTime PurchasedAt { get; set; }

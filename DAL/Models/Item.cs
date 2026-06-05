@@ -9,7 +9,7 @@ public partial class Item
 
     public string ItemName { get; set; } = null!;
 
-    public string ItemTypeCode { get; set; } = null!;
+    public int ItemTypeId { get; set; }
 
     public string? EffectTypeCode { get; set; }
 
@@ -20,6 +20,8 @@ public partial class Item
     public bool IsActive { get; set; }
 
     public virtual ICollection<InventoryItem> InventoryItems { get; set; } = new List<InventoryItem>();
+
+    public virtual ItemType ItemType { get; set; } = null!;
 
     public virtual ICollection<RewardPackageItem> RewardPackageItems { get; set; } = new List<RewardPackageItem>();
 

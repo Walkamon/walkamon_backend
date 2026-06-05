@@ -3,11 +3,11 @@ using System.Collections.Generic;
 
 namespace DAL.Models;
 
-public partial class Misson
+public partial class Mission
 {
-    public int MissonId { get; set; }
+    public int MissionId { get; set; }
 
-    public string MissonTypeCode { get; set; } = null!;
+    public string MissionTypeCode { get; set; } = null!;
 
     public string Title { get; set; } = null!;
 
@@ -27,5 +27,5 @@ public partial class Misson
 
     public virtual RewardPackage RewardPackage { get; set; } = null!;
 
-    public virtual ICollection<UserMisson> UserMissons { get; set; } = new List<UserMisson>();
+    public virtual ICollection<UserMission> UserMissions { get; set; } = new List<UserMission>();
 }

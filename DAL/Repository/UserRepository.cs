@@ -34,7 +34,8 @@ namespace DAL.Repository
             Guid? excludedUserId = null)
         {
             return _context.UserProfiles.AnyAsync(profile =>
-                profile.NormalizedUsername == normalizedUsername
+                profile.Username != null
+                && profile.Username.ToUpper() == normalizedUsername
                 && (!excludedUserId.HasValue || profile.UserId != excludedUserId.Value));
         }
 
@@ -92,7 +93,6 @@ namespace DAL.Repository
                     user.StatusCode == "disabled"
                     && !user.EmailConfirmed
                     && user.CreatedAt < createdBeforeUtc)
-                .Include(user => user.OtpRequests)
                 .Include(user => user.UserProfile)
                 .ToListAsync();
 
@@ -101,7 +101,13 @@ namespace DAL.Repository
                 return;
             }
 
-            _context.OtpRequests.RemoveRange(users.SelectMany(user => user.OtpRequests));
+            var userIds = users.Select(user => user.UserId).ToArray();
+
+            var otpRequests = await _context.OtpRequests
+                .Where(otp => userIds.Contains(otp.UserId))
+                .ToListAsync();
+
+            _context.OtpRequests.RemoveRange(otpRequests);
 
             _context.UserProfiles.RemoveRange(
                 users

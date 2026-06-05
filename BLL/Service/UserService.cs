@@ -96,19 +96,16 @@ namespace BLL.Service
                     : new UserProfileResponse
                     {
                         Username = user.UserProfile.Username,
-                        NormalizedUsername = user.UserProfile.NormalizedUsername,
-                        DisplayName = user.UserProfile.DisplayName,
                         Bio = user.UserProfile.Bio,
+                        Gender = user.UserProfile.Gender,
+                        Dob = user.UserProfile.Dob,
                         AvatarUrl = user.UserProfile.AvatarUrl,
+                        HasSeenStory = user.UserProfile.HasSeenStory,
                         LanguageCode = user.UserProfile.LanguageCode,
                         ThemeCode = user.UserProfile.ThemeCode,
                         TimeZoneId = user.UserProfile.TimeZoneId,
-                        ProfileVisibilityCode = user.UserProfile.ProfileVisibilityCode,
                         ShowActivityStats = user.UserProfile.ShowActivityStats,
-                        AllowFriendRequests = user.UserProfile.AllowFriendRequests,
                         NotificationsEnabled = user.UserProfile.NotificationsEnabled,
-                        QuietHourStart = user.UserProfile.QuietHourStart,
-                        QuietHourEnd = user.UserProfile.QuietHourEnd,
                         CreatedAt = user.UserProfile.CreatedAt,
                         UpdatedAt = user.UserProfile.UpdatedAt
                     }
