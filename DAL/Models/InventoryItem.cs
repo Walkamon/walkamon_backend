@@ -7,7 +7,7 @@ public partial class InventoryItem
 {
     public Guid UserId { get; set; }
 
-    public int ItemId { get; set; }
+    public Guid ItemId { get; set; }
 
     public int Quantity { get; set; }
 

@@ -5,11 +5,11 @@ namespace DAL.Models;
 
 public partial class ShopPurchase
 {
-    public long PurchaseId { get; set; }
+    public Guid PurchaseId { get; set; }
 
     public Guid UserId { get; set; }
 
-    public int ShopItemId { get; set; }
+    public Guid ShopItemId { get; set; }
 
     public int Quantity { get; set; }
 

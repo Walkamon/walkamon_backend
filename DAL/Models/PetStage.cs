@@ -5,9 +5,9 @@ namespace DAL.Models;
 
 public partial class PetStage
 {
-    public int StageId { get; set; }
+    public Guid StageId { get; set; }
 
-    public int SpeciesId { get; set; }
+    public Guid SpeciesId { get; set; }
 
     public byte StageNo { get; set; }
 

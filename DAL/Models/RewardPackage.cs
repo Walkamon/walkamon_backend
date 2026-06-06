@@ -5,7 +5,7 @@ namespace DAL.Models;
 
 public partial class RewardPackage
 {
-    public int RewardPackageId { get; set; }
+    public Guid RewardPackageId { get; set; }
 
     public string PackageName { get; set; } = null!;
 

@@ -5,13 +5,13 @@ namespace DAL.Models;
 
 public partial class PetEvolutionHistory
 {
-    public long EvolutionId { get; set; }
+    public Guid EvolutionId { get; set; }
 
     public Guid UserId { get; set; }
 
-    public int FromStageId { get; set; }
+    public Guid FromStageId { get; set; }
 
-    public int ToStageId { get; set; }
+    public Guid ToStageId { get; set; }
 
     public DateTime EvolvedAt { get; set; }
 

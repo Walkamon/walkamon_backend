@@ -1,12 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-using DAL.Models;
 using Microsoft.EntityFrameworkCore;
-
+using DAL.Models;
 namespace DAL.Data;
 
 public partial class WalkamonContext : DbContext
 {
+    public WalkamonContext()
+    {
+    }
+
     public WalkamonContext(DbContextOptions<WalkamonContext> options)
         : base(options)
     {
@@ -78,17 +81,21 @@ public partial class WalkamonContext : DbContext
 
     public virtual DbSet<Wallet> Wallets { get; set; }
 
+   
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Achievement>(entity =>
         {
-            entity.HasKey(e => e.AchievementId).HasName("PK__achievem__3C492E83F2B009C3");
+            entity.HasKey(e => e.AchievementId).HasName("PK__achievem__3C492E833CDD7258");
 
             entity.ToTable("achievements");
 
-            entity.HasIndex(e => e.Title, "UQ__achievem__E52A1BB391B59267").IsUnique();
+            entity.HasIndex(e => e.Title, "UQ__achievem__E52A1BB32AC1D52B").IsUnique();
 
-            entity.Property(e => e.AchievementId).HasColumnName("achievement_id");
+            entity.Property(e => e.AchievementId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("achievement_id");
             entity.Property(e => e.CategoryCode)
                 .HasMaxLength(20)
                 .IsUnicode(false)
@@ -109,12 +116,12 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.RewardPackage).WithMany(p => p.Achievements)
                 .HasForeignKey(d => d.RewardPackageId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__achieveme__rewar__3E1D39E1");
+                .HasConstraintName("FK__achieveme__rewar__46B27FE2");
         });
 
         modelBuilder.Entity<DailyStep>(entity =>
         {
-            entity.HasKey(e => new { e.UserId, e.StepDate }).HasName("PK__daily_st__37CD0C077B3E202C");
+            entity.HasKey(e => new { e.UserId, e.StepDate }).HasName("PK__daily_st__37CD0C07C48B85CE");
 
             entity.ToTable("daily_steps");
 
@@ -131,18 +138,18 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.User).WithMany(p => p.DailySteps)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__daily_ste__user___236943A5");
+                .HasConstraintName("FK__daily_ste__user___29221CFB");
         });
 
         modelBuilder.Entity<DeviceToken>(entity =>
         {
-            entity.HasKey(e => e.DeviceTokenId).HasName("PK__device_t__3ADABB7DDBF7AC95");
+            entity.HasKey(e => e.DeviceTokenId).HasName("PK__device_t__3ADABB7D830EA146");
 
             entity.ToTable("device_tokens");
 
             entity.HasIndex(e => new { e.UserId, e.IsActive }, "IX_device_tokens_user_active");
 
-            entity.HasIndex(e => e.FcmToken, "UQ__device_t__61C3D35DCD2BB749").IsUnique();
+            entity.HasIndex(e => e.FcmToken, "UQ__device_t__61C3D35D0A2BACA0").IsUnique();
 
             entity.Property(e => e.DeviceTokenId).HasColumnName("device_token_id");
             entity.Property(e => e.FcmToken)
@@ -165,13 +172,13 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<ExternalLogin>(entity =>
         {
-            entity.HasKey(e => e.ExternalLoginId).HasName("PK__external__71E083FB058DE7AE");
+            entity.HasKey(e => e.ExternalLoginId).HasName("PK__external__71E083FBEDE96A7E");
 
             entity.ToTable("external_logins");
 
             entity.HasIndex(e => e.UserId, "IX_external_logins_user_id");
 
-            entity.HasIndex(e => new { e.ProviderName, e.ProviderSubject }, "UQ__external__8B7190E19E26327D").IsUnique();
+            entity.HasIndex(e => new { e.ProviderName, e.ProviderSubject }, "UQ__external__8B7190E154071ADB").IsUnique();
 
             entity.Property(e => e.ExternalLoginId).HasColumnName("external_login_id");
             entity.Property(e => e.CreatedAt)
@@ -204,7 +211,7 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<FriendRequest>(entity =>
         {
-            entity.HasKey(e => e.RequestId).HasName("PK__friend_r__18D3B90F6F5F011C");
+            entity.HasKey(e => e.RequestId).HasName("PK__friend_r__18D3B90F9C84F14C");
 
             entity.ToTable("friend_requests");
 
@@ -214,7 +221,9 @@ public partial class WalkamonContext : DbContext
                 .IsUnique()
                 .HasFilter("([status_code]='pending')");
 
-            entity.Property(e => e.RequestId).HasColumnName("request_id");
+            entity.Property(e => e.RequestId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("request_id");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(sysutcdatetime())")
@@ -233,17 +242,17 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.ReceiverUser).WithMany(p => p.FriendRequestReceiverUsers)
                 .HasForeignKey(d => d.ReceiverUserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__friend_re__recei__607251E5");
+                .HasConstraintName("FK__friend_re__recei__6BE40491");
 
             entity.HasOne(d => d.SenderUser).WithMany(p => p.FriendRequestSenderUsers)
                 .HasForeignKey(d => d.SenderUserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__friend_re__sende__5F7E2DAC");
+                .HasConstraintName("FK__friend_re__sende__6AEFE058");
         });
 
         modelBuilder.Entity<Friendship>(entity =>
         {
-            entity.HasKey(e => new { e.UserLowId, e.UserHighId }).HasName("PK__friendsh__4846FE8B4EE29558");
+            entity.HasKey(e => new { e.UserLowId, e.UserHighId }).HasName("PK__friendsh__4846FE8B9074ACA0");
 
             entity.ToTable("friendships");
 
@@ -257,17 +266,17 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.UserHigh).WithMany(p => p.FriendshipUserHighs)
                 .HasForeignKey(d => d.UserHighId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__friendshi__user___662B2B3B");
+                .HasConstraintName("FK__friendshi__user___719CDDE7");
 
             entity.HasOne(d => d.UserLow).WithMany(p => p.FriendshipUserLows)
                 .HasForeignKey(d => d.UserLowId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__friendshi__user___65370702");
+                .HasConstraintName("FK__friendshi__user___70A8B9AE");
         });
 
         modelBuilder.Entity<InventoryItem>(entity =>
         {
-            entity.HasKey(e => new { e.UserId, e.ItemId }).HasName("PK__inventor__7C9E17F255525190");
+            entity.HasKey(e => new { e.UserId, e.ItemId }).HasName("PK__inventor__7C9E17F20D4799BC");
 
             entity.ToTable("inventory_items");
 
@@ -278,23 +287,25 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.Item).WithMany(p => p.InventoryItems)
                 .HasForeignKey(d => d.ItemId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__inventory__item___498EEC8D");
+                .HasConstraintName("FK__inventory__item___5224328E");
 
             entity.HasOne(d => d.User).WithMany(p => p.InventoryItems)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__inventory__user___489AC854");
+                .HasConstraintName("FK__inventory__user___51300E55");
         });
 
         modelBuilder.Entity<Item>(entity =>
         {
-            entity.HasKey(e => e.ItemId).HasName("PK__items__52020FDD978702B7");
+            entity.HasKey(e => e.ItemId).HasName("PK__items__52020FDDEA35AA58");
 
             entity.ToTable("items");
 
-            entity.HasIndex(e => e.ItemName, "UQ__items__ACA52A977A31C76E").IsUnique();
+            entity.HasIndex(e => e.ItemName, "UQ__items__ACA52A973DDCD495").IsUnique();
 
-            entity.Property(e => e.ItemId).HasColumnName("item_id");
+            entity.Property(e => e.ItemId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("item_id");
             entity.Property(e => e.Description)
                 .HasMaxLength(300)
                 .HasColumnName("description");
@@ -314,18 +325,20 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.ItemType).WithMany(p => p.Items)
                 .HasForeignKey(d => d.ItemTypeId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__items__item_type__76969D2E");
+                .HasConstraintName("FK__items__item_type__787EE5A0");
         });
 
         modelBuilder.Entity<ItemType>(entity =>
         {
-            entity.HasKey(e => e.ItemTypeId).HasName("PK__item_typ__470682AB428D0350");
+            entity.HasKey(e => e.ItemTypeId).HasName("PK__item_typ__470682AB18E17ED7");
 
             entity.ToTable("item_types");
 
-            entity.HasIndex(e => e.ItemTypeName, "UQ__item_typ__2034EA2263D912FD").IsUnique();
+            entity.HasIndex(e => e.ItemTypeName, "UQ__item_typ__2034EA22D17927D9").IsUnique();
 
-            entity.Property(e => e.ItemTypeId).HasColumnName("item_type_id");
+            entity.Property(e => e.ItemTypeId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("item_type_id");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(sysutcdatetime())")
@@ -341,7 +354,7 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<MatchmakingQueue>(entity =>
         {
-            entity.HasKey(e => e.UserId).HasName("PK__matchmak__B9BE370F0C45CBF5");
+            entity.HasKey(e => e.UserId).HasName("PK__matchmak__B9BE370F735B2181");
 
             entity.ToTable("matchmaking_queue");
 
@@ -369,18 +382,20 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.User).WithOne(p => p.MatchmakingQueue)
                 .HasForeignKey<MatchmakingQueue>(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__matchmaki__user___7A3223E8");
+                .HasConstraintName("FK__matchmaki__user___0697FACD");
         });
 
         modelBuilder.Entity<Mission>(entity =>
         {
-            entity.HasKey(e => e.MissionId).HasName("PK__missions__B5419AB2D1B4908E");
+            entity.HasKey(e => e.MissionId).HasName("PK__missions__B5419AB2C54E6FD4");
 
             entity.ToTable("missions");
 
             entity.HasIndex(e => new { e.MissionTypeCode, e.IsActive, e.StartAt, e.EndAt }, "IX_missions_type_active_window");
 
-            entity.Property(e => e.MissionId).HasColumnName("mission_id");
+            entity.Property(e => e.MissionId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("mission_id");
             entity.Property(e => e.EndAt)
                 .HasPrecision(0)
                 .HasColumnName("end_at");
@@ -408,18 +423,20 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.RewardPackage).WithMany(p => p.Missions)
                 .HasForeignKey(d => d.RewardPackageId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__missions__reward__2EDAF651");
+                .HasConstraintName("FK__missions__reward__3587F3E0");
         });
 
         modelBuilder.Entity<Notification>(entity =>
         {
-            entity.HasKey(e => e.NotificationId).HasName("PK__notifica__E059842F7CA86DAB");
+            entity.HasKey(e => e.NotificationId).HasName("PK__notifica__E059842FF811DC55");
 
             entity.ToTable("notifications");
 
             entity.HasIndex(e => new { e.ScheduledAt, e.CreatedAt }, "IX_notifications_schedule").IsDescending(false, true);
 
-            entity.Property(e => e.NotificationId).HasColumnName("notification_id");
+            entity.Property(e => e.NotificationId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("notification_id");
             entity.Property(e => e.Body)
                 .HasMaxLength(500)
                 .HasColumnName("body");
@@ -445,12 +462,12 @@ public partial class WalkamonContext : DbContext
 
             entity.HasOne(d => d.CreatedByUser).WithMany(p => p.Notifications)
                 .HasForeignKey(d => d.CreatedByUserId)
-                .HasConstraintName("FK__notificat__creat__6AEFE058");
+                .HasConstraintName("FK__notificat__creat__7755B73D");
         });
 
         modelBuilder.Entity<OtpRequest>(entity =>
         {
-            entity.HasKey(e => e.OtpRequestId).HasName("PK__otp_requ__638D23F5C0099E55");
+            entity.HasKey(e => e.OtpRequestId).HasName("PK__otp_requ__638D23F5EB277319");
 
             entity.ToTable("otp_requests");
 
@@ -514,7 +531,7 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<Pet>(entity =>
         {
-            entity.HasKey(e => e.UserId).HasName("PK__pets__B9BE370F3B549044");
+            entity.HasKey(e => e.UserId).HasName("PK__pets__B9BE370F2B46DE9A");
 
             entity.ToTable("pets");
 
@@ -540,23 +557,25 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.CurrentStage).WithMany(p => p.Pets)
                 .HasForeignKey(d => d.CurrentStageId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pets__current_st__17F790F9");
+                .HasConstraintName("FK__pets__current_st__1CBC4616");
 
             entity.HasOne(d => d.User).WithOne(p => p.Pet)
                 .HasForeignKey<Pet>(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pets__user_id__17036CC0");
+                .HasConstraintName("FK__pets__user_id__1BC821DD");
         });
 
         modelBuilder.Entity<PetEvolutionHistory>(entity =>
         {
-            entity.HasKey(e => e.EvolutionId).HasName("PK__pet_evol__8A72FB15F1B508ED");
+            entity.HasKey(e => e.EvolutionId).HasName("PK__pet_evol__8A72FB15CC23C8EA");
 
             entity.ToTable("pet_evolution_history");
 
             entity.HasIndex(e => new { e.UserId, e.EvolvedAt }, "IX_pet_evolution_history_user_time").IsDescending(false, true);
 
-            entity.Property(e => e.EvolutionId).HasColumnName("evolution_id");
+            entity.Property(e => e.EvolutionId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("evolution_id");
             entity.Property(e => e.EvolvedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(sysutcdatetime())")
@@ -568,26 +587,26 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.FromStage).WithMany(p => p.PetEvolutionHistoryFromStages)
                 .HasForeignKey(d => d.FromStageId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pet_evolu__from___1DB06A4F");
+                .HasConstraintName("FK__pet_evolu__from___236943A5");
 
             entity.HasOne(d => d.ToStage).WithMany(p => p.PetEvolutionHistoryToStages)
                 .HasForeignKey(d => d.ToStageId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pet_evolu__to_st__1EA48E88");
+                .HasConstraintName("FK__pet_evolu__to_st__245D67DE");
 
             entity.HasOne(d => d.User).WithMany(p => p.PetEvolutionHistories)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pet_evolu__user___1CBC4616");
+                .HasConstraintName("FK__pet_evolu__user___22751F6C");
         });
 
         modelBuilder.Entity<PetLevel>(entity =>
         {
-            entity.HasKey(e => e.LevelNo).HasName("PK__pet_leve__03463ED1AEA6BCED");
+            entity.HasKey(e => e.LevelNo).HasName("PK__pet_leve__03463ED1C46ABDCB");
 
             entity.ToTable("pet_levels");
 
-            entity.HasIndex(e => e.MinLifeForce, "UQ__pet_leve__800468103E0E2C30").IsUnique();
+            entity.HasIndex(e => e.MinLifeForce, "UQ__pet_leve__800468109260588B").IsUnique();
 
             entity.Property(e => e.LevelNo).HasColumnName("level_no");
             entity.Property(e => e.MinLifeForce).HasColumnName("min_life_force");
@@ -595,13 +614,15 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<PetSpecy>(entity =>
         {
-            entity.HasKey(e => e.SpeciesId).HasName("PK__pet_spec__B23DC5C2CEAAF7A1");
+            entity.HasKey(e => e.SpeciesId).HasName("PK__pet_spec__B23DC5C232950327");
 
             entity.ToTable("pet_species");
 
-            entity.HasIndex(e => e.SpeciesName, "UQ__pet_spec__E552C10370ACED38").IsUnique();
+            entity.HasIndex(e => e.SpeciesName, "UQ__pet_spec__E552C103FBC28C76").IsUnique();
 
-            entity.Property(e => e.SpeciesId).HasColumnName("species_id");
+            entity.Property(e => e.SpeciesId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("species_id");
             entity.Property(e => e.IsActive)
                 .HasDefaultValue(true)
                 .HasColumnName("is_active");
@@ -612,13 +633,15 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<PetStage>(entity =>
         {
-            entity.HasKey(e => e.StageId).HasName("PK__pet_stag__CFC78760F4DA086B");
+            entity.HasKey(e => e.StageId).HasName("PK__pet_stag__CFC78760B19173B5");
 
             entity.ToTable("pet_stages");
 
-            entity.HasIndex(e => new { e.SpeciesId, e.StageNo }, "UQ__pet_stag__DEC1C05D5B595B2E").IsUnique();
+            entity.HasIndex(e => new { e.SpeciesId, e.StageNo }, "UQ__pet_stag__DEC1C05D4014BF73").IsUnique();
 
-            entity.Property(e => e.StageId).HasColumnName("stage_id");
+            entity.Property(e => e.StageId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("stage_id");
             entity.Property(e => e.RequiredLevel).HasColumnName("required_level");
             entity.Property(e => e.SpeciesId).HasColumnName("species_id");
             entity.Property(e => e.StageName)
@@ -629,17 +652,17 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.RequiredLevelNavigation).WithMany(p => p.PetStages)
                 .HasForeignKey(d => d.RequiredLevel)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pet_stage__requi__0C85DE4D");
+                .HasConstraintName("FK__pet_stage__requi__114A936A");
 
             entity.HasOne(d => d.Species).WithMany(p => p.PetStages)
                 .HasForeignKey(d => d.SpeciesId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pet_stage__speci__0B91BA14");
+                .HasConstraintName("FK__pet_stage__speci__10566F31");
         });
 
         modelBuilder.Entity<PvpMatch>(entity =>
         {
-            entity.HasKey(e => e.MatchId).HasName("PK__pvp_matc__9D7FCBA37B3DA1A3");
+            entity.HasKey(e => e.MatchId).HasName("PK__pvp_matc__9D7FCBA39E163246");
 
             entity.ToTable("pvp_matches");
 
@@ -675,12 +698,12 @@ public partial class WalkamonContext : DbContext
 
             entity.HasOne(d => d.WinnerUser).WithMany(p => p.PvpMatches)
                 .HasForeignKey(d => d.WinnerUserId)
-                .HasConstraintName("FK__pvp_match__winne__03BB8E22");
+                .HasConstraintName("FK__pvp_match__winne__10216507");
         });
 
         modelBuilder.Entity<PvpMatchPlayer>(entity =>
         {
-            entity.HasKey(e => new { e.MatchId, e.UserId }).HasName("PK__pvp_matc__76E428D3DF3F484B");
+            entity.HasKey(e => new { e.MatchId, e.UserId }).HasName("PK__pvp_matc__76E428D34A32629C");
 
             entity.ToTable("pvp_match_players");
 
@@ -705,23 +728,25 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.Match).WithMany(p => p.PvpMatchPlayers)
                 .HasForeignKey(d => d.MatchId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pvp_match__match__0E391C95");
+                .HasConstraintName("FK__pvp_match__match__1A9EF37A");
 
             entity.HasOne(d => d.User).WithMany(p => p.PvpMatchPlayers)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pvp_match__user___0F2D40CE");
+                .HasConstraintName("FK__pvp_match__user___1B9317B3");
         });
 
         modelBuilder.Entity<RewardPackage>(entity =>
         {
-            entity.HasKey(e => e.RewardPackageId).HasName("PK__reward_p__B3C8ED8F786264B7");
+            entity.HasKey(e => e.RewardPackageId).HasName("PK__reward_p__B3C8ED8FF737F33A");
 
             entity.ToTable("reward_packages");
 
-            entity.HasIndex(e => e.PackageName, "UQ__reward_p__671434CA1648BC3C").IsUnique();
+            entity.HasIndex(e => e.PackageName, "UQ__reward_p__671434CAB087A4AA").IsUnique();
 
-            entity.Property(e => e.RewardPackageId).HasColumnName("reward_package_id");
+            entity.Property(e => e.RewardPackageId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("reward_package_id");
             entity.Property(e => e.PackageName)
                 .HasMaxLength(100)
                 .HasColumnName("package_name");
@@ -730,7 +755,7 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<RewardPackageItem>(entity =>
         {
-            entity.HasKey(e => new { e.RewardPackageId, e.ItemId }).HasName("PK__reward_p__76E8CD729EFD96CA");
+            entity.HasKey(e => new { e.RewardPackageId, e.ItemId }).HasName("PK__reward_p__76E8CD72EB7E69BE");
 
             entity.ToTable("reward_package_items");
 
@@ -741,21 +766,21 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.Item).WithMany(p => p.RewardPackageItems)
                 .HasForeignKey(d => d.ItemId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__reward_pa__item___00200768");
+                .HasConstraintName("FK__reward_pa__item___02FC7413");
 
             entity.HasOne(d => d.RewardPackage).WithMany(p => p.RewardPackageItems)
                 .HasForeignKey(d => d.RewardPackageId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__reward_pa__rewar__7F2BE32F");
+                .HasConstraintName("FK__reward_pa__rewar__02084FDA");
         });
 
         modelBuilder.Entity<Role>(entity =>
         {
-            entity.HasKey(e => e.RoleId).HasName("PK__roles__760965CC63AD9F27");
+            entity.HasKey(e => e.RoleId).HasName("PK__roles__760965CC794BD99C");
 
             entity.ToTable("roles");
 
-            entity.HasIndex(e => e.RoleCode, "UQ__roles__BAE63075DF148FDF").IsUnique();
+            entity.HasIndex(e => e.RoleCode, "UQ__roles__BAE630750C93C2A9").IsUnique();
 
             entity.Property(e => e.RoleId).HasColumnName("role_id");
             entity.Property(e => e.CreatedAt)
@@ -777,15 +802,17 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<ShopItem>(entity =>
         {
-            entity.HasKey(e => e.ShopItemId).HasName("PK__shop_ite__542F23D2B8CF7DB6");
+            entity.HasKey(e => e.ShopItemId).HasName("PK__shop_ite__542F23D2FD88CFDB");
 
             entity.ToTable("shop_items");
 
             entity.HasIndex(e => new { e.IsActive, e.PriceAmount }, "IX_shop_items_active_price");
 
-            entity.HasIndex(e => new { e.ItemId, e.ItemQuantity }, "UQ__shop_ite__6DC2725C13E62434").IsUnique();
+            entity.HasIndex(e => new { e.ItemId, e.ItemQuantity }, "UQ__shop_ite__6DC2725C5B335F81").IsUnique();
 
-            entity.Property(e => e.ShopItemId).HasColumnName("shop_item_id");
+            entity.Property(e => e.ShopItemId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("shop_item_id");
             entity.Property(e => e.IsActive)
                 .HasDefaultValue(true)
                 .HasColumnName("is_active");
@@ -798,18 +825,20 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.Item).WithMany(p => p.ShopItems)
                 .HasForeignKey(d => d.ItemId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__shop_item__item___51300E55");
+                .HasConstraintName("FK__shop_item__item___5AB9788F");
         });
 
         modelBuilder.Entity<ShopPurchase>(entity =>
         {
-            entity.HasKey(e => e.PurchaseId).HasName("PK__shop_pur__87071CB937569AEE");
+            entity.HasKey(e => e.PurchaseId).HasName("PK__shop_pur__87071CB9AA443D06");
 
             entity.ToTable("shop_purchases");
 
             entity.HasIndex(e => new { e.UserId, e.PurchasedAt }, "IX_shop_purchases_user_time").IsDescending(false, true);
 
-            entity.Property(e => e.PurchaseId).HasColumnName("purchase_id");
+            entity.Property(e => e.PurchaseId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("purchase_id");
             entity.Property(e => e.PurchasedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(sysutcdatetime())")
@@ -824,17 +853,17 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.ShopItem).WithMany(p => p.ShopPurchases)
                 .HasForeignKey(d => d.ShopItemId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__shop_purc__shop___58D1301D");
+                .HasConstraintName("FK__shop_purc__shop___634EBE90");
 
             entity.HasOne(d => d.User).WithMany(p => p.ShopPurchases)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__shop_purc__user___57DD0BE4");
+                .HasConstraintName("FK__shop_purc__user___625A9A57");
         });
 
         modelBuilder.Entity<StepGoal>(entity =>
         {
-            entity.HasKey(e => new { e.UserId, e.EffectiveFrom }).HasName("PK__step_goa__ABB931578BFB1381");
+            entity.HasKey(e => new { e.UserId, e.EffectiveFrom }).HasName("PK__step_goa__ABB93157257821AC");
 
             entity.ToTable("step_goals");
 
@@ -847,12 +876,12 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.User).WithMany(p => p.StepGoals)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__step_goal__user___2739D489");
+                .HasConstraintName("FK__step_goal__user___2CF2ADDF");
         });
 
         modelBuilder.Entity<SystemSetting>(entity =>
         {
-            entity.HasKey(e => e.SettingKey).HasName("PK__system_s__0DFAC426981C05DB");
+            entity.HasKey(e => e.SettingKey).HasName("PK__system_s__0DFAC426C6281AE6");
 
             entity.ToTable("system_settings");
 
@@ -871,7 +900,7 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<User>(entity =>
         {
-            entity.HasKey(e => e.UserId).HasName("PK__users__B9BE370FF799ECC3");
+            entity.HasKey(e => e.UserId).HasName("PK__users__B9BE370F5D70E255");
 
             entity.ToTable("users");
 
@@ -932,7 +961,7 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<UserAchievement>(entity =>
         {
-            entity.HasKey(e => new { e.UserId, e.AchievementId }).HasName("PK__user_ach__9A7AA5E794F40554");
+            entity.HasKey(e => new { e.UserId, e.AchievementId }).HasName("PK__user_ach__9A7AA5E7A822F126");
 
             entity.ToTable("user_achievements");
 
@@ -951,25 +980,27 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.Achievement).WithMany(p => p.UserAchievements)
                 .HasForeignKey(d => d.AchievementId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__user_achi__achie__43D61337");
+                .HasConstraintName("FK__user_achi__achie__4C6B5938");
 
             entity.HasOne(d => d.User).WithMany(p => p.UserAchievements)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__user_achi__user___42E1EEFE");
+                .HasConstraintName("FK__user_achi__user___4B7734FF");
         });
 
         modelBuilder.Entity<UserMission>(entity =>
         {
-            entity.HasKey(e => e.UserMissionId).HasName("PK__user_mis__5F82187119688467");
+            entity.HasKey(e => e.UserMissionId).HasName("PK__user_mis__5F82187148E3BCCC");
 
             entity.ToTable("user_missions");
 
             entity.HasIndex(e => new { e.UserId, e.StatusCode, e.CycleDate }, "IX_user_missions_user_status_cycle").IsDescending(false, false, true);
 
-            entity.HasIndex(e => new { e.UserId, e.MissionId, e.CycleDate }, "UQ__user_mis__4F168EE9C5B4779F").IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.MissionId, e.CycleDate }, "UQ__user_mis__4F168EE96CBDE3FD").IsUnique();
 
-            entity.Property(e => e.UserMissionId).HasColumnName("user_mission_id");
+            entity.Property(e => e.UserMissionId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("user_mission_id");
             entity.Property(e => e.AssignedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(sysutcdatetime())")
@@ -990,17 +1021,17 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.Mission).WithMany(p => p.UserMissions)
                 .HasForeignKey(d => d.MissionId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__user_miss__missi__3864608B");
+                .HasConstraintName("FK__user_miss__missi__40058253");
 
             entity.HasOne(d => d.User).WithMany(p => p.UserMissions)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__user_miss__user___37703C52");
+                .HasConstraintName("FK__user_miss__user___3F115E1A");
         });
 
         modelBuilder.Entity<UserNotification>(entity =>
         {
-            entity.HasKey(e => new { e.UserId, e.NotificationId }).HasName("PK__user_not__57BBAF4DC0DAC410");
+            entity.HasKey(e => new { e.UserId, e.NotificationId }).HasName("PK__user_not__57BBAF4D2C8D2D92");
 
             entity.ToTable("user_notifications");
 
@@ -1018,17 +1049,17 @@ public partial class WalkamonContext : DbContext
             entity.HasOne(d => d.Notification).WithMany(p => p.UserNotifications)
                 .HasForeignKey(d => d.NotificationId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__user_noti__notif__6EC0713C");
+                .HasConstraintName("FK__user_noti__notif__7B264821");
 
             entity.HasOne(d => d.User).WithMany(p => p.UserNotifications)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__user_noti__user___6DCC4D03");
+                .HasConstraintName("FK__user_noti__user___7A3223E8");
         });
 
         modelBuilder.Entity<UserProfile>(entity =>
         {
-            entity.HasKey(e => e.UserId).HasName("PK__user_pro__B9BE370F271C18D4");
+            entity.HasKey(e => e.UserId).HasName("PK__user_pro__B9BE370F042E0CC2");
 
             entity.ToTable("user_profiles");
 
@@ -1086,7 +1117,7 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<Wallet>(entity =>
         {
-            entity.HasKey(e => e.UserId).HasName("PK__wallets__B9BE370F02BB21E3");
+            entity.HasKey(e => e.UserId).HasName("PK__wallets__B9BE370F153F0532");
 
             entity.ToTable("wallets");
 

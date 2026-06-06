@@ -5,7 +5,7 @@ namespace DAL.Models;
 
 public partial class PetSpecy
 {
-    public int SpeciesId { get; set; }
+    public Guid SpeciesId { get; set; }
 
     public string SpeciesName { get; set; } = null!;
 

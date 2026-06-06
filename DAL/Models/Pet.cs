@@ -7,7 +7,7 @@ public partial class Pet
 {
     public Guid UserId { get; set; }
 
-    public int CurrentStageId { get; set; }
+    public Guid CurrentStageId { get; set; }
 
     public string PetName { get; set; } = null!;
 

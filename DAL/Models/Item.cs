@@ -5,11 +5,11 @@ namespace DAL.Models;
 
 public partial class Item
 {
-    public int ItemId { get; set; }
+    public Guid ItemId { get; set; }
 
     public string ItemName { get; set; } = null!;
 
-    public int ItemTypeId { get; set; }
+    public Guid ItemTypeId { get; set; }
 
     public string? EffectTypeCode { get; set; }
 

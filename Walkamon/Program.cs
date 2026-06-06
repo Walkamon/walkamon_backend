@@ -3,6 +3,7 @@ using BLL.Options;
 using BLL.Service;
 using BLL.Validations;
 using DAL.Data;
+using DAL.GenericRepository;
 using DAL.Interfaces;
 using DAL.Repository;
 using FluentValidation;
@@ -35,6 +36,8 @@ builder.Services.AddDbContext<WalkamonContext>(options =>
 #endregion
 
 #region Dependency Injection
+builder.Services.AddScoped(typeof(IGenericRepository<>),
+                           typeof(GenericRepository<>));
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 
@@ -47,7 +50,9 @@ builder.Services.AddScoped<IEmailSender, GmailSmtpEmailSender>();
 
 builder.Services.AddScoped<IUserService, UserService>();
 #endregion
+builder.Services.AddScoped<IItemTypeService, ItemTypeService>();
 
+builder.Services.AddScoped<IItemService, ItemService>();
 #region JWT
 
 builder.Services

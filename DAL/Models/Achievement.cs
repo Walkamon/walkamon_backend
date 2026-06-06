@@ -5,7 +5,7 @@ namespace DAL.Models;
 
 public partial class Achievement
 {
-    public int AchievementId { get; set; }
+    public Guid AchievementId { get; set; }
 
     public string Title { get; set; } = null!;
 
@@ -15,7 +15,7 @@ public partial class Achievement
 
     public int TargetValue { get; set; }
 
-    public int RewardPackageId { get; set; }
+    public Guid RewardPackageId { get; set; }
 
     public bool IsActive { get; set; }
 

@@ -5,7 +5,7 @@ namespace DAL.Models;
 
 public partial class ItemType
 {
-    public int ItemTypeId { get; set; }
+    public Guid ItemTypeId { get; set; }
 
     public string ItemTypeName { get; set; } = null!;
 
