@@ -309,18 +309,14 @@ public class AuthService : IAuthService
             NormalizedEmail = normalizedEmail,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             EmailConfirmed = false,
-            StatusCode = "active",
+            StatusCode = "disabled",
             UserProfile = new UserProfile
             {
                 Username = username,
-                NormalizedUsername = normalizedUsername,
-                DisplayName = username,
                 LanguageCode = "vi-VN",
                 ThemeCode = "light",
                 TimeZoneId = "Asia/Ho_Chi_Minh",
-                ProfileVisibilityCode = "public",
                 ShowActivityStats = true,
-                AllowFriendRequests = true,
                 NotificationsEnabled = true
             }
         };
@@ -338,8 +334,6 @@ public class AuthService : IAuthService
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
         user.UpdatedAt = now;
         user.UserProfile!.Username = username;
-        user.UserProfile.NormalizedUsername = normalizedUsername;
-        user.UserProfile.DisplayName = username;
         user.UserProfile.UpdatedAt = now;
     }
 

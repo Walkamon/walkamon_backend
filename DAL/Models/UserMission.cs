@@ -3,13 +3,13 @@ using System.Collections.Generic;
 
 namespace DAL.Models;
 
-public partial class UserMisson
+public partial class UserMission
 {
-    public long UserMissonId { get; set; }
+    public long UserMissionId { get; set; }
 
     public Guid UserId { get; set; }
 
-    public int MissonId { get; set; }
+    public int MissionId { get; set; }
 
     public DateOnly CycleDate { get; set; }
 
@@ -21,7 +21,7 @@ public partial class UserMisson
 
     public DateTime? ClaimedAt { get; set; }
 
-    public virtual Misson Misson { get; set; } = null!;
+    public virtual Mission Mission { get; set; } = null!;
 
     public virtual User User { get; set; } = null!;
 }

@@ -3,6 +3,7 @@ using DAL.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System;
 using DAL.Data;
+using System.Linq.Expressions;
 namespace DAL.GenericRepository
 {
     public class GenericRepository<T> : IGenericRepository<T>
@@ -48,5 +49,9 @@ namespace DAL.GenericRepository
             await _context.SaveChangesAsync();
         }
 
+        public async Task<bool> AnyAsync(Expression<Func<T, bool>> predicate)
+        {
+            return await _dbSet.AnyAsync(predicate);
+        }
     }
 }

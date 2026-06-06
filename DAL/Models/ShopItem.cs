@@ -7,8 +7,6 @@ public partial class ShopItem
 {
     public int ShopItemId { get; set; }
 
-    public int ShopId { get; set; }
-
     public int ItemId { get; set; }
 
     public int ItemQuantity { get; set; }
@@ -18,8 +16,6 @@ public partial class ShopItem
     public bool IsActive { get; set; }
 
     public virtual Item Item { get; set; } = null!;
-
-    public virtual Shop Shop { get; set; } = null!;
 
     public virtual ICollection<ShopPurchase> ShopPurchases { get; set; } = new List<ShopPurchase>();
 }

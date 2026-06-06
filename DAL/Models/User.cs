@@ -53,15 +53,13 @@ public partial class User
 
     public virtual ICollection<Notification> Notifications { get; set; } = new List<Notification>();
 
-    public virtual ICollection<OtpRequest> OtpRequests { get; set; } = new List<OtpRequest>();
+    public virtual OtpRequest? OtpRequest { get; set; }
 
     public virtual Pet? Pet { get; set; }
 
     public virtual ICollection<PvpMatchPlayer> PvpMatchPlayers { get; set; } = new List<PvpMatchPlayer>();
 
     public virtual ICollection<PvpMatch> PvpMatches { get; set; } = new List<PvpMatch>();
-
-    public virtual ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 
     public virtual Role Role { get; set; } = null!;
 
@@ -71,7 +69,7 @@ public partial class User
 
     public virtual ICollection<UserAchievement> UserAchievements { get; set; } = new List<UserAchievement>();
 
-    public virtual ICollection<UserMisson> UserMissons { get; set; } = new List<UserMisson>();
+    public virtual ICollection<UserMission> UserMissions { get; set; } = new List<UserMission>();
 
     public virtual ICollection<UserNotification> UserNotifications { get; set; } = new List<UserNotification>();
 

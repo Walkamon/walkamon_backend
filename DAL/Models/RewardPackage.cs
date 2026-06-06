@@ -13,7 +13,7 @@ public partial class RewardPackage
 
     public virtual ICollection<Achievement> Achievements { get; set; } = new List<Achievement>();
 
-    public virtual ICollection<Misson> Missons { get; set; } = new List<Misson>();
+    public virtual ICollection<Mission> Missions { get; set; } = new List<Mission>();
 
     public virtual ICollection<RewardPackageItem> RewardPackageItems { get; set; } = new List<RewardPackageItem>();
 }
