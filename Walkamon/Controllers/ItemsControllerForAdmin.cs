@@ -31,7 +31,13 @@ namespace Walkamon.Controllers
         [HttpPost]
         public async Task<IActionResult> Create(CreateItemRequest dto)
         {
-            return Ok(await _itemService.CreateAsync(dto));
+            var result = await _itemService.CreateAsync(dto);
+         
+            return Ok(new
+            {
+                Data = result,
+                Message = "update Type Item successfully"
+            });
         }
 
         [HttpPut("{id}")]

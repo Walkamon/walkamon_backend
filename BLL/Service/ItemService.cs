@@ -22,7 +22,7 @@ namespace BLL.Service
             _itemRepository = itemRepository;
             _itemTypeRepository = itemTypeRepository;
         }
-        public async Task<Item?> CreateAsync(CreateItemRequest dto)
+        public async Task<ItemResponse?> CreateAsync(CreateItemRequest dto)
         {
             var itemType = await _itemTypeRepository.GetByIdAsync(dto.ItemTypeId);
 
@@ -50,8 +50,16 @@ namespace BLL.Service
             await _itemRepository.AddAsync(item);
             await _itemRepository.SaveAsync();
 
-            return item;
-        }
+            return new ItemResponse
+            {
+            ItemId = item.ItemId,
+       ItemName = item.ItemName,
+        ItemTypeName = itemType.ItemTypeName,
+         EffectTypeCode = item.EffectTypeCode,
+        EffectValue = item.EffectValue,
+ IsActive = true
+    };
+            }
 
         public async Task DeleteAsync(Guid id)
         {
