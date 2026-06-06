@@ -5,9 +5,9 @@ namespace DAL.Models;
 
 public partial class ShopItem
 {
-    public int ShopItemId { get; set; }
+    public Guid ShopItemId { get; set; }
 
-    public int ItemId { get; set; }
+    public Guid ItemId { get; set; }
 
     public int ItemQuantity { get; set; }
 

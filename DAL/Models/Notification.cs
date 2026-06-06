@@ -5,7 +5,7 @@ namespace DAL.Models;
 
 public partial class Notification
 {
-    public long NotificationId { get; set; }
+    public Guid NotificationId { get; set; }
 
     public string NotificationTypeCode { get; set; } = null!;
 

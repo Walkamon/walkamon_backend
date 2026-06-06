@@ -5,11 +5,11 @@ namespace DAL.Models;
 
 public partial class UserMission
 {
-    public long UserMissionId { get; set; }
+    public Guid UserMissionId { get; set; }
 
     public Guid UserId { get; set; }
 
-    public int MissionId { get; set; }
+    public Guid MissionId { get; set; }
 
     public DateOnly CycleDate { get; set; }
 

@@ -7,7 +7,7 @@ public partial class UserNotification
 {
     public Guid UserId { get; set; }
 
-    public long NotificationId { get; set; }
+    public Guid NotificationId { get; set; }
 
     public DateTime? ReadAt { get; set; }
 

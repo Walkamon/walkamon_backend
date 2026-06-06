@@ -5,7 +5,7 @@ namespace DAL.Models;
 
 public partial class FriendRequest
 {
-    public long RequestId { get; set; }
+    public Guid RequestId { get; set; }
 
     public Guid SenderUserId { get; set; }
 

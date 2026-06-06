@@ -7,7 +7,7 @@ public partial class UserAchievement
 {
     public Guid UserId { get; set; }
 
-    public int AchievementId { get; set; }
+    public Guid AchievementId { get; set; }
 
     public int ProgressValue { get; set; }
 

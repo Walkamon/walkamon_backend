@@ -5,7 +5,7 @@ namespace DAL.Models;
 
 public partial class Mission
 {
-    public int MissionId { get; set; }
+    public Guid MissionId { get; set; }
 
     public string MissionTypeCode { get; set; } = null!;
 
@@ -15,7 +15,7 @@ public partial class Mission
 
     public int TargetValue { get; set; }
 
-    public int RewardPackageId { get; set; }
+    public Guid RewardPackageId { get; set; }
 
     public bool IsCancelable { get; set; }
 
