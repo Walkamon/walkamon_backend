@@ -24,15 +24,18 @@ namespace DAL.Repository
         {
             return _context.Users
                 .Include(user => user.UserProfile)
-                .SingleOrDefaultAsync(user =>
-                    user.NormalizedEmail == normalizedEmail
-                    && user.DeletedAt == null);
+                .Where(user => user.NormalizedEmail == normalizedEmail)
+                .OrderByDescending(user => user.DeletedAt == null)
+                .ThenByDescending(user => user.CreatedAt)
+                .FirstOrDefaultAsync();
         }
 
         public Task<bool> UsernameExistsAsync(
-            string normalizedUsername,
+            string username,
             Guid? excludedUserId = null)
         {
+            var normalizedUsername = username.ToUpperInvariant();
+
             return _context.UserProfiles.AnyAsync(profile =>
                 profile.Username != null
                 && profile.Username.ToUpper() == normalizedUsername
@@ -90,7 +93,7 @@ namespace DAL.Repository
         {
             var users = await _context.Users
                 .Where(user =>
-                    user.StatusCode == "disabled"
+                    user.StatusCode == "active"
                     && !user.EmailConfirmed
                     && user.CreatedAt < createdBeforeUtc)
                 .Include(user => user.UserProfile)

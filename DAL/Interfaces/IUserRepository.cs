@@ -8,7 +8,7 @@
 
         Task<User?> GetUserByNormalizedEmailAsync(string normalizedEmail);
 
-        Task<bool> UsernameExistsAsync(string normalizedUsername, Guid? excludedUserId = null);
+        Task<bool> UsernameExistsAsync(string username, Guid? excludedUserId = null);
 
         Task<Role?> GetRoleByCodeAsync(string roleCode);
 

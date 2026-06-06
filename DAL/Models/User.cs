@@ -53,7 +53,7 @@ public partial class User
 
     public virtual ICollection<Notification> Notifications { get; set; } = new List<Notification>();
 
-    public virtual OtpRequest? OtpRequest { get; set; }
+    public virtual ICollection<OtpRequest> OtpRequests { get; set; } = new List<OtpRequest>();
 
     public virtual Pet? Pet { get; set; }
 

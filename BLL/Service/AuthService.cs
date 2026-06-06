@@ -50,7 +50,6 @@ public class AuthService : IAuthService
         var username = request.Username.Trim();
 
         var normalizedEmail = email.ToUpperInvariant();
-        var normalizedUsername = username.ToUpperInvariant();
         var policy = await GetPolicyAsync();
         var now = DateTime.UtcNow;
 
@@ -63,7 +62,7 @@ public class AuthService : IAuthService
             throw new ConflictException("Email already exists");
         }
 
-        if (await _userRepository.UsernameExistsAsync(normalizedUsername, user?.UserId))
+        if (await _userRepository.UsernameExistsAsync(username, user?.UserId))
         {
             throw new ConflictException("Username already exists");
         }
@@ -94,13 +93,12 @@ public class AuthService : IAuthService
                 email,
                 normalizedEmail,
                 username,
-                normalizedUsername,
                 request.Password);
             await _userRepository.AddAsync(user);
         }
         else
         {
-            UpdatePendingUser(user, email, username, normalizedUsername, request.Password, now);
+            UpdatePendingUser(user, email, username, request.Password, now);
         }
 
         var (otp, plaintextOtp) = CreateOtp(user, requestedIp, now, policy);
@@ -299,7 +297,6 @@ public class AuthService : IAuthService
         string email,
         string normalizedEmail,
         string username,
-        string normalizedUsername,
         string password)
     {
         return new User
@@ -309,7 +306,7 @@ public class AuthService : IAuthService
             NormalizedEmail = normalizedEmail,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             EmailConfirmed = false,
-            StatusCode = "disabled",
+            StatusCode = "active",
             UserProfile = new UserProfile
             {
                 Username = username,
@@ -326,7 +323,6 @@ public class AuthService : IAuthService
         User user,
         string email,
         string username,
-        string normalizedUsername,
         string password,
         DateTime now)
     {
@@ -449,7 +445,7 @@ public class AuthService : IAuthService
 
     private static bool IsPendingRegistration(User user)
     {
-        return user.StatusCode == "disabled" && !user.EmailConfirmed;
+        return user.StatusCode == "active" && !user.EmailConfirmed;
     }
 
     private static OtpSentResponse ToOtpSentResponse(OtpRequest otp, int cooldownSeconds)
