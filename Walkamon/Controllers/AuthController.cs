@@ -89,6 +89,43 @@ public class AuthController : ControllerBase
             });
     }
 
+    [HttpPost("forgot-password")]
+    [ProducesResponseType(typeof(ApiResponse<OtpSentResponse>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request)
+    {
+        var result = await _authService.ForgotPasswordAsync(request, GetRequestedIp());
+
+        return StatusCode(
+            StatusCodes.Status202Accepted,
+            new ApiResponse<OtpSentResponse>
+            {
+                Success = true,
+                Status = StatusCodes.Status202Accepted,
+                Message = "If the account is valid, a password reset OTP has been sent",
+                Data = result
+            });
+    }
+
+    [HttpPost("forgot-password/reset")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResetForgotPassword(
+        ResetForgotPasswordRequest request)
+    {
+        await _authService.ResetForgotPasswordAsync(request);
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Password reset success",
+            Data = null
+        });
+    }
+
     private string GetRequestedIp()
     {
         return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";

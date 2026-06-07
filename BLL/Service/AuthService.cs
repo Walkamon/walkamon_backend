@@ -17,6 +17,7 @@ namespace BLL.Service;
 public class AuthService : IAuthService
 {
     private const string VerifyEmailPurposeCode = "verify_email";
+    private const string ForgotPasswordPurposeCode = "forgot_password";
     private const string UserRoleCode = "0";
     private static readonly string[] PolicySettingKeys =
     [
@@ -31,13 +32,16 @@ public class AuthService : IAuthService
     private readonly IEmailSender _emailSender;
     private readonly IConfiguration _configuration;
     private readonly IUserRepository _userRepository;
+    private readonly IGenericRepository<OtpRequest> _otpRepository;
 
     public AuthService(
         IUserRepository userRepository,
+        IGenericRepository<OtpRequest> otpRepository,
         IEmailSender emailSender,
         IConfiguration configuration)
     {
         _userRepository = userRepository;
+        _otpRepository = otpRepository;
         _emailSender = emailSender;
         _configuration = configuration;
     }
@@ -101,7 +105,12 @@ public class AuthService : IAuthService
             UpdatePendingUser(user, email, username, request.Password, now);
         }
 
-        var (otp, plaintextOtp) = CreateOtp(user, requestedIp, now, policy);
+        var (otp, plaintextOtp) = CreateOtp(
+            user,
+            VerifyEmailPurposeCode,
+            requestedIp,
+            now,
+            policy);
 
         try
         {
@@ -196,7 +205,12 @@ public class AuthService : IAuthService
             await _userRepository.SaveChangesAsync();
         }
 
-        var (replacement, plaintextOtp) = CreateOtp(otp.User, requestedIp, now, policy);
+        var (replacement, plaintextOtp) = CreateOtp(
+            otp.User,
+            VerifyEmailPurposeCode,
+            requestedIp,
+            now,
+            policy);
         await _userRepository.AddOtpAsync(replacement);
         await _userRepository.SaveChangesAsync();
         await SendOtpOrCancelAsync(
@@ -206,6 +220,112 @@ public class AuthService : IAuthService
             policy.ExpiryMinutes);
 
         return ToOtpSentResponse(replacement, policy.ResendCooldownSeconds);
+    }
+
+    public async Task<OtpSentResponse?> ForgotPasswordAsync(
+        ForgotPasswordRequest request,
+        string requestedIp)
+    {
+        var email = request.Email.Trim();
+        var normalizedEmail = email.ToUpperInvariant();
+        var policy = await GetPolicyAsync();
+        var now = DateTime.UtcNow;
+
+        var user = await _userRepository.GetUserByNormalizedEmailAsync(normalizedEmail);
+        if (user == null
+            || user.DeletedAt != null
+            || !user.EmailConfirmed
+            || !user.StatusCode.Equals("active", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var otpRequests = await _otpRepository.GetAllAsync();
+        var recentRequestCount = otpRequests.Count(otp =>
+            otp.PurposeCode == ForgotPasswordPurposeCode
+            && otp.RequestedIp == requestedIp
+            && otp.CreatedAt >= now.AddMinutes(-policy.IpWindowMinutes));
+
+        if (recentRequestCount >= policy.IpMaxCount)
+        {
+            throw new TooManyRequestsException(
+                "Too many OTP requests. Please try again later",
+                policy.IpWindowMinutes * 60);
+        }
+
+        var pendingOtp = otpRequests
+            .Where(otp =>
+                otp.UserId == user.UserId
+                && otp.PurposeCode == ForgotPasswordPurposeCode
+                && otp.StatusCode == "pending")
+            .OrderByDescending(otp => otp.CreatedAt)
+            .FirstOrDefault();
+
+        if (pendingOtp != null)
+        {
+            EnsureCooldownElapsed(pendingOtp.CreatedAt, now, policy.ResendCooldownSeconds);
+            CancelOtp(pendingOtp, now);
+            await _otpRepository.SaveAsync();
+        }
+
+        var (otp, plaintextOtp) = CreateOtp(
+            user,
+            ForgotPasswordPurposeCode,
+            requestedIp,
+            now,
+            policy);
+
+        await _otpRepository.AddAsync(otp);
+        await _otpRepository.SaveAsync();
+        await SendOtpOrCancelAsync(otp, user.Email, plaintextOtp, policy.ExpiryMinutes);
+
+        return ToOtpSentResponse(otp, policy.ResendCooldownSeconds);
+    }
+
+    public async Task ResetForgotPasswordAsync(ResetForgotPasswordRequest request)
+    {
+        var otp = await _userRepository.GetOtpRequestAsync(request.RequestCode);
+        if (otp == null
+            || otp.PurposeCode != ForgotPasswordPurposeCode
+            || otp.StatusCode != "pending"
+            || otp.User.DeletedAt != null
+            || !otp.User.EmailConfirmed
+            || !otp.User.StatusCode.Equals("active", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BadRequestException("OTP request is invalid");
+        }
+
+        var now = DateTime.UtcNow;
+        if (otp.ExpiresAt <= now)
+        {
+            otp.StatusCode = "expired";
+            otp.UpdatedAt = now;
+            await _userRepository.SaveChangesAsync();
+            throw new BadRequestException("OTP has expired");
+        }
+
+        if (!CryptographicOperations.FixedTimeEquals(otp.OtpHash, HashOtp(request.Otp)))
+        {
+            otp.AttemptCount++;
+            otp.UpdatedAt = now;
+            if (otp.AttemptCount >= otp.MaxAttempts)
+            {
+                otp.StatusCode = "cancelled";
+            }
+
+            await _userRepository.SaveChangesAsync();
+            throw new BadRequestException("OTP is invalid");
+        }
+
+        otp.StatusCode = "verified";
+        otp.UsedAt = now;
+        otp.UpdatedAt = now;
+        otp.User.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        otp.User.PasswordChangedAt = now;
+        otp.User.AccessFailedCount = 0;
+        otp.User.LockoutEndAt = null;
+        otp.User.UpdatedAt = now;
+        await _userRepository.SaveChangesAsync();
     }
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request)
@@ -335,6 +455,7 @@ public class AuthService : IAuthService
 
     private static (OtpRequest Otp, string PlaintextOtp) CreateOtp(
         User user,
+        string purposeCode,
         string requestedIp,
         DateTime now,
         OtpPolicy policy)
@@ -344,7 +465,7 @@ public class AuthService : IAuthService
         var otp = new OtpRequest
         {
             User = user,
-            PurposeCode = VerifyEmailPurposeCode,
+            PurposeCode = purposeCode,
             TargetValue = user.Email,
             OtpHash = HashOtp(plaintextOtp),
             RequestCode = Guid.NewGuid(),
@@ -367,7 +488,20 @@ public class AuthService : IAuthService
     {
         try
         {
-            await _emailSender.SendRegistrationOtpAsync(email, plaintextOtp, expiryMinutes);
+            if (otp.PurposeCode == ForgotPasswordPurposeCode)
+            {
+                await _emailSender.SendPasswordResetOtpAsync(
+                    email,
+                    plaintextOtp,
+                    expiryMinutes);
+            }
+            else
+            {
+                await _emailSender.SendRegistrationOtpAsync(
+                    email,
+                    plaintextOtp,
+                    expiryMinutes);
+            }
         }
         catch
         {
