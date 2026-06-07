@@ -13,4 +13,10 @@ public interface IAuthService
     Task<OtpSentResponse?> ResendRegistrationOtpAsync(
         ResendRegistrationOtpRequest request,
         string requestedIp);
+
+    Task<OtpSentResponse?> ForgotPasswordAsync(
+        ForgotPasswordRequest request,
+        string requestedIp);
+
+    Task ResetForgotPasswordAsync(ResetForgotPasswordRequest request);
 }

@@ -6,4 +6,9 @@ public interface IEmailSender
         string recipientEmail,
         string otp,
         int expiryMinutes);
+
+    Task SendPasswordResetOtpAsync(
+        string recipientEmail,
+        string otp,
+        int expiryMinutes);
 }
