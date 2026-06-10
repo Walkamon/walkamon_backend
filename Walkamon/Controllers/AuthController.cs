@@ -1,12 +1,14 @@
 using BLL.Interfaces;
 using DAL.DTO;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Walkamon.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController : ControllerBase
+public class AuthController : BaseController
 {
     private readonly IAuthService _authService;
 
@@ -107,6 +109,18 @@ public class AuthController : ControllerBase
                 Message = "If the account is valid, a password reset OTP has been sent",
                 Data = result
             });
+    }
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+
+
+        await _authService.LogoutAsync(CurrentUserId);
+
+        return Ok(new
+        {
+            Message = "Logout successfully"
+        });
     }
 
     [HttpPost("forgot-password/reset")]

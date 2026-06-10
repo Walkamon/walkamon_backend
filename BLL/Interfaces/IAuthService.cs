@@ -19,4 +19,6 @@ public interface IAuthService
         string requestedIp);
 
     Task ResetForgotPasswordAsync(ResetForgotPasswordRequest request);
+
+    Task LogoutAsync(Guid userId);
 }

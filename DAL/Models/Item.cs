@@ -9,6 +9,8 @@ public partial class Item
 
     public string ItemName { get; set; } = null!;
 
+    public string? ImgUrl { get; set; }
+
     public Guid ItemTypeId { get; set; }
 
     public string? EffectTypeCode { get; set; }

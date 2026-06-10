@@ -27,6 +27,8 @@ public partial class User
 
     public DateTime? PasswordChangedAt { get; set; }
 
+    public DateTime? LastLogoutAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

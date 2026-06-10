@@ -603,6 +603,19 @@ public class AuthService : IAuthService
             && sqlException.Number is 2601 or 2627;
     }
 
+    public async Task LogoutAsync(Guid userId)
+    {
+        var user = await _userRepository.GetByIdAsync(userId);
+
+        if (user == null)
+            throw new NotFoundException("User not found");
+
+        user.LastLogoutAt = DateTime.UtcNow;
+
+        _userRepository.Update(user);
+        await _userRepository.SaveAsync();
+    }
+
     private sealed record OtpPolicy(
         int ExpiryMinutes,
         int MaxAttempts,
