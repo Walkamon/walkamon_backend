@@ -16,6 +16,8 @@ namespace DAL.DTO
         public int? EffectValue { get; set; }
     
         public bool IsActive { get; set; }
+
+        public string? Image { get; set; }
     }
     
 

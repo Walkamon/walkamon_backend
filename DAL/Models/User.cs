@@ -27,6 +27,8 @@ public partial class User
 
     public DateTime? PasswordChangedAt { get; set; }
 
+    public DateTime? LastLogoutAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
@@ -53,7 +55,7 @@ public partial class User
 
     public virtual ICollection<Notification> Notifications { get; set; } = new List<Notification>();
 
-    public virtual ICollection<OtpRequest> OtpRequests { get; set; } = new List<OtpRequest>();
+    public virtual OtpRequest? OtpRequest { get; set; }
 
     public virtual Pet? Pet { get; set; }
 
