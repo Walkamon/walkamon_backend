@@ -10,10 +10,14 @@ namespace Walkamon.Controllers
     public class ItemsControllerForAdmin : ControllerBase
     {
         private readonly IItemService _itemService;
+        private readonly ICloudinaryService _cloudinaryService;
 
-        public ItemsControllerForAdmin(IItemService itemService)
+        public ItemsControllerForAdmin(
+            IItemService itemService,
+            ICloudinaryService cloudinaryService)
         {
             _itemService = itemService;
+            _cloudinaryService = cloudinaryService;
         }
 
         [HttpGet]
@@ -29,28 +33,53 @@ namespace Walkamon.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> Create(CreateItemRequest dto)
+        public async Task<IActionResult> Create([FromForm] CreateItemRequest dto)
         {
-            var result = await _itemService.CreateAsync(dto);
-         
+            string? imageUrl = null;
+
+            if (dto.Image != null)
+            {
+                imageUrl = await _cloudinaryService.UploadImageAsync(dto.Image);
+            }
+
+            var result = await _itemService.CreateAsync(dto, imageUrl);
+
             return Ok(new
             {
                 Data = result,
-                Message = "update Type Item successfully"
+                Message = "Create Item Successfully"
             });
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(Guid id, UpdateItemRequest dto)
+        public async Task<IActionResult> Update(
+     Guid id,
+     [FromForm] UpdateItemRequest dto)
         {
-            return Ok(await _itemService.UpdateAsync(id, dto));
+            string? imageUrl = null;
+
+            if (dto.Image != null)
+            {
+                imageUrl = await _cloudinaryService.UploadImageAsync(dto.Image);
+            }
+
+            var result = await _itemService.UpdateAsync(id, dto, imageUrl);
+
+            return Ok(new
+            {
+                Data = result,
+                Message = "Update Item Successfully"
+            });
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(Guid id)
         {
             await _itemService.DeleteAsync(id);
-            return NoContent();
+            return Ok(new
+            {  
+                Message = "delete Item Successfully"
+            });
         }
     }
 }

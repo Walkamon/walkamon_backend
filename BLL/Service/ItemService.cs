@@ -22,7 +22,9 @@ namespace BLL.Service
             _itemRepository = itemRepository;
             _itemTypeRepository = itemTypeRepository;
         }
-        public async Task<ItemResponse?> CreateAsync(CreateItemRequest dto)
+        public async Task<ItemResponse?> CreateAsync(
+     CreateItemRequest dto,
+     string? imageUrl)
         {
             var itemType = await _itemTypeRepository.GetByIdAsync(dto.ItemTypeId);
 
@@ -36,10 +38,11 @@ namespace BLL.Service
             if (exists)
                 throw new ConflictException("Item already exists");
 
-            var item = new Item 
+            var item = new Item
             {
                 ItemId = Guid.NewGuid(),
                 ItemName = dto.ItemName,
+                ImgUrl = imageUrl,
                 ItemTypeId = dto.ItemTypeId,
                 EffectTypeCode = dto.EffectTypeCode,
                 EffectValue = dto.EffectValue,
@@ -52,14 +55,16 @@ namespace BLL.Service
 
             return new ItemResponse
             {
-            ItemId = item.ItemId,
-       ItemName = item.ItemName,
-        ItemTypeName = itemType.ItemTypeName,
-         EffectTypeCode = item.EffectTypeCode,
-        EffectValue = item.EffectValue,
- IsActive = true
-    };
-            }
+                ItemId = item.ItemId,
+                ItemName = item.ItemName,
+                ItemTypeName = itemType.ItemTypeName,
+                Image = item.ImgUrl,
+                EffectTypeCode = item.EffectTypeCode,
+                EffectValue = item.EffectValue,
+                IsActive = item.IsActive,
+               
+            };
+        }
 
         public async Task DeleteAsync(Guid id)
         {
@@ -85,6 +90,7 @@ namespace BLL.Service
                 return new ItemResponse
                 {
                     ItemId = item.ItemId,
+                    Image = item.ImgUrl,
                     ItemName = item.ItemName,
                     ItemTypeName = itemType?.ItemTypeName ?? "",
                     EffectTypeCode = item.EffectTypeCode,
@@ -99,7 +105,10 @@ namespace BLL.Service
             return await _itemRepository.GetByIdAsync(id);
         }
 
-        public async Task<Item> UpdateAsync(Guid id, UpdateItemRequest dto)
+        public async Task<ItemResponse> UpdateAsync(
+     Guid id,
+     UpdateItemRequest dto,
+     string? imageUrl)
         {
             var item = await _itemRepository.GetByIdAsync(id);
 
@@ -121,10 +130,25 @@ namespace BLL.Service
             item.Description = dto.Description;
             item.IsActive = dto.IsActive;
 
+            if (!string.IsNullOrEmpty(imageUrl))
+            {
+                item.ImgUrl = imageUrl;
+            }
+            var itemType = await _itemTypeRepository.GetByIdAsync(dto.ItemTypeId);
             _itemRepository.Update(item);
             await _itemRepository.SaveAsync();
 
-            return item;
+            return new ItemResponse
+            {
+                ItemId = item.ItemId,
+                ItemName = item.ItemName,
+                ItemTypeName = itemType.ItemTypeName,
+                Image = item.ImgUrl,
+                EffectTypeCode = item.EffectTypeCode,
+                EffectValue = item.EffectValue,
+                IsActive = item.IsActive,
+
+            };
         }
     }
 }

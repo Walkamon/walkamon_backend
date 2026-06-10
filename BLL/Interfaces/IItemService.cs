@@ -11,8 +11,8 @@ namespace BLL.Interfaces
     {
         Task<IEnumerable<ItemResponse>> GetAllAsync();
         Task<Item?> GetByIdAsync(Guid id);
-        Task<ItemResponse?> CreateAsync(CreateItemRequest request);
-        Task<Item> UpdateAsync(Guid id, UpdateItemRequest request);
+        Task<ItemResponse?> CreateAsync(CreateItemRequest request, string? imageUrl);
+        Task<ItemResponse> UpdateAsync(Guid id, UpdateItemRequest request, string? imageUrl);
         Task DeleteAsync(Guid id);
     }
 }

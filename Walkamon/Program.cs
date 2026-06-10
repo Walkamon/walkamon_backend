@@ -49,6 +49,8 @@ builder.Services.Configure<SmtpOptions>(
 builder.Services.AddScoped<IEmailSender, GmailSmtpEmailSender>();
 
 builder.Services.AddScoped<IUserService, UserService>();
+
+builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 #endregion
 builder.Services.AddScoped<IItemTypeService, ItemTypeService>();
 
