@@ -11,12 +11,20 @@ namespace Walkamon.Controllers;
 public class AuthController : BaseController
 {
     private readonly IAuthService _authService;
+    private readonly IUserService _userService;
+    private readonly ICloudinaryService _cloudinaryService;
 
-    public AuthController(IAuthService authService)
+    public AuthController(
+        IAuthService authService,
+        IUserService userService,
+        ICloudinaryService cloudinaryService)
     {
         _authService = authService;
+        _userService = userService;
+        _cloudinaryService = cloudinaryService;
     }
 
+    // Đăng nhập.
     [HttpPost("login")]
     [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Login(LoginRequest request)
@@ -32,6 +40,7 @@ public class AuthController : BaseController
         });
     }
 
+    // Đăng ký và gửi OTP xác thực email.
     [HttpPost("register")]
     [ProducesResponseType(typeof(ApiResponse<OtpSentResponse>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
@@ -53,6 +62,7 @@ public class AuthController : BaseController
             });
     }
 
+    // Xác thực OTP đăng ký.
     [HttpPost("register/verify")]
     [ProducesResponseType(typeof(ApiResponse<RegisterResponse>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
@@ -71,6 +81,7 @@ public class AuthController : BaseController
             });
     }
 
+    // Gửi lại OTP đăng ký.
     [HttpPost("register/resend-otp")]
     [ProducesResponseType(typeof(ApiResponse<OtpSentResponse>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status429TooManyRequests)]
@@ -91,6 +102,7 @@ public class AuthController : BaseController
             });
     }
 
+    // Quên mật khẩu: gửi OTP đặt lại mật khẩu.
     [HttpPost("forgot-password")]
     [ProducesResponseType(typeof(ApiResponse<OtpSentResponse>), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
@@ -110,6 +122,122 @@ public class AuthController : BaseController
                 Data = result
             });
     }
+
+    // Xem profile của user hiện tại.
+    [Authorize]
+    [HttpGet("profile")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetProfile()
+    {
+        var user = await _userService.GetUserByIdAsync(CurrentUserId);
+
+        if (user == null)
+        {
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Status = StatusCodes.Status404NotFound,
+                Message = "User not found",
+                Data = null
+            });
+        }
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Get profile success",
+            Data = new
+            {
+                Username = user.Profile?.Username,
+                user.Email,
+                Gender = user.Profile?.Gender,
+                Bio = user.Profile?.Bio,
+                Dob = user.Profile?.Dob,
+                AvatarUrl = user.Profile?.AvatarUrl,
+                HasSeenStory = user.Profile?.HasSeenStory,
+                LanguageCode = user.Profile?.LanguageCode,
+                ThemeCode = user.Profile?.ThemeCode,
+                TimeZoneId = user.Profile?.TimeZoneId,
+                ShowActivityStats = user.Profile?.ShowActivityStats,
+                NotificationsEnabled = user.Profile?.NotificationsEnabled,
+                CreatedAt = user.Profile?.CreatedAt,
+                UpdatedAt = user.Profile?.UpdatedAt
+            }
+        });
+    }
+
+    // Cập nhật profile và ảnh đại diện.
+    [Authorize]
+    [HttpPut("profile")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status409Conflict)]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UpdateProfile([FromForm] UpdateProfileRequest request)
+    {
+        string? avatarUrl = null;
+        if (request.Image != null)
+        {
+            avatarUrl = await _cloudinaryService.UploadImageAsync(request.Image);
+        }
+
+        var user = await _userService.UpdateProfileAsync(
+            CurrentUserId,
+            request,
+            avatarUrl);
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Update profile success",
+            Data = new
+            {
+                Username = user.Profile?.Username,
+                user.Email,
+                Gender = user.Profile?.Gender,
+                Bio = user.Profile?.Bio,
+                Dob = user.Profile?.Dob,
+                AvatarUrl = user.Profile?.AvatarUrl,
+                HasSeenStory = user.Profile?.HasSeenStory,
+                LanguageCode = user.Profile?.LanguageCode,
+                ThemeCode = user.Profile?.ThemeCode,
+                TimeZoneId = user.Profile?.TimeZoneId,
+                ShowActivityStats = user.Profile?.ShowActivityStats,
+                NotificationsEnabled = user.Profile?.NotificationsEnabled,
+                CreatedAt = user.Profile?.CreatedAt,
+                UpdatedAt = user.Profile?.UpdatedAt
+            }
+        });
+    }
+
+    // Đổi mật khẩu, không cho phép Admin.
+    [Authorize]
+    [HttpPut("change-password")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
+    {
+        await _authService.ChangePasswordAsync(CurrentUserId, request);
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Change password success",
+            Data = null
+        });
+    }
+
+    // Đăng xuất.
     [HttpPost("logout")]
     public async Task<IActionResult> Logout()
     {
@@ -123,6 +251,7 @@ public class AuthController : BaseController
         });
     }
 
+    // Xác thực OTP quên mật khẩu và đặt mật khẩu mới.
     [HttpPost("forgot-password/reset")]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]

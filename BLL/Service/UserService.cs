@@ -1,6 +1,7 @@
 ﻿using BLL.Interfaces;
 using DAL.DTO;
 using DAL.Interfaces;
+using DAL.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -82,6 +83,103 @@ namespace BLL.Service
             if (user == null)
                 return null;
 
+            return ToUserDetailResponse(user);
+        }
+
+        public async Task<UserDetailResponse> UpdateProfileAsync(
+            Guid userId,
+            UpdateProfileRequest request,
+            string? avatarUrl)
+        {
+            var user = await _userRepository.GetByIdWithProfileAsync(userId);
+
+            if (user == null)
+            {
+                throw new NotFoundException("User not found");
+            }
+
+            if (user.UserProfile == null)
+            {
+                throw new NotFoundException("User profile not found");
+            }
+
+            var now = DateTime.UtcNow;
+
+            if (request.Username != null)
+            {
+                var username = request.Username.Trim();
+                if (username.Length is < 3 or > 30)
+                {
+                    throw new BadRequestException(
+                        "Username must be between 3 and 30 characters");
+                }
+
+                if (await _userRepository.UsernameExistsAsync(username, userId))
+                {
+                    throw new ConflictException("Username already exists");
+                }
+
+                user.UserProfile.Username = username;
+            }
+
+            if (request.Gender != null)
+            {
+                var gender = request.Gender.Trim().ToLowerInvariant();
+                var allowedGenders = new[] { "male", "female", "other" };
+
+                if (!allowedGenders.Contains(gender))
+                {
+                    throw new BadRequestException(
+                        "Gender must be male, female, or other");
+                }
+
+                user.UserProfile.Gender = gender;
+            }
+
+            if (request.Bio != null)
+            {
+                var bio = request.Bio.Trim();
+                if (bio.Length > 280)
+                {
+                    throw new BadRequestException(
+                        "Bio must not exceed 280 characters");
+                }
+
+                user.UserProfile.Bio = string.IsNullOrWhiteSpace(bio)
+                    ? null
+                    : bio;
+            }
+
+            if (request.Dob.HasValue)
+            {
+                var today = DateOnly.FromDateTime(DateTime.Today);
+                var youngestAllowedDob = today.AddYears(-3);
+
+                if (request.Dob.Value > youngestAllowedDob)
+                {
+                    throw new BadRequestException(
+                        "User must be at least 3 years old");
+                }
+
+                user.UserProfile.Dob = request.Dob;
+            }
+
+            if (!string.IsNullOrWhiteSpace(avatarUrl))
+            {
+                user.UserProfile.AvatarUrl = avatarUrl;
+            }
+
+            user.UserProfile.UpdatedAt = now;
+            user.UpdatedAt = now;
+
+            _userRepository.Update(user);
+            await _userRepository.SaveAsync();
+
+            return ToUserDetailResponse(user);
+        }
+
+        private static UserDetailResponse ToUserDetailResponse(User user)
+        {
             return new UserDetailResponse
             {
                 UserId = user.UserId,
