@@ -46,6 +46,7 @@ public class AuthService : IAuthService
         _configuration = configuration;
     }
 
+    // Đăng ký: tạo user chờ xác thực và gửi OTP.
     public async Task<OtpSentResponse> RegisterAsync(
         RegisterRequest request,
         string requestedIp)
@@ -127,6 +128,7 @@ public class AuthService : IAuthService
         return ToOtpSentResponse(otp, policy.ResendCooldownSeconds);
     }
 
+    // OTP đăng ký: xác thực mã và kích hoạt tài khoản.
     public async Task<RegisterResponse> VerifyRegistrationOtpAsync(
         VerifyRegistrationOtpRequest request)
     {
@@ -177,6 +179,7 @@ public class AuthService : IAuthService
         };
     }
 
+    // OTP đăng ký: gửi lại mã xác thực email.
     public async Task<OtpSentResponse?> ResendRegistrationOtpAsync(
         ResendRegistrationOtpRequest request,
         string requestedIp)
@@ -222,6 +225,7 @@ public class AuthService : IAuthService
         return ToOtpSentResponse(replacement, policy.ResendCooldownSeconds);
     }
 
+    // Quên mật khẩu: gửi OTP đặt lại mật khẩu.
     public async Task<OtpSentResponse?> ForgotPasswordAsync(
         ForgotPasswordRequest request,
         string requestedIp)
@@ -282,6 +286,7 @@ public class AuthService : IAuthService
         return ToOtpSentResponse(otp, policy.ResendCooldownSeconds);
     }
 
+    // Quên mật khẩu: xác thực OTP và đổi mật khẩu mới.
     public async Task ResetForgotPasswordAsync(ResetForgotPasswordRequest request)
     {
         var otp = await _userRepository.GetOtpRequestAsync(request.RequestCode);
@@ -328,6 +333,57 @@ public class AuthService : IAuthService
         await _userRepository.SaveChangesAsync();
     }
 
+    // Đổi mật khẩu: user tự đổi bằng mật khẩu hiện tại.
+    public async Task ChangePasswordAsync(
+        Guid userId,
+        ChangePasswordRequest request)
+    {
+        var user = await _userRepository.GetUserWithRoleAsync(userId);
+
+        if (user == null)
+        {
+            throw new NotFoundException("User not found");
+        }
+
+        if (user.Role.RoleName.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ForbiddenException("Admin accounts cannot change password");
+        }
+
+        if (user.StatusCode.Equals("disabled", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BadRequestException("Account has been locked");
+        }
+
+        if (!user.EmailConfirmed)
+        {
+            throw new BadRequestException("Account is not activated");
+        }
+
+        if (string.IsNullOrWhiteSpace(user.PasswordHash)
+            || !BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
+        {
+            throw new BadRequestException("Current password is invalid");
+        }
+
+        if (BCrypt.Net.BCrypt.Verify(request.NewPassword, user.PasswordHash))
+        {
+            throw new BadRequestException(
+                "New password must be different from current password");
+        }
+
+        var now = DateTime.UtcNow;
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        user.PasswordChangedAt = now;
+        user.AccessFailedCount = 0;
+        user.LockoutEndAt = null;
+        user.UpdatedAt = now;
+
+        _userRepository.Update(user);
+        await _userRepository.SaveAsync();
+    }
+
+    // Đăng nhập: kiểm tra mật khẩu và cấp JWT.
     public async Task<LoginResponse> LoginAsync(LoginRequest request)
     {
         var user = await _userRepository.GetByEmailAsync(request.Email);
@@ -412,6 +468,7 @@ public class AuthService : IAuthService
         };
     }
 
+    // Đăng ký: tạo user pending trước khi xác thực OTP.
     private static User CreatePendingUser(
         int roleId,
         string email,
@@ -439,6 +496,7 @@ public class AuthService : IAuthService
         };
     }
 
+    // Đăng ký: cập nhật lại user pending khi đăng ký lại.
     private static void UpdatePendingUser(
         User user,
         string email,
@@ -453,6 +511,7 @@ public class AuthService : IAuthService
         user.UserProfile.UpdatedAt = now;
     }
 
+    // OTP: tạo mã 6 số và lưu hash.
     private static (OtpRequest Otp, string PlaintextOtp) CreateOtp(
         User user,
         string purposeCode,
@@ -480,6 +539,7 @@ public class AuthService : IAuthService
         return (otp, plaintextOtp);
     }
 
+    // OTP: gửi mail, lỗi thì hủy OTP.
     private async Task SendOtpOrCancelAsync(
         OtpRequest otp,
         string email,
@@ -511,6 +571,7 @@ public class AuthService : IAuthService
         }
     }
 
+    // OTP: đọc cấu hình thời hạn, cooldown và giới hạn gửi.
     private async Task<OtpPolicy> GetPolicyAsync()
     {
         var settings = await _userRepository.GetSystemSettingsAsync(PolicySettingKeys);
@@ -524,6 +585,7 @@ public class AuthService : IAuthService
             ReadPositiveInt(settings, "pending_registration_ttl_hours"));
     }
 
+    // OTP: giới hạn số lần gửi theo IP.
     private async Task EnsureIpRateLimitAsync(
         string requestedIp,
         DateTime now,
@@ -577,6 +639,7 @@ public class AuthService : IAuthService
         otp.UpdatedAt = now;
     }
 
+    // Đăng ký: kiểm tra user còn đang chờ xác thực email.
     private static bool IsPendingRegistration(User user)
     {
         return user.StatusCode == "active" && !user.EmailConfirmed;
@@ -603,6 +666,7 @@ public class AuthService : IAuthService
             && sqlException.Number is 2601 or 2627;
     }
 
+    // Đăng xuất: ghi lại thời điểm logout gần nhất.
     public async Task LogoutAsync(Guid userId)
     {
         var user = await _userRepository.GetByIdAsync(userId);
