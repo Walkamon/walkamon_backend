@@ -41,10 +41,23 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend", policy =>
     {
         policy
-            .WithOrigins(
-                "http://localhost:5173",
-                "https://localhost:5173"
-            )
+            .SetIsOriginAllowed(origin =>
+            {
+                if (string.Equals(origin, "null", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                {
+                    return false;
+                }
+
+                var isAllowedScheme = uri.Scheme is "http" or "https" or "capacitor" or "ionic";
+                var isAllowedHost = uri.Host is "localhost" or "127.0.0.1" or "::1";
+
+                return isAllowedScheme && isAllowedHost;
+            })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
