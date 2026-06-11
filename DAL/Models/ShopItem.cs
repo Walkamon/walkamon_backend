@@ -9,8 +9,6 @@ public partial class ShopItem
 
     public Guid ItemId { get; set; }
 
-    public int ItemQuantity { get; set; }
-
     public int PriceAmount { get; set; }
 
     public bool IsActive { get; set; }

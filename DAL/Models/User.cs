@@ -71,6 +71,10 @@ public partial class User
 
     public virtual ICollection<UserAchievement> UserAchievements { get; set; } = new List<UserAchievement>();
 
+    public virtual ICollection<UserFeedback> UserFeedbackHandledByUsers { get; set; } = new List<UserFeedback>();
+
+    public virtual ICollection<UserFeedback> UserFeedbackUsers { get; set; } = new List<UserFeedback>();
+
     public virtual ICollection<UserMission> UserMissions { get; set; } = new List<UserMission>();
 
     public virtual ICollection<UserNotification> UserNotifications { get; set; } = new List<UserNotification>();
