@@ -51,8 +51,11 @@ builder.Services.AddScoped<IEmailSender, GmailSmtpEmailSender>();
 builder.Services.AddScoped<IUserService, UserService>();
 
 builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
+
+builder.Services.AddScoped<IShopItemService, ShopItemService>();
 #endregion
 builder.Services.AddScoped<IItemTypeService, ItemTypeService>();
+builder.Services.AddScoped<IShopItemRepository, ShopItemRepository>();
 
 builder.Services.AddScoped<IItemService, ItemService>();
 #region JWT
