@@ -21,7 +21,7 @@ builder.Services.AddControllers();
 
 builder.Services.AddFluentValidationAutoValidation();
 
-// ??ng ký toàn b? validator trong assembly BLL.Validations
+
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
 
 #endregion
@@ -34,7 +34,24 @@ builder.Services.AddDbContext<WalkamonContext>(options =>
     ));
 
 #endregion
+#region CORS
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy
+            .WithOrigins(
+                "http://localhost:5173",
+                "https://localhost:5173"
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
+#endregion
 #region Dependency Injection
 builder.Services.AddScoped(typeof(IGenericRepository<>),
                            typeof(GenericRepository<>));
