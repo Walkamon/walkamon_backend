@@ -12,12 +12,9 @@ namespace DAL.Repository
 {
     public class ShopItemRepository : GenericRepository<ShopItem>, IShopItemRepository
     {
-        private readonly WalkamonContext _context;
-
         public ShopItemRepository(WalkamonContext context)
             : base(context)
         {
-            _context = context;
         }
 
         public async Task<List<ShopItem>> GetAllWithItemAsync()

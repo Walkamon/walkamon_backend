@@ -34,7 +34,6 @@ namespace BLL.Service
             {
                 ShopItemId = x.ShopItemId,
                 ItemName = x.Item.ItemName,
-                ItemQuantity = x.ItemQuantity,
                 PriceAmount = x.PriceAmount,
                 IsActive = x.IsActive
             }).ToList();
@@ -50,11 +49,16 @@ namespace BLL.Service
                .FirstOrDefault(x =>
                    x.ItemId == entity.ItemId &&
                    x.IsActive);
+
+            if (item == null)
+            {
+                throw new NotFoundException("Item does not exist or is inactive.");
+            }
+
             return new ShopItemResponse
             {
                 ShopItemId = entity.ShopItemId,
                 ItemName = item.ItemName,
-                ItemQuantity = entity.ItemQuantity,
                 PriceAmount = entity.PriceAmount,
                 IsActive = entity.IsActive
             };
@@ -80,8 +84,6 @@ namespace BLL.Service
 
             if (existingShopItem != null)
             {
-               
-                existingShopItem.ItemQuantity = request.ItemQuantity;
                 existingShopItem.PriceAmount = request.PriceAmount;
                 existingShopItem.IsActive = true;
 
@@ -92,7 +94,6 @@ namespace BLL.Service
                 {
                     ShopItemId = existingShopItem.ShopItemId,
                     ItemName = item.ItemName,
-                    ItemQuantity = existingShopItem.ItemQuantity,
                     PriceAmount = existingShopItem.PriceAmount,
                     IsActive = existingShopItem.IsActive
                 };
@@ -103,7 +104,6 @@ namespace BLL.Service
             {
                 ShopItemId = Guid.NewGuid(),
                 ItemId = request.ItemId,
-                ItemQuantity = request.ItemQuantity,
                 PriceAmount = request.PriceAmount,
                 IsActive = true
             };
@@ -115,7 +115,6 @@ namespace BLL.Service
             {
                 ShopItemId = entity.ShopItemId,
                 ItemName = item.ItemName,
-                ItemQuantity = entity.ItemQuantity,
                 PriceAmount = entity.PriceAmount,
                 IsActive = entity.IsActive
             };
@@ -141,11 +140,6 @@ namespace BLL.Service
             }
 
             entity.ItemId = request.ItemId;
-            entity.ItemQuantity = request.ItemQuantity;
-            entity.PriceAmount = request.PriceAmount;
-
-            entity.ItemId = request.ItemId;
-            entity.ItemQuantity = request.ItemQuantity;
             entity.PriceAmount = request.PriceAmount;
 
             _shopItemRepo.Update(entity);
@@ -154,7 +148,6 @@ namespace BLL.Service
             {
                 ShopItemId = entity.ShopItemId,
                 ItemName = item.ItemName ,
-                ItemQuantity = entity.ItemQuantity,
                 PriceAmount = entity.PriceAmount,
                 IsActive = entity.IsActive
             };

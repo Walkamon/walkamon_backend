@@ -10,8 +10,6 @@ namespace DAL.DTO
     {
         public Guid ItemId { get; set; }
 
-        public int ItemQuantity { get; set; }
-
         public int PriceAmount { get; set; }
     }
 }

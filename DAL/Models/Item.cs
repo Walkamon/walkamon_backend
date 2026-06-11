@@ -27,5 +27,5 @@ public partial class Item
 
     public virtual ICollection<RewardPackageItem> RewardPackageItems { get; set; } = new List<RewardPackageItem>();
 
-    public virtual ICollection<ShopItem> ShopItems { get; set; } = new List<ShopItem>();
+    public virtual ShopItem? ShopItem { get; set; }
 }

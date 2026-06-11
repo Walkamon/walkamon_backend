@@ -10,9 +10,7 @@ namespace DAL.DTO
     {
         public Guid ShopItemId { get; set; }
 
-        public string ItemName { get; set; }
-
-        public int ItemQuantity { get; set; }
+        public string ItemName { get; set; } = string.Empty;
 
         public int PriceAmount { get; set; }
 
