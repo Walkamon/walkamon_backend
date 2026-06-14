@@ -53,5 +53,21 @@ namespace DAL.GenericRepository
         {
             return await _dbSet.AnyAsync(predicate);
         }
+
+        public async Task<IEnumerable<T>> FindAsync(
+    Expression<Func<T, bool>> predicate)
+        {
+            return await _dbSet
+                .Where(predicate)
+                .ToListAsync();
+        }
+
+
+        public async Task<T?> FirstOrDefaultAsync(
+     Expression<Func<T, bool>> predicate)
+        {
+            return await _dbSet
+                .FirstOrDefaultAsync(predicate);
+        }
     }
 }

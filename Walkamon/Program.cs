@@ -83,11 +83,16 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
 builder.Services.AddScoped<IShopItemService, ShopItemService>();
+
+builder.Services.AddScoped<IUserFeedbackService, UserFeedbackService>();
 #endregion
 builder.Services.AddScoped<IItemTypeService, ItemTypeService>();
 builder.Services.AddScoped<IShopItemRepository, ShopItemRepository>();
 
 builder.Services.AddScoped<IItemService, ItemService>();
+
+builder.Services.AddScoped<IFriendService, FriendService>();
+
 #region JWT
 
 builder.Services
