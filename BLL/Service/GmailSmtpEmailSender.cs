@@ -150,4 +150,55 @@ public class GmailSmtpEmailSender : IEmailSender
 </html>
 """;
     }
+
+    public async Task SendEmailAsync(
+     string recipientEmail,
+     string subject,
+     string htmlBody)
+    {
+        if (string.IsNullOrWhiteSpace(_options.Username)
+            || string.IsNullOrWhiteSpace(_options.AppPassword))
+        {
+            throw new InvalidOperationException(
+                "SMTP credentials are not configured");
+        }
+
+        var message = new MimeMessage();
+
+        message.From.Add(
+            new MailboxAddress(
+                _options.FromName,
+                _options.Username));
+
+        message.To.Add(
+            MailboxAddress.Parse(recipientEmail));
+
+        message.Subject = subject;
+
+        var builder = new BodyBuilder
+        {
+            HtmlBody = htmlBody
+        };
+
+        message.Body = builder.ToMessageBody();
+
+        using var client = new SmtpClient();
+
+        var socketOptions = _options.UseStartTls
+            ? SecureSocketOptions.StartTls
+            : SecureSocketOptions.None;
+
+        await client.ConnectAsync(
+            _options.Host,
+            _options.Port,
+            socketOptions);
+
+        await client.AuthenticateAsync(
+            _options.Username,
+            _options.AppPassword);
+
+        await client.SendAsync(message);
+
+        await client.DisconnectAsync(true);
+    }
 }

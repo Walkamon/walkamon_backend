@@ -11,4 +11,10 @@ public interface IEmailSender
         string recipientEmail,
         string otp,
         int expiryMinutes);
+
+
+    Task SendEmailAsync(
+        string recipientEmail,
+        string subject,
+        string htmlBody);
 }
