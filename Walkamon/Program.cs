@@ -85,6 +85,10 @@ builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 builder.Services.AddScoped<IShopItemService, ShopItemService>();
 
 builder.Services.AddScoped<IUserFeedbackService, UserFeedbackService>();
+
+builder.Services.AddScoped<IInventoryService, InventoryService>();
+
+builder.Services.AddScoped<IShopService, ShopService>();
 #endregion
 builder.Services.AddScoped<IItemTypeService, ItemTypeService>();
 builder.Services.AddScoped<IShopItemRepository, ShopItemRepository>();

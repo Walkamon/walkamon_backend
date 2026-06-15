@@ -33,15 +33,18 @@ public class AuthService : IAuthService
     private readonly IConfiguration _configuration;
     private readonly IUserRepository _userRepository;
     private readonly IGenericRepository<OtpRequest> _otpRepository;
+    private readonly IGenericRepository<Wallet> _walletRepository;
 
     public AuthService(
         IUserRepository userRepository,
         IGenericRepository<OtpRequest> otpRepository,
+        IGenericRepository<Wallet> walletRepository,
         IEmailSender emailSender,
         IConfiguration configuration)
     {
         _userRepository = userRepository;
         _otpRepository = otpRepository;
+        _walletRepository = walletRepository;
         _emailSender = emailSender;
         _configuration = configuration;
     }
@@ -169,6 +172,17 @@ public class AuthService : IAuthService
         otp.User.StatusCode = "active";
         otp.User.EmailConfirmed = true;
         otp.User.UpdatedAt = now;
+
+        var wallet = await _walletRepository.GetByIdAsync(otp.User.UserId);
+        if (wallet == null)
+        {
+            await _walletRepository.AddAsync(new Wallet
+            {
+                UserId = otp.User.UserId,
+                Balance = 0
+            });
+        }
+
         await _userRepository.SaveChangesAsync();
 
         return new RegisterResponse
