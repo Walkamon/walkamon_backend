@@ -122,7 +122,62 @@ namespace BLL.Service
 
             _feedbackRepository.Update(feedback);
             await _feedbackRepository.SaveAsync();
+            if (request.StatusCode == "resolved" ||
+    request.StatusCode == "rejected")
+            {
+                var user = await _userRepository.GetByIdAsync(feedback.UserId);
 
+                if (user != null)
+                {
+                    var subject = request.StatusCode == "resolved"
+                        ? "Walkamon - Feedback Resolved"
+                        : "Walkamon - Feedback Rejected";
+
+                    var htmlBody = $@"
+        <html>
+        <body style='font-family:Arial,sans-serif'>
+            <h2>Feedback Update</h2>
+
+            <p>Hello,</p>
+
+            <p>Your feedback has been
+               <strong>{request.StatusCode}</strong>.</p>
+
+            <p>
+                <strong>Feedback Type:</strong>
+                {feedback.FeedbackTypeCode}
+            </p>
+
+            <p>
+                <strong>Your Feedback:</strong>
+            </p>
+
+            <div style='padding:10px;background:#f5f5f5'>
+                {feedback.Content}
+            </div>
+
+            <p>
+                <strong>Admin Note:</strong>
+            </p>
+
+            <div style='padding:10px;background:#f5f5f5'>
+                {feedback.AdminNote ?? "No additional note."}
+            </div>
+
+            <br/>
+
+            <p>
+                Thank you for helping improve Walkamon.
+            </p>
+        </body>
+        </html>";
+
+                    await _emailSender.SendEmailAsync(
+                        user.Email,
+                        subject,
+                        htmlBody);
+                }
+            }
             return true;
         }
 
