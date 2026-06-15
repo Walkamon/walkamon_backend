@@ -13,11 +13,16 @@ namespace BLL.Service
     public class UserFeedbackService : IUserFeedbackService
     {
         private readonly IGenericRepository<UserFeedback> _feedbackRepository;
-
+        private readonly IEmailSender _emailSender;
+        private readonly IGenericRepository<User> _userRepository;
         public UserFeedbackService(
-            IGenericRepository<UserFeedback> feedbackRepository)
+            IGenericRepository<UserFeedback> feedbackRepository,
+            IGenericRepository<User> userRepository,
+            IEmailSender emailSender)
         {
             _feedbackRepository = feedbackRepository;
+            _userRepository = userRepository;
+            _emailSender = emailSender;
         }
 
         public async Task<UserFeedbackResponse> CreateAsync(
