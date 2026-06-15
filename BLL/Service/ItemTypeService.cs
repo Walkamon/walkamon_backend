@@ -12,21 +12,36 @@ namespace BLL.Service
     public class ItemTypeService : IItemTypeService
     {
         private readonly IGenericRepository<ItemType> _itemTypeRepository;
+        private readonly IGenericRepository<Item> _itemRepository;
 
-        public ItemTypeService(IGenericRepository<ItemType> itemTypeRepository)
+        public ItemTypeService(
+        IGenericRepository<ItemType> itemTypeRepository,
+        IGenericRepository<Item> itemRepository)
         {
             _itemTypeRepository = itemTypeRepository;
+            _itemRepository = itemRepository;
         }
 
         public async Task<IEnumerable<ItemTypeResponse>> GetAllAsync()
         {
             var itemTypes = await _itemTypeRepository.GetAllAsync();
+            var items = await _itemRepository.GetAllAsync();
+
+            var itemCounts = items
+                .GroupBy(x => x.ItemTypeId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Count());
 
             return itemTypes.Select(x => new ItemTypeResponse
             {
                 ItemTypeId = x.ItemTypeId,
                 ItemTypeName = x.ItemTypeName,
-               
+                count = itemCounts.TryGetValue(
+                    x.ItemTypeId,
+                    out var count)
+                        ? count
+                        : 0
             }).ToList();
         }
 
