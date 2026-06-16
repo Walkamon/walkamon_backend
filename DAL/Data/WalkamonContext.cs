@@ -1,17 +1,23 @@
-﻿using System;
-using System.Collections.Generic;
-using DAL.Models;
+﻿using DAL.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
-
+using System.Security.Claims;
+using System.Text.Json;
 namespace DAL.Data;
 
 public partial class WalkamonContext : DbContext
 {
-    public WalkamonContext(DbContextOptions<WalkamonContext> options)
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
+    public WalkamonContext(
+        DbContextOptions<WalkamonContext> options,
+        IHttpContextAccessor httpContextAccessor)
         : base(options)
     {
+        _httpContextAccessor = httpContextAccessor;
     }
 
+    public virtual DbSet<AuditLog> AuditLogs { get; set; }
     public virtual DbSet<Achievement> Achievements { get; set; }
 
     public virtual DbSet<DailyStep> DailySteps { get; set; }
@@ -1190,4 +1196,101 @@ public partial class WalkamonContext : DbContext
     }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
+    public override async Task<int> SaveChangesAsync(
+    CancellationToken cancellationToken = default)
+    {
+        var auditLogs = new List<AuditLog>();
+
+        Guid? userId = Guid.TryParse(
+            _httpContextAccessor.HttpContext?.User?
+                .FindFirst(ClaimTypes.NameIdentifier)?.Value,
+            out var id)
+                ? id
+                : null;
+
+        var entries = ChangeTracker
+            .Entries()
+            .Where(e =>
+                e.Entity is not AuditLog &&
+                (
+                    e.State == EntityState.Added ||
+                    e.State == EntityState.Modified ||
+                    e.State == EntityState.Deleted
+                ))
+            .ToList();
+
+        foreach (var entry in entries)
+        {
+            var audit = new AuditLog
+            {
+                AuditLogId = Guid.NewGuid(),
+                UserId = userId,
+                TableName = entry.Metadata.GetTableName()!,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            switch (entry.State)
+            {
+                case EntityState.Added:
+                    audit.Action = "CREATE";
+
+                    audit.NewValues = JsonSerializer.Serialize(
+                        entry.CurrentValues.Properties.ToDictionary(
+                            p => p.Name,
+                            p => entry.CurrentValues[p]
+                        ));
+
+                    break;
+
+                case EntityState.Modified:
+                    audit.Action = "UPDATE";
+
+                    audit.OldValues = JsonSerializer.Serialize(
+                        entry.OriginalValues.Properties.ToDictionary(
+                            p => p.Name,
+                            p => entry.OriginalValues[p]
+                        ));
+
+                    audit.NewValues = JsonSerializer.Serialize(
+                        entry.CurrentValues.Properties.ToDictionary(
+                            p => p.Name,
+                            p => entry.CurrentValues[p]
+                        ));
+
+                    break;
+
+                case EntityState.Deleted:
+                    audit.Action = "DELETE";
+
+                    audit.OldValues = JsonSerializer.Serialize(
+                        entry.OriginalValues.Properties.ToDictionary(
+                            p => p.Name,
+                            p => entry.OriginalValues[p]
+                        ));
+
+                    break;
+            }
+
+            var primaryKey = entry.Properties
+                .FirstOrDefault(p => p.Metadata.IsPrimaryKey());
+
+            if (primaryKey != null)
+            {
+                audit.RecordId = primaryKey.CurrentValue?.ToString();
+            }
+
+            auditLogs.Add(audit);
+        }
+
+        var result = await base.SaveChangesAsync(cancellationToken);
+
+        if (auditLogs.Any())
+        {
+            AuditLogs.AddRange(auditLogs);
+
+            await base.SaveChangesAsync(cancellationToken);
+        }
+
+        return result;
+    }
 }

@@ -89,13 +89,20 @@ builder.Services.AddScoped<IUserFeedbackService, UserFeedbackService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 
 builder.Services.AddScoped<IShopService, ShopService>();
+
+builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();
 #endregion
 builder.Services.AddScoped<IItemTypeService, ItemTypeService>();
+
 builder.Services.AddScoped<IShopItemRepository, ShopItemRepository>();
 
 builder.Services.AddScoped<IItemService, ItemService>();
 
 builder.Services.AddScoped<IFriendService, FriendService>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+builder.Services.AddHttpContextAccessor();
+
 
 #region JWT
 
