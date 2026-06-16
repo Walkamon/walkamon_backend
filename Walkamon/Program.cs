@@ -90,6 +90,8 @@ builder.Services.AddScoped<IInventoryService, InventoryService>();
 
 builder.Services.AddScoped<IShopService, ShopService>();
 
+builder.Services.AddScoped<IAdminChallengeService, AdminChallengeService>();
+
 builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();
 #endregion
 builder.Services.AddScoped<IItemTypeService, ItemTypeService>();
