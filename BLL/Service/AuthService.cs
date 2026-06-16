@@ -5,6 +5,7 @@ using BLL.Interfaces;
 using DAL.DTO;
 using DAL.Interfaces;
 using DAL.Models;
+using Google.Apis.Auth;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -19,6 +20,7 @@ public class AuthService : IAuthService
     private const string VerifyEmailPurposeCode = "verify_email";
     private const string ForgotPasswordPurposeCode = "forgot_password";
     private const string UserRoleCode = "0";
+    private const string GoogleProviderName = "google";
     private static readonly string[] PolicySettingKeys =
     [
         "otp_verify_email_expire_minutes",
@@ -34,17 +36,20 @@ public class AuthService : IAuthService
     private readonly IUserRepository _userRepository;
     private readonly IGenericRepository<OtpRequest> _otpRepository;
     private readonly IGenericRepository<Wallet> _walletRepository;
+    private readonly IGenericRepository<ExternalLogin> _externalLoginRepository;
 
     public AuthService(
         IUserRepository userRepository,
         IGenericRepository<OtpRequest> otpRepository,
         IGenericRepository<Wallet> walletRepository,
+        IGenericRepository<ExternalLogin> externalLoginRepository,
         IEmailSender emailSender,
         IConfiguration configuration)
     {
         _userRepository = userRepository;
         _otpRepository = otpRepository;
         _walletRepository = walletRepository;
+        _externalLoginRepository = externalLoginRepository;
         _emailSender = emailSender;
         _configuration = configuration;
     }
@@ -428,7 +433,8 @@ public class AuthService : IAuthService
                 $"Account is locked. Try again after {remainingMinutes} minute(s)");
         }
 
-        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        if (string.IsNullOrWhiteSpace(user.PasswordHash)
+            || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
         {
             user.AccessFailedCount++;
 
@@ -456,11 +462,250 @@ public class AuthService : IAuthService
         _userRepository.Update(user);
         await _userRepository.SaveAsync();
 
+        return CreateLoginResponse(user, user.Role.RoleName);
+    }
+
+    public async Task<LoginResponse> GoogleLoginAsync(GoogleLoginRequest request)
+    {
+        var payload = await ValidateGoogleTokenAsync(request.IdToken);
+        if (string.IsNullOrWhiteSpace(payload.Subject)
+            || string.IsNullOrWhiteSpace(payload.Email))
+        {
+            throw new BadRequestException("Invalid Google token");
+        }
+
+        if (!payload.EmailVerified)
+        {
+            throw new BadRequestException("Google email is not verified");
+        }
+
+        var now = DateTime.UtcNow;
+        var email = payload.Email.Trim();
+        var normalizedEmail = email.ToUpperInvariant();
+
+        var externalLogin = await _externalLoginRepository.FirstOrDefaultAsync(login =>
+            login.ProviderName == GoogleProviderName
+            && login.ProviderSubject == payload.Subject);
+
+        if (externalLogin != null)
+        {
+            var linkedUser = await _userRepository.GetUserWithRoleAsync(externalLogin.UserId);
+            if (linkedUser == null)
+            {
+                throw new BadRequestException("Invalid Google login");
+            }
+
+            EnsureGoogleLoginAllowed(linkedUser);
+
+            externalLogin.ProviderEmail = email;
+            externalLogin.ProviderDisplayName = payload.Name;
+            externalLogin.LastLoginAt = now;
+            linkedUser.LastLoginAt = now;
+            linkedUser.UpdatedAt = now;
+
+            await EnsureWalletExistsAsync(linkedUser.UserId);
+            _externalLoginRepository.Update(externalLogin);
+            _userRepository.Update(linkedUser);
+            await _userRepository.SaveChangesAsync();
+
+            return CreateLoginResponse(linkedUser, linkedUser.Role.RoleName);
+        }
+
+        var user = await _userRepository.GetUserByNormalizedEmailAsync(normalizedEmail);
+        string roleName;
+
+        if (user == null)
+        {
+            var role = await _userRepository.GetRoleByCodeAsync(UserRoleCode);
+            if (role == null)
+            {
+                throw new AppSystemException("Default user role is not configured");
+            }
+
+            user = new User
+            {
+                UserId = Guid.NewGuid(),
+                RoleId = role.RoleId,
+                Email = email,
+                NormalizedEmail = normalizedEmail,
+                PasswordHash = null,
+                EmailConfirmed = true,
+                StatusCode = "active",
+                AccessFailedCount = 0,
+                LockoutEndAt = null,
+                LastLoginAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+                UserProfile = new UserProfile
+                {
+                    Username = await CreateUniqueGoogleUsernameAsync(payload.Name, email),
+                    LanguageCode = "vi-VN",
+                    ThemeCode = "light",
+                    TimeZoneId = "Asia/Ho_Chi_Minh",
+                    ShowActivityStats = true,
+                    NotificationsEnabled = true,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                }
+            };
+
+            roleName = role.RoleName;
+            await _userRepository.AddAsync(user);
+        }
+        else
+        {
+            EnsureGoogleLoginAllowed(user);
+
+            user.Email = email;
+            user.NormalizedEmail = normalizedEmail;
+            user.EmailConfirmed = true;
+            user.StatusCode = "active";
+            user.LastLoginAt = now;
+            user.UpdatedAt = now;
+
+            if (user.UserProfile == null)
+            {
+                user.UserProfile = new UserProfile
+                {
+                    Username = await CreateUniqueGoogleUsernameAsync(payload.Name, email),
+                    LanguageCode = "vi-VN",
+                    ThemeCode = "light",
+                    TimeZoneId = "Asia/Ho_Chi_Minh",
+                    ShowActivityStats = true,
+                    NotificationsEnabled = true,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+            }
+
+            _userRepository.Update(user);
+            var userWithRole = await _userRepository.GetUserWithRoleAsync(user.UserId);
+            roleName = userWithRole?.Role.RoleName ?? "User";
+        }
+
+        await EnsureWalletExistsAsync(user.UserId);
+        await _externalLoginRepository.AddAsync(new ExternalLogin
+        {
+            UserId = user.UserId,
+            ProviderName = GoogleProviderName,
+            ProviderSubject = payload.Subject,
+            ProviderEmail = email,
+            ProviderDisplayName = payload.Name,
+            CreatedAt = now,
+            LastLoginAt = now
+        });
+
+        await _userRepository.SaveChangesAsync();
+        return CreateLoginResponse(user, roleName);
+    }
+
+    private async Task<GoogleJsonWebSignature.Payload> ValidateGoogleTokenAsync(
+        string idToken)
+    {
+        var clientIds = _configuration
+            .GetSection("GoogleAuth:ClientIds")
+            .Get<string[]>()
+            ?.Where(clientId => !string.IsNullOrWhiteSpace(clientId))
+            .ToArray();
+
+        if (clientIds == null || clientIds.Length == 0)
+        {
+            var singleClientId = _configuration["GoogleAuth:ClientId"];
+            clientIds = string.IsNullOrWhiteSpace(singleClientId)
+                ? []
+                : [singleClientId];
+        }
+
+        if (clientIds.Length == 0)
+        {
+            throw new AppSystemException("Google client id is not configured");
+        }
+
+        try
+        {
+            return await GoogleJsonWebSignature.ValidateAsync(
+                idToken,
+                new GoogleJsonWebSignature.ValidationSettings
+                {
+                    Audience = clientIds
+                });
+        }
+        catch (Exception exception) when (
+            exception is InvalidJwtException
+            || exception is ArgumentException)
+        {
+            throw new BadRequestException("Invalid Google token");
+        }
+    }
+
+    private async Task EnsureWalletExistsAsync(Guid userId)
+    {
+        var wallet = await _walletRepository.GetByIdAsync(userId);
+        if (wallet != null)
+        {
+            return;
+        }
+
+        await _walletRepository.AddAsync(new Wallet
+        {
+            UserId = userId,
+            Balance = 0
+        });
+    }
+
+    private static void EnsureGoogleLoginAllowed(User user)
+    {
+        if (user.DeletedAt != null
+            || user.StatusCode.Equals("disabled", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BadRequestException("Account has been locked");
+        }
+    }
+
+    private async Task<string> CreateUniqueGoogleUsernameAsync(
+        string? displayName,
+        string email)
+    {
+        var source = string.IsNullOrWhiteSpace(displayName)
+            ? email.Split('@')[0]
+            : displayName;
+
+        var baseUsername = new string(source
+            .Where(char.IsLetterOrDigit)
+            .ToArray())
+            .ToLowerInvariant();
+
+        if (string.IsNullOrWhiteSpace(baseUsername))
+        {
+            baseUsername = "user";
+        }
+
+        if (baseUsername.Length > 30)
+        {
+            baseUsername = baseUsername[..30];
+        }
+
+        var username = baseUsername;
+        var suffix = 1;
+
+        while (await _userRepository.UsernameExistsAsync(username))
+        {
+            var suffixText = suffix.ToString();
+            var prefixLength = Math.Min(baseUsername.Length, 30 - suffixText.Length);
+            username = $"{baseUsername[..prefixLength]}{suffixText}";
+            suffix++;
+        }
+
+        return username;
+    }
+
+    private LoginResponse CreateLoginResponse(User user, string roleName)
+    {
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.UserId.ToString()),
             new(ClaimTypes.Email, user.Email),
-            new(ClaimTypes.Role, user.Role.RoleName)
+            new(ClaimTypes.Role, roleName)
         };
 
         var key = new SymmetricSecurityKey(
@@ -477,7 +722,7 @@ public class AuthService : IAuthService
         {
             UserId = user.UserId,
             Email = user.Email,
-            Role = user.Role.RoleName,
+            Role = roleName,
             Jwt = new JwtSecurityTokenHandler().WriteToken(token)
         };
     }
