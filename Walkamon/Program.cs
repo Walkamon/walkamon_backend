@@ -92,6 +92,8 @@ builder.Services.AddScoped<IShopService, ShopService>();
 
 builder.Services.AddScoped<IAdminChallengeService, AdminChallengeService>();
 
+builder.Services.AddScoped<IAdminMissionService, AdminMissionService>();
+
 builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();
 #endregion
 builder.Services.AddScoped<IItemTypeService, ItemTypeService>();

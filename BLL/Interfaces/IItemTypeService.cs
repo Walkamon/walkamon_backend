@@ -12,6 +12,7 @@ namespace BLL.Interfaces
         Task<ItemType?> GetByIdAsync(Guid id);
         Task<ItemTypeResponse> CreateAsync(CreateItemTypeRequest request);
         Task<ItemTypeResponse> UpdateAsync(Guid id, UpdateItemTypeRequest request);
+        Task UpdateStatusAsync(Guid id, bool isActive);
         Task DeleteAsync(Guid id);
     }
 }

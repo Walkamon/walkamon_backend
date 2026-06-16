@@ -68,12 +68,17 @@ namespace BLL.Service
 
         public async Task DeleteAsync(Guid id)
         {
+            await UpdateStatusAsync(id, false);
+        }
+
+        public async Task UpdateStatusAsync(Guid id, bool isActive)
+        {
             var item = await _itemRepository.GetByIdAsync(id);
 
             if (item == null)
                 throw new NotFoundException("Item not found");
 
-            item.IsActive = false;
+            item.IsActive = isActive;
             _itemRepository.Update(item);
             await _itemRepository.SaveAsync();
         }

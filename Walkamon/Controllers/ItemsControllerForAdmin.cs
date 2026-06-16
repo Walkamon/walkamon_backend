@@ -73,12 +73,15 @@ namespace Walkamon.Controllers
         }
 
         [HttpPatch("{id}")]
-        public async Task<IActionResult> Delete(Guid id)
+        public async Task<IActionResult> UpdateStatus(
+            Guid id,
+            [FromBody] UpdateActiveStatusRequest request)
         {
-            await _itemService.DeleteAsync(id);
+            await _itemService.UpdateStatusAsync(id, request.IsActive);
+
             return Ok(new
             {  
-                Message = "delete Item Successfully"
+                Message = "Update Item Status Successfully"
             });
         }
     }

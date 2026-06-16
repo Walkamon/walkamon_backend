@@ -117,13 +117,19 @@ namespace BLL.Service
 
         public async Task DeleteAsync(Guid id)
         {
+            await UpdateStatusAsync(id, false);
+        }
+
+        public async Task UpdateStatusAsync(Guid id, bool isActive)
+        {
             var itemType = await _itemTypeRepository.GetByIdAsync(id);
 
             if (itemType == null)
                 throw new NotFoundException("Item type not found");
-            itemType.IsActive = false;
-            _itemTypeRepository.Update
-                (itemType);
+
+            itemType.IsActive = isActive;
+            itemType.UpdatedAt = DateTime.UtcNow;
+            _itemTypeRepository.Update(itemType);
             await _itemTypeRepository.SaveAsync();
         }
     }

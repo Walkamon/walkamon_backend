@@ -44,6 +44,8 @@ public partial class WalkamonContext : DbContext
 
     public virtual DbSet<Mission> Missions { get; set; }
 
+    public virtual DbSet<MissionCondition> MissionConditions { get; set; }
+
     public virtual DbSet<Notification> Notifications { get; set; }
 
     public virtual DbSet<OtpRequest> OtpRequests { get; set; }
@@ -464,6 +466,43 @@ public partial class WalkamonContext : DbContext
                 .HasForeignKey(d => d.RewardPackageId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__missions__reward__3587F3E0");
+        });
+
+        modelBuilder.Entity<MissionCondition>(entity =>
+        {
+            entity.HasKey(e => e.MissionConditionId).HasName("PK_mission_conditions");
+
+            entity.ToTable("mission_conditions");
+
+            entity.HasIndex(e => new { e.MissionId, e.ConditionGroup }, "IX_mission_conditions_mission_group");
+
+            entity.Property(e => e.MissionConditionId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("mission_condition_id");
+            entity.Property(e => e.MissionId).HasColumnName("mission_id");
+            entity.Property(e => e.ConditionGroup)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasColumnName("condition_group");
+            entity.Property(e => e.ConditionCode)
+                .HasMaxLength(30)
+                .IsUnicode(false)
+                .HasColumnName("condition_code");
+            entity.Property(e => e.TargetValue).HasColumnName("target_value");
+            entity.Property(e => e.ReferenceMissionId).HasColumnName("reference_mission_id");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(sysutcdatetime())")
+                .HasColumnName("created_at");
+
+            entity.HasOne(d => d.Mission).WithMany(p => p.MissionConditionMissions)
+                .HasForeignKey(d => d.MissionId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_mission_conditions_missions");
+
+            entity.HasOne(d => d.ReferenceMission).WithMany(p => p.MissionConditionReferenceMissions)
+                .HasForeignKey(d => d.ReferenceMissionId)
+                .HasConstraintName("FK_mission_conditions_reference_missions");
         });
 
         modelBuilder.Entity<Notification>(entity =>
