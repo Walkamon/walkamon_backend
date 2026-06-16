@@ -40,6 +40,23 @@ public class AuthController : BaseController
         });
     }
 
+    // Đăng nhập bằng Google idToken từ Flutter.
+    [HttpPost("google-login")]
+    [ProducesResponseType(typeof(ApiResponse<LoginResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GoogleLogin(GoogleLoginRequest request)
+    {
+        var result = await _authService.GoogleLoginAsync(request);
+
+        return Ok(new ApiResponse<LoginResponse>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Google login success",
+            Data = result
+        });
+    }
+
     // Đăng ký và gửi OTP xác thực email.
     [HttpPost("register")]
     [ProducesResponseType(typeof(ApiResponse<OtpSentResponse>), StatusCodes.Status202Accepted)]
