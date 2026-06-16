@@ -29,5 +29,9 @@ public partial class Mission
 
     public virtual RewardPackage RewardPackage { get; set; } = null!;
 
+    public virtual ICollection<MissionCondition> MissionConditionMissions { get; set; } = new List<MissionCondition>();
+
+    public virtual ICollection<MissionCondition> MissionConditionReferenceMissions { get; set; } = new List<MissionCondition>();
+
     public virtual ICollection<UserMission> UserMissions { get; set; } = new List<UserMission>();
 }
