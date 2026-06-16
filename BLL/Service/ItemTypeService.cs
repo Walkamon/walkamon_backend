@@ -37,6 +37,7 @@ namespace BLL.Service
             {
                 ItemTypeId = x.ItemTypeId,
                 ItemTypeName = x.ItemTypeName,
+                IsActive = x.IsActive,
                 count = itemCounts.TryGetValue(
                     x.ItemTypeId,
                     out var count)
@@ -68,7 +69,8 @@ namespace BLL.Service
                 ItemTypeId = Guid.NewGuid(),
                 ItemTypeName = request.ItemTypeName,
                 CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                UpdatedAt = DateTime.UtcNow,
+                IsActive = true
             };
 
             await _itemTypeRepository.AddAsync(itemType);
@@ -108,6 +110,7 @@ namespace BLL.Service
             {
                 ItemTypeId = itemType.ItemTypeId,
                 ItemTypeName = itemType.ItemTypeName,
+                IsActive = itemType.IsActive
              
             };
         }
@@ -118,8 +121,9 @@ namespace BLL.Service
 
             if (itemType == null)
                 throw new NotFoundException("Item type not found");
-
-            _itemTypeRepository.Delete(itemType);
+            itemType.IsActive = false;
+            _itemTypeRepository.Update
+                (itemType);
             await _itemTypeRepository.SaveAsync();
         }
     }

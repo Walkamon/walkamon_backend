@@ -73,7 +73,8 @@ namespace BLL.Service
             if (item == null)
                 throw new NotFoundException("Item not found");
 
-            _itemRepository.Delete(item);
+            item.IsActive = false;
+            _itemRepository.Update(item);
             await _itemRepository.SaveAsync();
         }
 
