@@ -349,6 +349,7 @@ public partial class WalkamonContext : DbContext
                 .HasPrecision(0)
                 .HasDefaultValueSql("(sysutcdatetime())")
                 .HasColumnName("created_at");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.ItemTypeName)
                 .HasMaxLength(80)
                 .HasColumnName("item_type_name");
@@ -529,8 +530,8 @@ public partial class WalkamonContext : DbContext
                 .HasColumnName("used_at");
             entity.Property(e => e.UserId).HasColumnName("user_id");
 
-            entity.HasOne(d => d.User).WithMany(p => p.OtpRequests)
-                .HasForeignKey(d => d.UserId)
+            entity.HasOne(d => d.User).WithOne(p => p.OtpRequest)
+                .HasForeignKey<OtpRequest>(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__otp_reque__user___5629CD9C");
         });

@@ -13,5 +13,7 @@ public partial class ItemType
 
     public DateTime UpdatedAt { get; set; }
 
+    public bool IsActive { get; set; }
+
     public virtual ICollection<Item> Items { get; set; } = new List<Item>();
 }

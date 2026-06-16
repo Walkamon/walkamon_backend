@@ -72,7 +72,7 @@ namespace Walkamon.Controllers
             });
         }
 
-        [HttpDelete("{id}")]
+        [HttpPatch("{id}")]
         public async Task<IActionResult> Delete(Guid id)
         {
             await _itemService.DeleteAsync(id);
