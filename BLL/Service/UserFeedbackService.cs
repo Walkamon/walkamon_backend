@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-
+using BLL.Exceptions;
 namespace BLL.Service
 {
     public class UserFeedbackService : IUserFeedbackService
@@ -15,20 +15,33 @@ namespace BLL.Service
         private readonly IGenericRepository<UserFeedback> _feedbackRepository;
         private readonly IEmailSender _emailSender;
         private readonly IGenericRepository<User> _userRepository;
+        private readonly IFeedbackRepository _feedback;
         public UserFeedbackService(
             IGenericRepository<UserFeedback> feedbackRepository,
             IGenericRepository<User> userRepository,
-            IEmailSender emailSender)
+            IEmailSender emailSender,
+            IFeedbackRepository feedback)
         {
             _feedbackRepository = feedbackRepository;
             _userRepository = userRepository;
             _emailSender = emailSender;
+            _feedback = feedback;
         }
 
         public async Task<UserFeedbackResponse> CreateAsync(
             Guid userId,
             CreateUserFeedbackRequest request)
         {
+            var latestFeedback = await _feedback
+      .GetLatestFeedbackByUserIdAsync(userId);
+
+            if (latestFeedback != null &&
+                latestFeedback.CreatedAt.AddHours(24) > DateTime.UtcNow)
+            {
+                throw new BadRequestException(
+                    "You can only submit feedback once every 24 hours."
+                );
+            }
             var feedback = new UserFeedback
             {
                 UserId = userId,
