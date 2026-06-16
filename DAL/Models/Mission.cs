@@ -25,6 +25,8 @@ public partial class Mission
 
     public DateTime? EndAt { get; set; }
 
+    public string? Description { get; set; }
+
     public virtual RewardPackage RewardPackage { get; set; } = null!;
 
     public virtual ICollection<UserMission> UserMissions { get; set; } = new List<UserMission>();

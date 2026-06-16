@@ -1,24 +1,20 @@
-﻿using DAL.Models;
-using Microsoft.AspNetCore.Http;
+﻿using System;
+using System.Collections.Generic;
+using DAL.Models;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
-using System.Text.Json;
+
 namespace DAL.Data;
 
 public partial class WalkamonContext : DbContext
 {
-    private readonly IHttpContextAccessor _httpContextAccessor;
-
-    public WalkamonContext(
-        DbContextOptions<WalkamonContext> options,
-        IHttpContextAccessor httpContextAccessor)
+    public WalkamonContext(DbContextOptions<WalkamonContext> options)
         : base(options)
     {
-        _httpContextAccessor = httpContextAccessor;
     }
 
-    public virtual DbSet<AuditLog> AuditLogs { get; set; }
     public virtual DbSet<Achievement> Achievements { get; set; }
+
+    public virtual DbSet<AuditLog> AuditLogs { get; set; }
 
     public virtual DbSet<DailyStep> DailySteps { get; set; }
 
@@ -120,6 +116,32 @@ public partial class WalkamonContext : DbContext
                 .HasForeignKey(d => d.RewardPackageId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__achieveme__rewar__46B27FE2");
+        });
+
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.HasKey(e => e.AuditLogId).HasName("PK__audit_lo__6031F9F8FA37AE3D");
+
+            entity.ToTable("audit_logs");
+
+            entity.Property(e => e.AuditLogId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("audit_log_id");
+            entity.Property(e => e.Action)
+                .HasMaxLength(20)
+                .HasColumnName("action");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getutcdate())")
+                .HasColumnName("created_at");
+            entity.Property(e => e.NewValues).HasColumnName("new_values");
+            entity.Property(e => e.OldValues).HasColumnName("old_values");
+            entity.Property(e => e.RecordId)
+                .HasMaxLength(100)
+                .HasColumnName("record_id");
+            entity.Property(e => e.TableName)
+                .HasMaxLength(100)
+                .HasColumnName("table_name");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
         });
 
         modelBuilder.Entity<DailyStep>(entity =>
@@ -403,6 +425,9 @@ public partial class WalkamonContext : DbContext
             entity.Property(e => e.MissionId)
                 .HasDefaultValueSql("(newsequentialid())")
                 .HasColumnName("mission_id");
+            entity.Property(e => e.Description)
+                .HasMaxLength(500)
+                .HasColumnName("description");
             entity.Property(e => e.EndAt)
                 .HasPrecision(0)
                 .HasColumnName("end_at");
@@ -1197,101 +1222,4 @@ public partial class WalkamonContext : DbContext
     }
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
-    public override async Task<int> SaveChangesAsync(
-    CancellationToken cancellationToken = default)
-    {
-        var auditLogs = new List<AuditLog>();
-
-        Guid? userId = Guid.TryParse(
-            _httpContextAccessor.HttpContext?.User?
-                .FindFirst(ClaimTypes.NameIdentifier)?.Value,
-            out var id)
-                ? id
-                : null;
-
-        var entries = ChangeTracker
-            .Entries()
-            .Where(e =>
-                e.Entity is not AuditLog &&
-                (
-                    e.State == EntityState.Added ||
-                    e.State == EntityState.Modified ||
-                    e.State == EntityState.Deleted
-                ))
-            .ToList();
-
-        foreach (var entry in entries)
-        {
-            var audit = new AuditLog
-            {
-                AuditLogId = Guid.NewGuid(),
-                UserId = userId,
-                TableName = entry.Metadata.GetTableName()!,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            switch (entry.State)
-            {
-                case EntityState.Added:
-                    audit.Action = "CREATE";
-
-                    audit.NewValues = JsonSerializer.Serialize(
-                        entry.CurrentValues.Properties.ToDictionary(
-                            p => p.Name,
-                            p => entry.CurrentValues[p]
-                        ));
-
-                    break;
-
-                case EntityState.Modified:
-                    audit.Action = "UPDATE";
-
-                    audit.OldValues = JsonSerializer.Serialize(
-                        entry.OriginalValues.Properties.ToDictionary(
-                            p => p.Name,
-                            p => entry.OriginalValues[p]
-                        ));
-
-                    audit.NewValues = JsonSerializer.Serialize(
-                        entry.CurrentValues.Properties.ToDictionary(
-                            p => p.Name,
-                            p => entry.CurrentValues[p]
-                        ));
-
-                    break;
-
-                case EntityState.Deleted:
-                    audit.Action = "DELETE";
-
-                    audit.OldValues = JsonSerializer.Serialize(
-                        entry.OriginalValues.Properties.ToDictionary(
-                            p => p.Name,
-                            p => entry.OriginalValues[p]
-                        ));
-
-                    break;
-            }
-
-            var primaryKey = entry.Properties
-                .FirstOrDefault(p => p.Metadata.IsPrimaryKey());
-
-            if (primaryKey != null)
-            {
-                audit.RecordId = primaryKey.CurrentValue?.ToString();
-            }
-
-            auditLogs.Add(audit);
-        }
-
-        var result = await base.SaveChangesAsync(cancellationToken);
-
-        if (auditLogs.Any())
-        {
-            AuditLogs.AddRange(auditLogs);
-
-            await base.SaveChangesAsync(cancellationToken);
-        }
-
-        return result;
-    }
 }
