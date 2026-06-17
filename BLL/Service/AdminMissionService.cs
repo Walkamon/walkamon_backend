@@ -14,27 +14,11 @@ public class AdminMissionService : IAdminMissionService
     private const string ChallengeMissionTypeCode = "challenge";
     private const string CompletionConditionGroup = "completion";
     private const string AssignmentConditionGroup = "assignment";
-    private const string CompletedMissionConditionCode = "completed_mission";
 
     private static readonly string[] OverallMissionTypeCodes =
     [
         WeeklyMissionTypeCode,
         MonthlyMissionTypeCode
-    ];
-
-    private static readonly HashSet<string> CompletionConditionCodes =
-    [
-        "steps",
-        "level",
-        "wallet_earned"
-    ];
-
-    private static readonly HashSet<string> AssignmentConditionCodes =
-    [
-        "level",
-        "steps",
-        "wallet_earned",
-        CompletedMissionConditionCode
     ];
 
     private readonly IGenericRepository<Mission> _missionRepository;
@@ -518,14 +502,10 @@ public class AdminMissionService : IAdminMissionService
             MissionConditionId = Guid.NewGuid(),
             MissionId = missionId,
             ConditionGroup = conditionGroup,
-            ConditionCode = condition.ConditionCode.Trim().ToLowerInvariant(),
+            ConditionCode = MissionMetricCodeCatalog.NormalizeOrThrow(
+                condition.ConditionCode),
             TargetValue = condition.TargetValue,
-            ReferenceMissionId =
-                condition.ConditionCode.Trim().Equals(
-                    CompletedMissionConditionCode,
-                    StringComparison.OrdinalIgnoreCase)
-                    ? condition.ReferenceMissionId
-                    : null,
+            ReferenceMissionId = condition.ReferenceMissionId,
             CreatedAt = DateTime.UtcNow
         });
     }
@@ -563,12 +543,10 @@ public class AdminMissionService : IAdminMissionService
         EnsureValidRewardItems(request.RewardItems);
         EnsureValidConditions(
             request.CompletionConditions,
-            CompletionConditionGroup,
-            CompletionConditionCodes);
+            CompletionConditionGroup);
         EnsureValidConditions(
             request.AssignmentConditions,
-            AssignmentConditionGroup,
-            AssignmentConditionCodes);
+            AssignmentConditionGroup);
         await EnsureRewardItemsExistAsync(request.RewardItems);
         await EnsureReferenceMissionsExistAsync(request.AssignmentConditions);
     }
@@ -593,32 +571,16 @@ public class AdminMissionService : IAdminMissionService
 
     private static void EnsureValidConditions(
         IEnumerable<AdminMissionConditionRequest> conditions,
-        string conditionGroup,
-        IReadOnlySet<string> allowedConditionCodes)
+        string conditionGroup)
     {
         foreach (var condition in conditions)
         {
-            var conditionCode = condition.ConditionCode
-                .Trim()
-                .ToLowerInvariant();
-
-            if (!allowedConditionCodes.Contains(conditionCode))
-            {
-                throw new BadRequestException(
-                    $"{conditionGroup} condition code is invalid");
-            }
+            MissionMetricCodeCatalog.NormalizeOrThrow(condition.ConditionCode);
 
             if (condition.TargetValue <= 0)
             {
                 throw new BadRequestException(
                     $"{conditionGroup} condition target value must be greater than 0");
-            }
-
-            if (conditionCode == CompletedMissionConditionCode
-                && condition.ReferenceMissionId == null)
-            {
-                throw new BadRequestException(
-                    "Reference mission id is required");
             }
         }
     }
@@ -651,11 +613,7 @@ public class AdminMissionService : IAdminMissionService
         IEnumerable<AdminMissionConditionRequest> conditions)
     {
         var referenceMissionIds = conditions
-            .Where(x =>
-                x.ConditionCode.Trim().Equals(
-                    CompletedMissionConditionCode,
-                    StringComparison.OrdinalIgnoreCase)
-                && x.ReferenceMissionId.HasValue)
+            .Where(x => x.ReferenceMissionId.HasValue)
             .Select(x => x.ReferenceMissionId!.Value)
             .Distinct()
             .ToArray();
@@ -697,7 +655,8 @@ public class AdminMissionService : IAdminMissionService
         return conditions
             .Select(x => new AdminMissionConditionRequest
             {
-                ConditionCode = x.ConditionCode.Trim().ToLowerInvariant(),
+                ConditionCode = MissionMetricCodeCatalog.NormalizeOrThrow(
+                    x.ConditionCode),
                 TargetValue = x.TargetValue,
                 ReferenceMissionId = x.ReferenceMissionId
             })
@@ -738,16 +697,7 @@ public class AdminMissionService : IAdminMissionService
 
     private static string GetConditionText(string conditionCode, int targetValue)
     {
-        var value = targetValue.ToString("N0");
-
-        return conditionCode switch
-        {
-            "steps" => value,
-            "level" => value,
-            "wallet_earned" => value,
-            CompletedMissionConditionCode => value,
-            _ => value
-        };
+        return MissionMetricCodeCatalog.GetTargetText(conditionCode, targetValue);
     }
 
     private static string GetRewardText(

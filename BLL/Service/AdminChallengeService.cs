@@ -92,6 +92,8 @@ public class AdminChallengeService : IAdminChallengeService
     public async Task<AdminChallengeDetailResponse> CreateChallengeAsync(
         CreateAdminChallengeRequest request)
     {
+        var metricCode = MissionMetricCodeCatalog.NormalizeOrThrow(
+            request.MetricCode);
         EnsureValidRequest(request);
         await EnsureRewardItemsExistAsync(request.RewardItems);
 
@@ -112,7 +114,7 @@ public class AdminChallengeService : IAdminChallengeService
             Description = string.IsNullOrWhiteSpace(request.Description)
                 ? null
                 : request.Description.Trim(),
-            MetricCode = request.MetricCode.Trim(),
+            MetricCode = metricCode,
             TargetValue = request.TargetValue,
             RewardPackageId = rewardPackage.RewardPackageId,
             IsCancelable = request.IsCancelable,
@@ -132,6 +134,8 @@ public class AdminChallengeService : IAdminChallengeService
         Guid challengeId,
         UpdateAdminChallengeRequest request)
     {
+        var metricCode = MissionMetricCodeCatalog.NormalizeOrThrow(
+            request.MetricCode);
         EnsureValidRequest(request);
         await EnsureRewardItemsExistAsync(request.RewardItems);
 
@@ -148,7 +152,7 @@ public class AdminChallengeService : IAdminChallengeService
         mission.Description = string.IsNullOrWhiteSpace(request.Description)
             ? null
             : request.Description.Trim();
-        mission.MetricCode = request.MetricCode.Trim();
+        mission.MetricCode = metricCode;
         mission.TargetValue = request.TargetValue;
         mission.IsCancelable = request.IsCancelable;
         mission.IsActive = request.IsActive;
@@ -246,7 +250,9 @@ public class AdminChallengeService : IAdminChallengeService
             ChallengeId = mission.MissionId,
             Title = mission.Title,
             Description = mission.Description,
-            TargetText = GetTargetText(mission),
+            TargetText = MissionMetricCodeCatalog.GetTargetText(
+                mission.MetricCode,
+                mission.TargetValue),
             TimeText = GetTimeText(mission.StartAt, mission.EndAt),
             Participants = participantCounts.TryGetValue(
                 mission.MissionId,
