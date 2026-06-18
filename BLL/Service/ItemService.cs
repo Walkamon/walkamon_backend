@@ -106,6 +106,31 @@ namespace BLL.Service
             });
         }
 
+        public async Task<IEnumerable<ItemResponse>> GetAllActiveAsync()
+        {
+            var items = (await _itemRepository.GetAllAsync())
+                .Where(x => x.IsActive);
+
+            var itemTypes = (await _itemTypeRepository.GetAllAsync())
+                .Where(x => x.IsActive);
+
+            return items.Select(item =>
+            {
+                var itemType = itemTypes.FirstOrDefault(x =>
+                    x.ItemTypeId == item.ItemTypeId);
+
+                return new ItemResponse
+                {
+                    ItemId = item.ItemId,
+                    Image = item.ImgUrl,
+                    ItemName = item.ItemName,
+                    ItemTypeName = itemType?.ItemTypeName ?? "",
+                    EffectTypeCode = item.EffectTypeCode,
+                    EffectValue = item.EffectValue,
+                    IsActive = item.IsActive
+                };
+            });
+        }
         public async Task<Item?> GetByIdAsync(Guid id)
         {
             return await _itemRepository.GetByIdAsync(id);

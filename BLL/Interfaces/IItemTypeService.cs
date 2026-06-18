@@ -14,5 +14,6 @@ namespace BLL.Interfaces
         Task<ItemTypeResponse> UpdateAsync(Guid id, UpdateItemTypeRequest request);
         Task UpdateStatusAsync(Guid id, bool isActive);
         Task DeleteAsync(Guid id);
+        Task<IEnumerable<ItemTypeResponse>> GetAllActive();
     }
 }

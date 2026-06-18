@@ -70,8 +70,15 @@ namespace Walkamon.Controllers
 
             return Ok(new
             {
-                Message = "Update Type Item Status successfully"
+                Message = "delete Type Item Status successfully"
             });
+        }
+
+        [HttpGet("active")]
+        public async Task<IActionResult> GetAllActive()
+        {
+            var result = await _itemTypeService.GetAllActive();
+            return Ok(result);
         }
     }
 }

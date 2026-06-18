@@ -72,6 +72,13 @@ namespace Walkamon.Controllers
             });
         }
 
+        [HttpGet("active")]
+        public async Task<IActionResult> GetAllActive()
+        {
+            var result = await _itemService.GetAllActiveAsync();
+            return Ok(result);
+        }
+
         [HttpPatch("{id}")]
         public async Task<IActionResult> UpdateStatus(
             Guid id,
