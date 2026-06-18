@@ -96,6 +96,8 @@ builder.Services.AddScoped<IAdminMissionService, AdminMissionService>();
 
 builder.Services.AddScoped<IPlayerChallengeService, PlayerChallengeService>();
 
+builder.Services.AddScoped<IPlayerMissionService, PlayerMissionService>();
+
 builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();
 #endregion
 builder.Services.AddScoped<IItemTypeService, ItemTypeService>();
