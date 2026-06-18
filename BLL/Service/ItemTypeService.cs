@@ -80,6 +80,7 @@ namespace BLL.Service
             {
                 ItemTypeId = itemType.ItemTypeId,
                 ItemTypeName = itemType.ItemTypeName,
+                IsActive = itemType.IsActive
               
             };
         }
@@ -129,8 +130,61 @@ namespace BLL.Service
 
             itemType.IsActive = isActive;
             itemType.UpdatedAt = DateTime.UtcNow;
+
             _itemTypeRepository.Update(itemType);
+
+         
+            if (!isActive)
+            {
+                var items = await _itemRepository.FindAsync(x => x.ItemTypeId == id);
+
+                foreach (var item in items)
+                {
+                    item.IsActive = false;
+                  
+                    _itemRepository.Update(item);
+                }
+            }
+            if (isActive)
+            {
+                var items = await _itemRepository.FindAsync(x => x.ItemTypeId == id);
+
+                foreach (var item in items)
+                {
+                    item.IsActive = true;
+                
+                    _itemRepository.Update(item);
+                }
+            }
+
             await _itemTypeRepository.SaveAsync();
+        }
+
+        public async Task<IEnumerable<ItemTypeResponse>> GetAllActive()
+        {
+            var itemTypes = await _itemTypeRepository
+    .FindAsync(x => x.IsActive);
+
+            var items = await _itemRepository.GetAllAsync();
+
+            var itemCounts = items
+                .GroupBy(x => x.ItemTypeId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Count());
+
+            return itemTypes.Select(x => new ItemTypeResponse
+            {
+                ItemTypeId = x.ItemTypeId,
+                ItemTypeName = x.ItemTypeName,
+                IsActive = x.IsActive,
+                count = itemCounts.TryGetValue(
+                    x.ItemTypeId,
+                    out var count)
+                        ? count
+                        : 0
+            }).ToList();
+        
         }
     }
 }
