@@ -9,16 +9,14 @@ namespace BLL.Service;
 public class AdminMissionService : IAdminMissionService
 {
     private const string DailyMissionTypeCode = "daily";
-    private const string WeeklyMissionTypeCode = "weekly";
-    private const string MonthlyMissionTypeCode = "monthly";
+    private const string OverallMissionTypeCode = "overall";
     private const string ChallengeMissionTypeCode = "challenge";
     private const string CompletionConditionGroup = "completion";
     private const string AssignmentConditionGroup = "assignment";
 
     private static readonly string[] OverallMissionTypeCodes =
     [
-        WeeklyMissionTypeCode,
-        MonthlyMissionTypeCode
+        OverallMissionTypeCode
     ];
 
     private readonly IGenericRepository<Mission> _missionRepository;
@@ -98,32 +96,16 @@ public class AdminMissionService : IAdminMissionService
     public async Task<AdminMissionDetailResponse> CreateOverallMissionAsync(
         CreateAdminMissionRequest request)
     {
-        var missionTypeCode = NormalizeMissionTypeCode(request.MissionTypeCode);
-
-        if (!OverallMissionTypeCodes.Contains(missionTypeCode))
-        {
-            throw new BadRequestException(
-                "Overall mission type must be weekly or monthly");
-        }
-
-        return await CreateMissionAsync(missionTypeCode, request);
+        return await CreateMissionAsync(OverallMissionTypeCode, request);
     }
 
     public async Task<AdminMissionDetailResponse> UpdateOverallMissionAsync(
         Guid missionId,
         UpdateAdminMissionRequest request)
     {
-        var missionTypeCode = NormalizeMissionTypeCode(request.MissionTypeCode);
-
-        if (!OverallMissionTypeCodes.Contains(missionTypeCode))
-        {
-            throw new BadRequestException(
-                "Overall mission type must be weekly or monthly");
-        }
-
         return await UpdateMissionAsync(
             missionId,
-            missionTypeCode,
+            OverallMissionTypeCode,
             request,
             OverallMissionTypeCodes);
     }
@@ -168,10 +150,8 @@ public class AdminMissionService : IAdminMissionService
             {
                 TotalMissions = missions.Count,
                 ActiveMissions = missions.Count(x => x.IsActive),
-                WeeklyMissions = missions.Count(x =>
-                    x.MissionTypeCode == WeeklyMissionTypeCode),
-                MonthlyMissions = missions.Count(x =>
-                    x.MissionTypeCode == MonthlyMissionTypeCode),
+                OverallMissions = missions.Count(x =>
+                    x.MissionTypeCode == OverallMissionTypeCode),
                 TotalWalletAmount = missions.Sum(x =>
                     rewardPackages.TryGetValue(x.RewardPackageId, out var rewardPackage)
                         ? rewardPackage.WalletAmount

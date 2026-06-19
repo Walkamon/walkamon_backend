@@ -9,6 +9,8 @@ public partial class Mission
 
     public string MissionTypeCode { get; set; } = null!;
 
+    public string? ChallengeTypeCode { get; set; }
+
     public string Title { get; set; } = null!;
 
     public string MetricCode { get; set; } = null!;
