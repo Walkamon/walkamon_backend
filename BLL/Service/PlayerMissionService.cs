@@ -8,14 +8,12 @@ namespace BLL.Service;
 public class PlayerMissionService : IPlayerMissionService
 {
     private const string DailyMissionTypeCode = "daily";
-    private const string WeeklyMissionTypeCode = "weekly";
-    private const string MonthlyMissionTypeCode = "monthly";
+    private const string OverallMissionTypeCode = "overall";
     private const string ActiveStatusCode = "active";
 
     private static readonly string[] OverallMissionTypeCodes =
     [
-        WeeklyMissionTypeCode,
-        MonthlyMissionTypeCode
+        OverallMissionTypeCode
     ];
 
     private readonly IGenericRepository<Mission> _missionRepository;
@@ -169,14 +167,8 @@ public class PlayerMissionService : IPlayerMissionService
         return missionTypeCode switch
         {
             DailyMissionTypeCode => today,
-            WeeklyMissionTypeCode => today.AddDays(-GetDaysSinceMonday(today)),
-            MonthlyMissionTypeCode => new DateOnly(today.Year, today.Month, 1),
+            OverallMissionTypeCode => DateOnly.MinValue,
             _ => today
         };
-    }
-
-    private static int GetDaysSinceMonday(DateOnly date)
-    {
-        return ((int)date.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
     }
 }
