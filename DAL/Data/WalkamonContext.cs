@@ -606,8 +606,8 @@ public partial class WalkamonContext : DbContext
                 .HasColumnName("used_at");
             entity.Property(e => e.UserId).HasColumnName("user_id");
 
-            entity.HasOne(d => d.User).WithOne(p => p.OtpRequest)
-                .HasForeignKey<OtpRequest>(d => d.UserId)
+            entity.HasOne(d => d.User).WithMany(p => p.OtpRequests)
+                .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__otp_reque__user___5629CD9C");
         });

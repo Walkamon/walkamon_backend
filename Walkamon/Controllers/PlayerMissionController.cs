@@ -50,4 +50,25 @@ public class PlayerMissionController : BaseController
             Data = result
         });
     }
+
+    [HttpPost("{missionId:guid}/claim")]
+    [ProducesResponseType(typeof(ApiResponse<ClaimMissionRewardResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ClaimMissionReward(Guid missionId)
+    {
+        var result = await _playerMissionService.ClaimMissionRewardAsync(
+            CurrentUserId,
+            missionId);
+
+        return Ok(new ApiResponse<ClaimMissionRewardResponse>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Claim mission reward success",
+            Data = result
+        });
+    }
 }
