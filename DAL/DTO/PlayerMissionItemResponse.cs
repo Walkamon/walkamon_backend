@@ -23,4 +23,8 @@ public class PlayerMissionItemResponse
     public List<PlayerMissionRewardItemResponse> RewardItems { get; set; } = [];
 
     public string StatusCode { get; set; } = string.Empty;
+
+    public bool CanClaim { get; set; }
+
+    public DateTime? ClaimedAt { get; set; }
 }
