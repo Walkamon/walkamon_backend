@@ -61,10 +61,10 @@ namespace Walkamon.Controllers
             });
         }
 
-        [HttpDelete("{id}")]
+        [HttpPatch("{id}/toggle-status")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var result = await _service.DeleteAsync(id);
+            var result = await _service.ToggleStatusAsync(id);
 
             if (!result)
 

@@ -17,6 +17,6 @@ namespace BLL.Interfaces
 
         Task<ShopItemResponse> UpdateAsync(Guid id, ShopItemRequest request);
 
-        Task<bool> DeleteAsync(Guid id);
+        Task<bool> ToggleStatusAsync(Guid id);
     }
 }

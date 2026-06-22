@@ -139,28 +139,40 @@ namespace BLL.Service
                 throw new NotFoundException("Item does not exist or is inactive.");
             }
 
+          
+            var existedShopItem = (await _shopItemRepo.GetAllAsync())
+                .FirstOrDefault(x =>
+                    x.ItemId == request.ItemId &&
+                    x.ShopItemId != id);
+
+            if (existedShopItem != null)
+            {
+                throw new BadRequestException("This item already exists in shop.");
+            }
+
             entity.ItemId = request.ItemId;
             entity.PriceAmount = request.PriceAmount;
 
             _shopItemRepo.Update(entity);
+            await _shopItemRepo.SaveAsync();
 
             return new ShopItemResponse
             {
                 ShopItemId = entity.ShopItemId,
-                ItemName = item.ItemName ,
+                ItemName = item.ItemName,
                 PriceAmount = entity.PriceAmount,
                 IsActive = entity.IsActive
             };
         }
 
-        public async Task<bool> DeleteAsync(Guid id)
+        public async Task<bool> ToggleStatusAsync(Guid id)
         {
             var entity = await _shopItemRepo.GetByIdAsync(id);
 
             if (entity == null)
                 return false;
 
-            entity.IsActive = false;
+            entity.IsActive = !entity.IsActive;
 
             _shopItemRepo.Update(entity);
 
