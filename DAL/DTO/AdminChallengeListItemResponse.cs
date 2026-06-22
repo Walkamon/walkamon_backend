@@ -8,6 +8,10 @@ public class AdminChallengeListItemResponse
 
     public string? Description { get; set; }
 
+    public string ChallengeTypeCode { get; set; } = string.Empty;
+
+    public string ChallengeTypeName { get; set; } = string.Empty;
+
     public string TargetText { get; set; } = string.Empty;
 
     public string TimeText { get; set; } = string.Empty;

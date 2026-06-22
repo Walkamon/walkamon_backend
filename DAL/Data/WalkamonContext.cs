@@ -453,6 +453,10 @@ public partial class WalkamonContext : DbContext
                 .HasMaxLength(20)
                 .IsUnicode(false)
                 .HasColumnName("mission_type_code");
+            entity.Property(e => e.ChallengeTypeCode)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasColumnName("challenge_type_code");
             entity.Property(e => e.RewardPackageId).HasColumnName("reward_package_id");
             entity.Property(e => e.StartAt)
                 .HasPrecision(0)
@@ -602,8 +606,8 @@ public partial class WalkamonContext : DbContext
                 .HasColumnName("used_at");
             entity.Property(e => e.UserId).HasColumnName("user_id");
 
-            entity.HasOne(d => d.User).WithOne(p => p.OtpRequest)
-                .HasForeignKey<OtpRequest>(d => d.UserId)
+            entity.HasOne(d => d.User).WithMany(p => p.OtpRequests)
+                .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__otp_reque__user___5629CD9C");
         });
