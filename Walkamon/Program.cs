@@ -43,6 +43,14 @@ builder.Services.AddCors(options =>
         policy
             .SetIsOriginAllowed(origin =>
             {
+                if (string.Equals(
+                    origin,
+                    "https://purple-island-059194d00.7.azurestaticapps.net",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
                 if (string.Equals(origin, "null", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
@@ -214,7 +222,13 @@ app.UseSwagger();
 
 app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+// Local Android devices connect through `adb reverse` to the HTTP launch
+// profile. Redirecting that request to the ASP.NET development HTTPS
+// certificate makes the device reject the connection.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseCors("AllowFrontend");
 
