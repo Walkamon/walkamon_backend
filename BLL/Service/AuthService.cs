@@ -453,10 +453,8 @@ public class AuthService : IAuthService
     user.StatusCode.Equals("active", StringComparison.OrdinalIgnoreCase))
         {
             var requestCode = await _userRepository.GetRequestCodeByUserIdAsync(user.UserId);
-
-            throw new BadRequestException(
-                $"Account is not activated. RequestCode: {requestCode}"
-            );
+        
+            throw new NotActiveException(requestCode);
         }
 
         if (user.StatusCode.Equals("disabled", StringComparison.OrdinalIgnoreCase))
