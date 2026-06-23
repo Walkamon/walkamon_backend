@@ -32,4 +32,6 @@
     Task<IEnumerable<User>> GetAllUsersAsync();
     Task<User?> GetByIdWithProfileAsync(Guid id);
     Task<User?> GetUserWithRoleAsync(Guid id);
+
+    Task<Guid?> GetRequestCodeByUserIdAsync(Guid userId);
 }

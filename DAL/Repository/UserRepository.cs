@@ -152,5 +152,14 @@ namespace DAL.Repository
                 .Include(x => x.Role)
                 .FirstOrDefaultAsync(x => x.UserId == id);
         }
+
+        public async Task<Guid?> GetRequestCodeByUserIdAsync(Guid userId)
+        {
+            return await _context.OtpRequests
+                .Where(x => x.UserId == userId)
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => (Guid?)x.RequestCode)
+                .FirstOrDefaultAsync();
+        }
     }
 }
