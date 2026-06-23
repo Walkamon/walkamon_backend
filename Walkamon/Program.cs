@@ -178,10 +178,44 @@ builder.Services
 
 #region Swagger
 
+static string GetSwaggerTag(
+    Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription api)
+{
+    var controllerName = api.ActionDescriptor.RouteValues["controller"] ?? "Other";
+    var roles = api.ActionDescriptor.EndpointMetadata
+        .OfType<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>()
+        .SelectMany(attribute => (attribute.Roles ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+    var section = controllerName.Equals("Auth", StringComparison.OrdinalIgnoreCase)
+        ? "00 - Authentication"
+        : roles.Any(role => role.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+            ? "02 - Admin"
+            : "01 - User";
+
+    var displayName = controllerName
+        .Replace("ControllerForAdmin", string.Empty, StringComparison.OrdinalIgnoreCase)
+        .Replace("ForAdmin", string.Empty, StringComparison.OrdinalIgnoreCase)
+        .Replace("Player", string.Empty, StringComparison.OrdinalIgnoreCase)
+        .Replace("Admin", string.Empty, StringComparison.OrdinalIgnoreCase);
+
+    if (string.IsNullOrWhiteSpace(displayName))
+    {
+        displayName = "General";
+    }
+
+    return $"{section} / {displayName}";
+}
+
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen(options =>
 {
+    options.TagActionsBy(api => [GetSwaggerTag(api)]);
+
+    options.OrderActionsBy(api =>
+        $"{GetSwaggerTag(api)}:{api.RelativePath}:{api.HttpMethod}");
+
     options.AddSecurityDefinition("Bearer",
         new Microsoft.OpenApi.Models.OpenApiSecurityScheme
         {

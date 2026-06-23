@@ -245,7 +245,7 @@ public class AuthService : IAuthService
     }
 
     // Quên mật khẩu: gửi OTP đặt lại mật khẩu.
-    public async Task<OtpSentResponse?> ForgotPasswordAsync(
+    public async Task<OtpSentResponse> ForgotPasswordAsync(
         ForgotPasswordRequest request,
         string requestedIp)
     {
@@ -254,41 +254,56 @@ public class AuthService : IAuthService
         var policy = await GetPolicyAsync();
         var now = DateTime.UtcNow;
 
-        var user = await _userRepository.GetUserByNormalizedEmailAsync(normalizedEmail);
-        if (user == null
-            || user.DeletedAt != null
-            || !user.EmailConfirmed
-            || !user.StatusCode.Equals("active", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
+        await _userRepository.CleanupExpiredPendingRegistrationsAsync(
+            now.AddHours(-policy.PendingRegistrationTtlHours));
 
-        var otpRequests = await _otpRepository.GetAllAsync();
-        var recentRequestCount = otpRequests.Count(otp =>
+        var recentOtpRequests = await _otpRepository.FindAsync(otp =>
             otp.PurposeCode == ForgotPasswordPurposeCode
             && otp.RequestedIp == requestedIp
             && otp.CreatedAt >= now.AddMinutes(-policy.IpWindowMinutes));
 
-        if (recentRequestCount >= policy.IpMaxCount)
+        if (recentOtpRequests.Count() >= policy.IpMaxCount)
         {
             throw new TooManyRequestsException(
                 "Too many OTP requests. Please try again later",
                 policy.IpWindowMinutes * 60);
         }
 
-        var pendingOtp = otpRequests
-            .Where(otp =>
-                otp.UserId == user.UserId
-                && otp.PurposeCode == ForgotPasswordPurposeCode
-                && otp.StatusCode == "pending")
-            .OrderByDescending(otp => otp.CreatedAt)
-            .FirstOrDefault();
+        var user = await _userRepository.GetUserByNormalizedEmailAsync(normalizedEmail);
 
-        if (pendingOtp != null)
+        if (user == null)
         {
-            EnsureCooldownElapsed(pendingOtp.CreatedAt, now, policy.ResendCooldownSeconds);
+            var role = await _userRepository.GetRoleByCodeAsync(UserRoleCode);
+            if (role == null)
+            {
+                throw new AppSystemException("Default user role is not configured");
+            }
+
+            var username = await CreateUniqueUsernameAsync(null, email);
+            user = CreatePendingUser(
+                role.RoleId,
+                email,
+                normalizedEmail,
+                username,
+                null);
+            await _userRepository.AddAsync(user);
+        }
+
+        var userOtpRequests = (await _otpRepository.FindAsync(otp =>
+                otp.UserId == user.UserId
+                && otp.PurposeCode == ForgotPasswordPurposeCode))
+            .OrderByDescending(otp => otp.CreatedAt)
+            .ToList();
+
+        var latestOtp = userOtpRequests.FirstOrDefault();
+        if (latestOtp != null)
+        {
+            EnsureCooldownElapsed(latestOtp.CreatedAt, now, policy.ResendCooldownSeconds);
+        }
+
+        foreach (var pendingOtp in userOtpRequests.Where(otp => otp.StatusCode == "pending"))
+        {
             CancelOtp(pendingOtp, now);
-            await _otpRepository.SaveAsync();
         }
 
         var (otp, plaintextOtp) = CreateOtp(
@@ -298,8 +313,22 @@ public class AuthService : IAuthService
             now,
             policy);
 
+        var isBlockedAccount = user.DeletedAt != null
+            || !user.StatusCode.Equals("active", StringComparison.OrdinalIgnoreCase);
+
+        if (isBlockedAccount)
+        {
+            CancelOtp(otp, now);
+        }
+
         await _otpRepository.AddAsync(otp);
         await _otpRepository.SaveAsync();
+
+        if (isBlockedAccount)
+        {
+            return ToOtpSentResponse(otp, policy.ResendCooldownSeconds);
+        }
+
         await SendOtpOrCancelAsync(otp, user.Email, plaintextOtp, policy.ExpiryMinutes);
 
         return ToOtpSentResponse(otp, policy.ResendCooldownSeconds);
@@ -313,7 +342,6 @@ public class AuthService : IAuthService
             || otp.PurposeCode != ForgotPasswordPurposeCode
             || otp.StatusCode != "pending"
             || otp.User.DeletedAt != null
-            || !otp.User.EmailConfirmed
             || !otp.User.StatusCode.Equals("active", StringComparison.OrdinalIgnoreCase))
         {
             throw new BadRequestException("OTP request is invalid");
@@ -344,11 +372,20 @@ public class AuthService : IAuthService
         otp.StatusCode = "verified";
         otp.UsedAt = now;
         otp.UpdatedAt = now;
+        var isPendingUser = !otp.User.EmailConfirmed;
         otp.User.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        otp.User.EmailConfirmed = true;
+        otp.User.StatusCode = "active";
         otp.User.PasswordChangedAt = now;
         otp.User.AccessFailedCount = 0;
         otp.User.LockoutEndAt = null;
         otp.User.UpdatedAt = now;
+
+        if (isPendingUser)
+        {
+            await EnsureWalletExistsAsync(otp.User.UserId);
+        }
+
         await _userRepository.SaveChangesAsync();
     }
 
@@ -540,7 +577,7 @@ public class AuthService : IAuthService
                 UpdatedAt = now,
                 UserProfile = new UserProfile
                 {
-                    Username = await CreateUniqueGoogleUsernameAsync(payload.Name, email),
+                    Username = await CreateUniqueUsernameAsync(payload.Name, email),
                     LanguageCode = "vi-VN",
                     ThemeCode = "light",
                     TimeZoneId = "Asia/Ho_Chi_Minh",
@@ -569,7 +606,7 @@ public class AuthService : IAuthService
             {
                 user.UserProfile = new UserProfile
                 {
-                    Username = await CreateUniqueGoogleUsernameAsync(payload.Name, email),
+                    Username = await CreateUniqueUsernameAsync(payload.Name, email),
                     LanguageCode = "vi-VN",
                     ThemeCode = "light",
                     TimeZoneId = "Asia/Ho_Chi_Minh",
@@ -664,7 +701,7 @@ public class AuthService : IAuthService
         }
     }
 
-    private async Task<string> CreateUniqueGoogleUsernameAsync(
+    private async Task<string> CreateUniqueUsernameAsync(
         string? displayName,
         string email)
     {
@@ -735,14 +772,16 @@ public class AuthService : IAuthService
         string email,
         string normalizedEmail,
         string username,
-        string password)
+        string? password)
     {
         return new User
         {
             RoleId = roleId,
             Email = email,
             NormalizedEmail = normalizedEmail,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+            PasswordHash = string.IsNullOrEmpty(password)
+                ? null
+                : BCrypt.Net.BCrypt.HashPassword(password),
             EmailConfirmed = false,
             StatusCode = "active",
             UserProfile = new UserProfile
