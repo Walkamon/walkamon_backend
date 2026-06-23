@@ -60,7 +60,10 @@ public class ExceptionMiddleware
                 retryAfterSeconds = tooManyRequestsException.RetryAfterSeconds
             };
         }
-
+        if (ex is NotActiveException notActiveException)
+        {
+            data = notActiveException.DataObject;
+        }
         var response = new ApiResponse<object>
         {
             Success = false,
