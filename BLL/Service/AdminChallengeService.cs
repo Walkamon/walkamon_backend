@@ -9,18 +9,6 @@ namespace BLL.Service;
 public class AdminChallengeService : IAdminChallengeService
 {
     private const string ChallengeMissionTypeCode = "challenge";
-    private const string DailyChallengeTypeCode = "daily";
-    private const string WeeklyChallengeTypeCode = "weekly";
-    private const string MonthlyChallengeTypeCode = "monthly";
-    private const string SpecialChallengeTypeCode = "special";
-
-    private static readonly string[] ChallengeTypeCodes =
-    [
-        DailyChallengeTypeCode,
-        WeeklyChallengeTypeCode,
-        MonthlyChallengeTypeCode,
-        SpecialChallengeTypeCode
-    ];
 
     private readonly IGenericRepository<Mission> _missionRepository;
     private readonly IGenericRepository<RewardPackage> _rewardPackageRepository;
@@ -104,8 +92,6 @@ public class AdminChallengeService : IAdminChallengeService
     public async Task<AdminChallengeDetailResponse> CreateChallengeAsync(
         CreateAdminChallengeRequest request)
     {
-        var challengeTypeCode = NormalizeChallengeTypeCode(
-            request.ChallengeTypeCode);
         var metricCode = MissionMetricCodeCatalog.NormalizeOrThrow(
             request.MetricCode);
         EnsureValidRequest(request);
@@ -124,7 +110,6 @@ public class AdminChallengeService : IAdminChallengeService
         {
             MissionId = Guid.NewGuid(),
             MissionTypeCode = ChallengeMissionTypeCode,
-            ChallengeTypeCode = challengeTypeCode,
             Title = request.Title.Trim(),
             Description = string.IsNullOrWhiteSpace(request.Description)
                 ? null
@@ -149,8 +134,6 @@ public class AdminChallengeService : IAdminChallengeService
         Guid challengeId,
         UpdateAdminChallengeRequest request)
     {
-        var challengeTypeCode = NormalizeChallengeTypeCode(
-            request.ChallengeTypeCode);
         var metricCode = MissionMetricCodeCatalog.NormalizeOrThrow(
             request.MetricCode);
         EnsureValidRequest(request);
@@ -166,7 +149,6 @@ public class AdminChallengeService : IAdminChallengeService
         }
 
         mission.Title = request.Title.Trim();
-        mission.ChallengeTypeCode = challengeTypeCode;
         mission.Description = string.IsNullOrWhiteSpace(request.Description)
             ? null
             : request.Description.Trim();
@@ -245,8 +227,6 @@ public class AdminChallengeService : IAdminChallengeService
             ChallengeId = mission.MissionId,
             Title = mission.Title,
             Description = mission.Description,
-            ChallengeTypeCode = mission.ChallengeTypeCode ?? string.Empty,
-            ChallengeTypeName = GetChallengeTypeName(mission.ChallengeTypeCode),
             MetricCode = mission.MetricCode,
             TargetValue = mission.TargetValue,
             StartAt = mission.StartAt,
@@ -270,8 +250,6 @@ public class AdminChallengeService : IAdminChallengeService
             ChallengeId = mission.MissionId,
             Title = mission.Title,
             Description = mission.Description,
-            ChallengeTypeCode = mission.ChallengeTypeCode ?? string.Empty,
-            ChallengeTypeName = GetChallengeTypeName(mission.ChallengeTypeCode),
             TargetText = MissionMetricCodeCatalog.GetTargetText(
                 mission.MetricCode,
                 mission.TargetValue),
@@ -415,32 +393,6 @@ public class AdminChallengeService : IAdminChallengeService
             throw new BadRequestException(
                 "Reward item quantity must be greater than 0");
         }
-    }
-
-    private static string NormalizeChallengeTypeCode(string? challengeTypeCode)
-    {
-        var normalized = string.IsNullOrWhiteSpace(challengeTypeCode)
-            ? string.Empty
-            : challengeTypeCode.Trim().ToLowerInvariant();
-
-        if (!ChallengeTypeCodes.Contains(normalized))
-        {
-            throw new BadRequestException("Unsupported challenge type code");
-        }
-
-        return normalized;
-    }
-
-    private static string GetChallengeTypeName(string? challengeTypeCode)
-    {
-        return challengeTypeCode switch
-        {
-            DailyChallengeTypeCode => "Hang ngay",
-            WeeklyChallengeTypeCode => "Hang tuan",
-            MonthlyChallengeTypeCode => "Hang thang",
-            SpecialChallengeTypeCode => "Dac biet",
-            _ => string.Empty
-        };
     }
 
     private static string GetStatus(Mission mission, DateTime now)

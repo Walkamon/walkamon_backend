@@ -6,8 +6,6 @@ public class CreateAdminChallengeRequest
 
     public string? Description { get; set; }
 
-    public string ChallengeTypeCode { get; set; } = string.Empty;
-
     public string MetricCode { get; set; } = string.Empty;
 
     public int TargetValue { get; set; }
