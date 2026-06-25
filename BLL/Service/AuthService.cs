@@ -184,7 +184,7 @@ public class AuthService : IAuthService
             await _walletRepository.AddAsync(new Wallet
             {
                 UserId = otp.User.UserId,
-                Balance = 0
+                Balance = 1000
             });
         }
 
@@ -688,7 +688,7 @@ public class AuthService : IAuthService
         await _walletRepository.AddAsync(new Wallet
         {
             UserId = userId,
-            Balance = 0
+            Balance = 1000
         });
     }
 
