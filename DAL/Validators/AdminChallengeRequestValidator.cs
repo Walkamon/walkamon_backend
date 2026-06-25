@@ -33,12 +33,6 @@ public class CreateAdminChallengeRequestValidator
                 .MaximumLength(30)
                 .WithMessage("Metric code must not exceed 30 characters");
 
-            RuleFor(x => x.ChallengeTypeCode)
-                .NotEmpty()
-                .WithMessage("Challenge type code is required")
-                .MaximumLength(20)
-                .WithMessage("Challenge type code must not exceed 20 characters");
-
             RuleFor(x => x.TargetValue)
                 .GreaterThan(0)
                 .WithMessage("Target value must be greater than 0");
@@ -101,12 +95,6 @@ public class UpdateAdminChallengeRequestValidator
                 .WithMessage("Metric code is required")
                 .MaximumLength(30)
                 .WithMessage("Metric code must not exceed 30 characters");
-
-            RuleFor(x => x.ChallengeTypeCode)
-                .NotEmpty()
-                .WithMessage("Challenge type code is required")
-                .MaximumLength(20)
-                .WithMessage("Challenge type code must not exceed 20 characters");
 
             RuleFor(x => x.TargetValue)
                 .GreaterThan(0)

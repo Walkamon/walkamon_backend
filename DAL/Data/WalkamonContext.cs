@@ -453,10 +453,6 @@ public partial class WalkamonContext : DbContext
                 .HasMaxLength(20)
                 .IsUnicode(false)
                 .HasColumnName("mission_type_code");
-            entity.Property(e => e.ChallengeTypeCode)
-                .HasMaxLength(20)
-                .IsUnicode(false)
-                .HasColumnName("challenge_type_code");
             entity.Property(e => e.RewardPackageId).HasColumnName("reward_package_id");
             entity.Property(e => e.StartAt)
                 .HasPrecision(0)
