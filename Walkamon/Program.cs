@@ -113,7 +113,9 @@ builder.Services.AddScoped<IItemTypeService, ItemTypeService>();
 builder.Services.AddScoped<IShopItemRepository, ShopItemRepository>();
 
 builder.Services.AddScoped<IItemService, ItemService>();
+builder.Services.AddScoped<IDailyStepRepository, DailyStepRepository>();
 
+builder.Services.AddScoped<IDailyStepService, DailyStepService>();
 builder.Services.AddScoped<IFriendService, FriendService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
