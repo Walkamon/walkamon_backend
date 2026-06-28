@@ -37,6 +37,7 @@ public class AuthService : IAuthService
     private readonly IGenericRepository<OtpRequest> _otpRepository;
     private readonly IGenericRepository<Wallet> _walletRepository;
     private readonly IGenericRepository<ExternalLogin> _externalLoginRepository;
+    private readonly IAchievementProgressService _achievementProgressService;
 
     public AuthService(
         IUserRepository userRepository,
@@ -44,7 +45,8 @@ public class AuthService : IAuthService
         IGenericRepository<Wallet> walletRepository,
         IGenericRepository<ExternalLogin> externalLoginRepository,
         IEmailSender emailSender,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IAchievementProgressService achievementProgressService)
     {
         _userRepository = userRepository;
         _otpRepository = otpRepository;
@@ -52,6 +54,7 @@ public class AuthService : IAuthService
         _externalLoginRepository = externalLoginRepository;
         _emailSender = emailSender;
         _configuration = configuration;
+        _achievementProgressService = achievementProgressService;
     }
 
     // Đăng ký: tạo user chờ xác thực và gửi OTP.
@@ -186,6 +189,8 @@ public class AuthService : IAuthService
                 UserId = otp.User.UserId,
                 Balance = 1000
             });
+
+            await _achievementProgressService.AddProgressAsync(otp.User.UserId, "wallet_earned", 1000);
         }
 
         await _userRepository.SaveChangesAsync();
@@ -690,6 +695,8 @@ public class AuthService : IAuthService
             UserId = userId,
             Balance = 1000
         });
+
+        await _achievementProgressService.AddProgressAsync(userId, "wallet_earned", 1000);
     }
 
     private static void EnsureGoogleLoginAllowed(User user)

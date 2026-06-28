@@ -12,17 +12,23 @@ public class InventoryService : IInventoryService
     private readonly IGenericRepository<Item> _itemRepository;
     private readonly IGenericRepository<ItemType> _itemTypeRepository;
     private readonly IGenericRepository<Pet> _petRepository;
+    private readonly IGenericRepository<PetLevel> _petLevelRepository;
+    private readonly IAchievementProgressService _achievementProgressService;
 
     public InventoryService(
         IGenericRepository<InventoryItem> inventoryRepository,
         IGenericRepository<Item> itemRepository,
         IGenericRepository<ItemType> itemTypeRepository,
-        IGenericRepository<Pet> petRepository)
+        IGenericRepository<Pet> petRepository,
+        IGenericRepository<PetLevel> petLevelRepository,
+        IAchievementProgressService achievementProgressService)
     {
         _inventoryRepository = inventoryRepository;
         _itemRepository = itemRepository;
         _itemTypeRepository = itemTypeRepository;
         _petRepository = petRepository;
+        _petLevelRepository = petLevelRepository;
+        _achievementProgressService = achievementProgressService;
     }
 
     public async Task<List<InventoryItemResponse>> GetInventoryAsync(Guid userId)
@@ -111,6 +117,21 @@ public class InventoryService : IInventoryService
 
         _petRepository.Update(pet);
         await _inventoryRepository.SaveAsync();
+
+        await _achievementProgressService.AddProgressAsync(userId, "feed_pet", 1);
+
+        if (effectTypeCode is "life_force" or "sml")
+        {
+            var levels = (await _petLevelRepository.FindAsync(x => x.MinLifeForce <= pet.LifeForce))
+                .OrderByDescending(x => x.MinLifeForce)
+                .ToList();
+                
+            if (levels.Count > 0)
+            {
+                var currentLevel = levels.First().LevelNo;
+                await _achievementProgressService.SetProgressMaxAsync(userId, "pet_level", currentLevel);
+            }
+        }
 
         return new UseItemResponse
         {
