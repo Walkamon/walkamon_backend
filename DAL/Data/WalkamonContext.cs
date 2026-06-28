@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using DAL.Models;
 using Microsoft.AspNetCore.Http;
@@ -21,6 +21,8 @@ public partial class WalkamonContext : DbContext
     }
 
     public virtual DbSet<Achievement> Achievements { get; set; }
+
+    public virtual DbSet<AchievementCondition> AchievementConditions { get; set; }
 
     public virtual DbSet<AuditLog> AuditLogs { get; set; }
 
@@ -105,10 +107,6 @@ public partial class WalkamonContext : DbContext
             entity.Property(e => e.AchievementId)
                 .HasDefaultValueSql("(newsequentialid())")
                 .HasColumnName("achievement_id");
-            entity.Property(e => e.CategoryCode)
-                .HasMaxLength(20)
-                .IsUnicode(false)
-                .HasColumnName("category_code");
             entity.Property(e => e.IsActive)
                 .HasDefaultValue(true)
                 .HasColumnName("is_active");
@@ -121,11 +119,50 @@ public partial class WalkamonContext : DbContext
             entity.Property(e => e.Title)
                 .HasMaxLength(100)
                 .HasColumnName("title");
+            entity.Property(e => e.IconUrl)
+                .HasMaxLength(300)
+                .HasColumnName("icon_url");
 
             entity.HasOne(d => d.RewardPackage).WithMany(p => p.Achievements)
                 .HasForeignKey(d => d.RewardPackageId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__achieveme__rewar__46B27FE2");
+        });
+
+        modelBuilder.Entity<AchievementCondition>(entity =>
+        {
+            entity.HasKey(e => e.AchievementConditionId);
+
+            entity.ToTable("achievement_conditions");
+
+            entity.HasIndex(e => new { e.AchievementId, e.ConditionGroup }, "IX_achievement_conditions_achievement_group");
+
+            entity.Property(e => e.AchievementConditionId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("achievement_condition_id");
+            entity.Property(e => e.AchievementId).HasColumnName("achievement_id");
+            entity.Property(e => e.ConditionGroup)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasColumnName("condition_group");
+            entity.Property(e => e.ConditionCode)
+                .HasMaxLength(30)
+                .IsUnicode(false)
+                .HasColumnName("condition_code");
+            entity.Property(e => e.TargetValue).HasColumnName("target_value");
+            entity.Property(e => e.ReferenceAchievementId).HasColumnName("reference_achievement_id");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(sysutcdatetime())")
+                .HasColumnName("created_at");
+
+            entity.HasOne(d => d.Achievement).WithMany(p => p.AchievementConditions)
+                .HasForeignKey(d => d.AchievementId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.ReferenceAchievement).WithMany(p => p.ReferencingConditions)
+                .HasForeignKey(d => d.ReferenceAchievementId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         modelBuilder.Entity<AuditLog>(entity =>

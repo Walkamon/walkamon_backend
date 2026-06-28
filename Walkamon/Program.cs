@@ -47,7 +47,7 @@ builder.Services.AddCors(options =>
                     origin,
                     "https://purple-island-059194d00.7.azurestaticapps.net",
                     StringComparison.OrdinalIgnoreCase))
-                {
+                 {
                     return true;
                 }
 
@@ -105,6 +105,11 @@ builder.Services.AddScoped<IAdminMissionService, AdminMissionService>();
 builder.Services.AddScoped<IPlayerChallengeService, PlayerChallengeService>();
 
 builder.Services.AddScoped<IPlayerMissionService, PlayerMissionService>();
+
+builder.Services.AddScoped<IAdminAchievementService, AdminAchievementService>();
+
+builder.Services.AddScoped<IPlayerAchievementService, PlayerAchievementService>();
+builder.Services.AddScoped<IAchievementProgressService, AchievementProgressService>();
 
 builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();
 #endregion

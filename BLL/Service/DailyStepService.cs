@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using DAL.DTO;
 using DAL.Interfaces;
 using DAL.Models;
@@ -14,13 +14,16 @@ namespace BLL.Service
     {
         private readonly IDailyStepRepository _dailyStepRepository;
         private readonly IGenericRepository<DailyStep> _repository;
+        private readonly IAchievementProgressService _achievementProgressService;
 
         public DailyStepService(
             IDailyStepRepository dailyStepRepository,
-            IGenericRepository<DailyStep> repository)
+            IGenericRepository<DailyStep> repository,
+            IAchievementProgressService achievementProgressService)
         {
             _dailyStepRepository = dailyStepRepository;
             _repository = repository;
+            _achievementProgressService = achievementProgressService;
         }
 
         public async Task UpdateStepAsync(
@@ -54,6 +57,8 @@ namespace BLL.Service
             }
 
             await _repository.SaveAsync();
+            
+            await _achievementProgressService.AddProgressAsync(userId, "steps", request.StepCount);
         }
     }
 }
