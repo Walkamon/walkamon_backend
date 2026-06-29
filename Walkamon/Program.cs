@@ -109,6 +109,7 @@ builder.Services.AddScoped<IPlayerMissionService, PlayerMissionService>();
 builder.Services.AddScoped<IAdminAchievementService, AdminAchievementService>();
 
 builder.Services.AddScoped<IPlayerAchievementService, PlayerAchievementService>();
+builder.Services.AddScoped<IMissionProgressService, MissionProgressService>();
 builder.Services.AddScoped<IAchievementProgressService, AchievementProgressService>();
 
 builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();

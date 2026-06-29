@@ -10,6 +10,10 @@ public class AdminMissionDetailResponse
 
     public string MissionTypeCode { get; set; } = string.Empty;
 
+    public DateTime? StartAt { get; set; }
+
+    public DateTime? EndAt { get; set; }
+
     public string StatusName { get; set; } = string.Empty;
 
     public bool IsActive { get; set; }

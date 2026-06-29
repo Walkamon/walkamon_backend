@@ -12,5 +12,9 @@ public class AdminMissionListItemResponse
 
     public string StatusName { get; set; } = string.Empty;
 
+    public DateTime? StartAt { get; set; }
+
+    public DateTime? EndAt { get; set; }
+
     public bool IsActive { get; set; }
 }

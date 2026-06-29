@@ -15,15 +15,18 @@ namespace BLL.Service
         private readonly IDailyStepRepository _dailyStepRepository;
         private readonly IGenericRepository<DailyStep> _repository;
         private readonly IAchievementProgressService _achievementProgressService;
+        private readonly IMissionProgressService _missionProgressService;
 
         public DailyStepService(
             IDailyStepRepository dailyStepRepository,
             IGenericRepository<DailyStep> repository,
-            IAchievementProgressService achievementProgressService)
+            IAchievementProgressService achievementProgressService,
+            IMissionProgressService missionProgressService)
         {
             _dailyStepRepository = dailyStepRepository;
             _repository = repository;
             _achievementProgressService = achievementProgressService;
+            _missionProgressService = missionProgressService;
         }
 
         public async Task UpdateStepAsync(
@@ -59,6 +62,7 @@ namespace BLL.Service
             await _repository.SaveAsync();
             
             await _achievementProgressService.AddProgressAsync(userId, "steps", request.StepCount);
+            await _missionProgressService.AddProgressAsync(userId, "steps", request.StepCount);
         }
     }
 }

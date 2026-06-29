@@ -8,6 +8,10 @@ public class CreateAdminMissionRequest
 
     public string? MissionTypeCode { get; set; }
 
+    public DateTime? StartAt { get; set; }
+
+    public DateTime? EndAt { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public int WalletAmount { get; set; }

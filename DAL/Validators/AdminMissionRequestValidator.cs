@@ -27,6 +27,21 @@ public class CreateAdminMissionRequestValidator
                 .WithMessage("Description must not exceed 500 characters")
                 .When(x => !string.IsNullOrWhiteSpace(x.Description));
 
+            RuleFor(x => x.StartAt)
+                .NotEmpty()
+                .When(x => x.MissionTypeCode == "daily")
+                .WithMessage("Start date is required for daily missions");
+
+            RuleFor(x => x.EndAt)
+                .NotEmpty()
+                .When(x => x.MissionTypeCode == "daily")
+                .WithMessage("End date is required for daily missions");
+
+            RuleFor(x => x.EndAt)
+                .GreaterThan(x => x.StartAt)
+                .When(x => x.StartAt.HasValue && x.EndAt.HasValue)
+                .WithMessage("End date must be greater than start date");
+
             RuleFor(x => x.WalletAmount)
                 .GreaterThanOrEqualTo(0)
                 .WithMessage("Wallet amount must be greater than or equal to 0");
@@ -83,6 +98,21 @@ public class UpdateAdminMissionRequestValidator
                 .MaximumLength(500)
                 .WithMessage("Description must not exceed 500 characters")
                 .When(x => !string.IsNullOrWhiteSpace(x.Description));
+
+            RuleFor(x => x.StartAt)
+                .NotEmpty()
+                .When(x => x.MissionTypeCode == "daily")
+                .WithMessage("Start date is required for daily missions");
+
+            RuleFor(x => x.EndAt)
+                .NotEmpty()
+                .When(x => x.MissionTypeCode == "daily")
+                .WithMessage("End date is required for daily missions");
+
+            RuleFor(x => x.EndAt)
+                .GreaterThan(x => x.StartAt)
+                .When(x => x.StartAt.HasValue && x.EndAt.HasValue)
+                .WithMessage("End date must be greater than start date");
 
             RuleFor(x => x.WalletAmount)
                 .GreaterThanOrEqualTo(0)

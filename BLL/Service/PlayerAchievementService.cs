@@ -21,6 +21,7 @@ public class PlayerAchievementService : IPlayerAchievementService
     private readonly IGenericRepository<InventoryItem> _inventoryRepository;
     private readonly WalkamonContext _context;
     private readonly IAchievementProgressService _achievementProgressService;
+    private readonly IMissionProgressService _missionProgressService;
 
     public PlayerAchievementService(
         IGenericRepository<Achievement> achievementRepository,
@@ -32,7 +33,8 @@ public class PlayerAchievementService : IPlayerAchievementService
         IGenericRepository<Wallet> walletRepository,
         IGenericRepository<InventoryItem> inventoryRepository,
         WalkamonContext context,
-        IAchievementProgressService achievementProgressService)
+        IAchievementProgressService achievementProgressService,
+        IMissionProgressService missionProgressService)
     {
         _achievementRepository = achievementRepository;
         _achievementConditionRepository = achievementConditionRepository;
@@ -44,6 +46,7 @@ public class PlayerAchievementService : IPlayerAchievementService
         _inventoryRepository = inventoryRepository;
         _context = context;
         _achievementProgressService = achievementProgressService;
+        _missionProgressService = missionProgressService;
     }
 
     public async Task<List<PlayerAchievementItemResponse>> GetAchievementsAsync(
@@ -289,6 +292,7 @@ public class PlayerAchievementService : IPlayerAchievementService
             if (rewardPackage.WalletAmount > 0)
             {
                 await _achievementProgressService.AddProgressAsync(userId, "wallet_earned", rewardPackage.WalletAmount);
+                await _missionProgressService.AddProgressAsync(userId, "wallet_earned", rewardPackage.WalletAmount);
             }
 
             return new ClaimAchievementRewardResponse

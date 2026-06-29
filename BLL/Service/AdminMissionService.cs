@@ -191,6 +191,8 @@ public class AdminMissionService : IAdminMissionService
             MissionTypeCode = missionTypeCode,
             Title = request.Title.Trim(),
             Description = NormalizeOptionalText(request.Description),
+            StartAt = request.StartAt,
+            EndAt = request.EndAt,
             MetricCode = firstCompletionCondition.ConditionCode,
             TargetValue = firstCompletionCondition.TargetValue,
             RewardPackageId = rewardPackage.RewardPackageId,
@@ -240,6 +242,8 @@ public class AdminMissionService : IAdminMissionService
         mission.MissionTypeCode = missionTypeCode;
         mission.Title = request.Title.Trim();
         mission.Description = NormalizeOptionalText(request.Description);
+        mission.StartAt = request.StartAt;
+        mission.EndAt = request.EndAt;
         mission.MetricCode = firstCompletionCondition.ConditionCode;
         mission.TargetValue = firstCompletionCondition.TargetValue;
         mission.IsActive = request.IsActive;
@@ -312,6 +316,8 @@ public class AdminMissionService : IAdminMissionService
             Title = mission.Title,
             Description = mission.Description,
             MissionTypeCode = mission.MissionTypeCode,
+            StartAt = mission.StartAt,
+            EndAt = mission.EndAt,
             StatusName = GetStatusName(mission.IsActive),
             IsActive = mission.IsActive,
             WalletAmount = rewardPackage.WalletAmount,
@@ -347,6 +353,8 @@ public class AdminMissionService : IAdminMissionService
         {
             MissionId = mission.MissionId,
             Title = mission.Title,
+            StartAt = mission.StartAt,
+            EndAt = mission.EndAt,
             ConditionText = completionCondition == null
                 ? GetConditionText(mission.MetricCode, mission.TargetValue)
                 : GetConditionText(
