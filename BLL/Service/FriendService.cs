@@ -14,13 +14,15 @@ namespace BLL.Service
     {
         private readonly IGenericRepository<FriendRequest> _friendRequestRepository;
         private readonly IGenericRepository<Friendship> _friendshipRepository;
-
+        private readonly IFriendRepository _friendRepository;
         public FriendService(
-            IGenericRepository<FriendRequest> friendRequestRepository,
-            IGenericRepository<Friendship> friendshipRepository)
+     IGenericRepository<FriendRequest> friendRequestRepository,
+     IGenericRepository<Friendship> friendshipRepository,
+     IFriendRepository friendRepository)
         {
             _friendRequestRepository = friendRequestRepository;
             _friendshipRepository = friendshipRepository;
+            _friendRepository = friendRepository;
         }
 
         public async Task SendFriendRequestAsync(
@@ -176,18 +178,11 @@ namespace BLL.Service
             });
         }
 
-        public async Task<IEnumerable<Guid>>
-    GetFriendListAsync(Guid currentUserId)
-        {
-            var friendships =
-                await _friendshipRepository.FindAsync(x =>
-                    x.UserLowId == currentUserId ||
-                    x.UserHighId == currentUserId);
 
-            return friendships.Select(x =>
-                x.UserLowId == currentUserId
-                    ? x.UserHighId
-                    : x.UserLowId);
+        public async Task<IEnumerable<FriendDto>>
+   GetFriendListAsync(Guid currentUserId)
+        {
+            return await _friendRepository.GetFriendListAsync(currentUserId);
         }
 
         public async Task RemoveFriendAsync(
