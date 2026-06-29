@@ -9,6 +9,8 @@ public partial class Achievement
 
     public string Title { get; set; } = null!;
 
+    public string? Description { get; set; }
+
     public string MetricCode { get; set; } = null!;
 
     public int TargetValue { get; set; }

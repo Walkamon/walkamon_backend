@@ -22,6 +22,9 @@ public class CreateAdminAchievementRequestValidator
                 .MaximumLength(100)
                 .WithMessage("Title must not exceed 100 characters");
 
+            RuleFor(x => x.Description)
+                .MaximumLength(500)
+                .WithMessage("Description must not exceed 500 characters");
 
 
             RuleFor(x => x.WalletAmount)
@@ -81,6 +84,9 @@ public class UpdateAdminAchievementRequestValidator
                 .MaximumLength(100)
                 .WithMessage("Title must not exceed 100 characters");
 
+            RuleFor(x => x.Description)
+                .MaximumLength(500)
+                .WithMessage("Description must not exceed 500 characters");
 
 
             RuleFor(x => x.WalletAmount)
