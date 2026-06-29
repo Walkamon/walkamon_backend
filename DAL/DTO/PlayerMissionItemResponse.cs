@@ -12,6 +12,10 @@ public class PlayerMissionItemResponse
 
     public string MissionTypeCode { get; set; } = string.Empty;
 
+    public DateTime? StartAt { get; set; }
+
+    public DateTime? EndAt { get; set; }
+
     public string MetricCode { get; set; } = string.Empty;
 
     public int ProgressValue { get; set; }

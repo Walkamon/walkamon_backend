@@ -31,6 +31,7 @@ public class PlayerMissionService : IPlayerMissionService
     private readonly IGenericRepository<InventoryItem> _inventoryRepository;
     private readonly WalkamonContext _context;
     private readonly IAchievementProgressService _achievementProgressService;
+    private readonly IMissionProgressService _missionProgressService;
 
     public PlayerMissionService(
         IGenericRepository<Mission> missionRepository,
@@ -41,7 +42,8 @@ public class PlayerMissionService : IPlayerMissionService
         IGenericRepository<Wallet> walletRepository,
         IGenericRepository<InventoryItem> inventoryRepository,
         WalkamonContext context,
-        IAchievementProgressService achievementProgressService)
+        IAchievementProgressService achievementProgressService,
+        IMissionProgressService missionProgressService)
     {
         _missionRepository = missionRepository;
         _userMissionRepository = userMissionRepository;
@@ -52,6 +54,7 @@ public class PlayerMissionService : IPlayerMissionService
         _inventoryRepository = inventoryRepository;
         _context = context;
         _achievementProgressService = achievementProgressService;
+        _missionProgressService = missionProgressService;
     }
 
     public async Task<List<PlayerMissionItemResponse>> GetDailyMissionsAsync(
@@ -210,9 +213,11 @@ public class PlayerMissionService : IPlayerMissionService
             await transaction.CommitAsync();
 
             await _achievementProgressService.AddProgressAsync(userId, "mission_completed", 1);
+            await _missionProgressService.AddProgressAsync(userId, "mission_completed", 1);
             if (rewardPackage.WalletAmount > 0)
             {
                 await _achievementProgressService.AddProgressAsync(userId, "wallet_earned", rewardPackage.WalletAmount);
+                await _missionProgressService.AddProgressAsync(userId, "wallet_earned", rewardPackage.WalletAmount);
             }
 
             return new ClaimMissionRewardResponse
@@ -237,7 +242,7 @@ public class PlayerMissionService : IPlayerMissionService
         IReadOnlyCollection<string> missionTypeCodes)
     {
         var now = DateTime.UtcNow;
-        var missions = (await _missionRepository.FindAsync(x =>
+        var missionsFromDb = (await _missionRepository.FindAsync(x =>
                 missionTypeCodes.Contains(x.MissionTypeCode)
                 && x.IsActive
                 && (!x.StartAt.HasValue || x.StartAt.Value <= now)
@@ -245,6 +250,15 @@ public class PlayerMissionService : IPlayerMissionService
             .OrderBy(x => x.MissionTypeCode)
             .ThenBy(x => x.Title)
             .ToList();
+
+        var missions = new List<Mission>();
+        foreach (var m in missionsFromDb)
+        {
+            if (await _missionProgressService.ArePrerequisitesMetAsync(userId, m.MissionId))
+            {
+                missions.Add(m);
+            }
+        }
 
         if (missions.Count == 0)
         {
@@ -328,6 +342,8 @@ public class PlayerMissionService : IPlayerMissionService
             Title = mission.Title,
             Description = mission.Description,
             MissionTypeCode = mission.MissionTypeCode,
+            StartAt = mission.StartAt,
+            EndAt = mission.EndAt,
             MetricCode = mission.MetricCode,
             ProgressValue = progressValue,
             TargetValue = mission.TargetValue,

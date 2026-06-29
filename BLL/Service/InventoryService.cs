@@ -14,6 +14,7 @@ public class InventoryService : IInventoryService
     private readonly IGenericRepository<Pet> _petRepository;
     private readonly IGenericRepository<PetLevel> _petLevelRepository;
     private readonly IAchievementProgressService _achievementProgressService;
+    private readonly IMissionProgressService _missionProgressService;
 
     public InventoryService(
         IGenericRepository<InventoryItem> inventoryRepository,
@@ -21,7 +22,8 @@ public class InventoryService : IInventoryService
         IGenericRepository<ItemType> itemTypeRepository,
         IGenericRepository<Pet> petRepository,
         IGenericRepository<PetLevel> petLevelRepository,
-        IAchievementProgressService achievementProgressService)
+        IAchievementProgressService achievementProgressService,
+        IMissionProgressService missionProgressService)
     {
         _inventoryRepository = inventoryRepository;
         _itemRepository = itemRepository;
@@ -29,6 +31,7 @@ public class InventoryService : IInventoryService
         _petRepository = petRepository;
         _petLevelRepository = petLevelRepository;
         _achievementProgressService = achievementProgressService;
+        _missionProgressService = missionProgressService;
     }
 
     public async Task<List<InventoryItemResponse>> GetInventoryAsync(Guid userId)
@@ -119,6 +122,7 @@ public class InventoryService : IInventoryService
         await _inventoryRepository.SaveAsync();
 
         await _achievementProgressService.AddProgressAsync(userId, "feed_pet", 1);
+        await _missionProgressService.AddProgressAsync(userId, "feed_pet", 1);
 
         if (effectTypeCode is "life_force" or "sml")
         {
@@ -130,6 +134,7 @@ public class InventoryService : IInventoryService
             {
                 var currentLevel = levels.First().LevelNo;
                 await _achievementProgressService.SetProgressMaxAsync(userId, "pet_level", currentLevel);
+                await _missionProgressService.SetProgressMaxAsync(userId, "pet_level", currentLevel);
             }
         }
 
