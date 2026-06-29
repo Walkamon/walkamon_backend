@@ -14,7 +14,7 @@ public class CreateAdminChallengeRequest
 
     public DateTime? EndAt { get; set; }
 
-    public bool IsCancelable { get; set; }
+    public bool IsCancelable { get; set; } = true;
 
     public bool IsActive { get; set; } = true;
 
