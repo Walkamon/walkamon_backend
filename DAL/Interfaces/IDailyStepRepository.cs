@@ -1,4 +1,5 @@
-﻿using DAL.Models;
+﻿using DAL.DTO;
+using DAL.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,5 +13,16 @@ namespace DAL.Interfaces
         Task<DailyStep?> GetByUserAndDateAsync(
             Guid userId,
             DateOnly date);
+
+        Task<DailyStep?> GetByDateAsync(Guid userId, DateOnly date);
+
+        Task<List<DailyStep>> GetByDateRangeAsync(
+            Guid userId,
+            DateOnly fromDate,
+            DateOnly toDate);
+
+        Task<List<LeaderboardRawDto>> GetLeaderboardAsync(
+    DateOnly fromDate,
+    DateOnly toDate);
     }
 }
