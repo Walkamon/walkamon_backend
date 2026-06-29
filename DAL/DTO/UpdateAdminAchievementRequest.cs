@@ -6,6 +6,8 @@ public class UpdateAdminAchievementRequest
 {
     public string Title { get; set; } = string.Empty;
 
+    public string? Description { get; set; }
+
     public IFormFile? Icon { get; set; }
 
     public bool IsActive { get; set; } = true;

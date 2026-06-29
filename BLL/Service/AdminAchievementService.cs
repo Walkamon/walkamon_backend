@@ -117,6 +117,7 @@ public class AdminAchievementService : IAdminAchievementService
         {
             AchievementId = Guid.NewGuid(),
             Title = request.Title.Trim(),
+            Description = request.Description?.Trim(),
             MetricCode = MissionMetricCodeCatalog.NormalizeOrThrow(request.MetricCode),
             TargetValue = request.TargetValue,
             IconUrl = iconUrl,
@@ -157,6 +158,7 @@ public class AdminAchievementService : IAdminAchievementService
             request.AssignmentConditions);
 
         achievement.Title = request.Title.Trim();
+        achievement.Description = request.Description?.Trim();
         achievement.MetricCode = MissionMetricCodeCatalog.NormalizeOrThrow(request.MetricCode);
         achievement.TargetValue = request.TargetValue;
         achievement.IsActive = request.IsActive;
@@ -225,6 +227,7 @@ public class AdminAchievementService : IAdminAchievementService
         {
             AchievementId = achievement.AchievementId,
             Title = achievement.Title,
+            Description = achievement.Description,
             IconUrl = achievement.IconUrl,
             StatusName = GetStatusName(achievement.IsActive),
             IsActive = achievement.IsActive,
@@ -259,6 +262,7 @@ public class AdminAchievementService : IAdminAchievementService
         {
             AchievementId = achievement.AchievementId,
             Title = achievement.Title,
+            Description = achievement.Description,
             IconUrl = achievement.IconUrl,
             ConditionText = GetConditionText(achievement.MetricCode, achievement.TargetValue),
             RewardText = GetRewardText(

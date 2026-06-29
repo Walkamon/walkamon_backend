@@ -122,6 +122,9 @@ public partial class WalkamonContext : DbContext
             entity.Property(e => e.IconUrl)
                 .HasMaxLength(300)
                 .HasColumnName("icon_url");
+            entity.Property(e => e.Description)
+                .HasMaxLength(500)
+                .HasColumnName("description");
 
             entity.HasOne(d => d.RewardPackage).WithMany(p => p.Achievements)
                 .HasForeignKey(d => d.RewardPackageId)

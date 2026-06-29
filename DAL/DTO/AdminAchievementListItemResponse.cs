@@ -6,6 +6,8 @@ public class AdminAchievementListItemResponse
 
     public string Title { get; set; } = string.Empty;
 
+    public string? Description { get; set; }
+
     public string? IconUrl { get; set; }
 
     public string ConditionText { get; set; } = string.Empty;

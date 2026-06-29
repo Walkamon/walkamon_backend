@@ -355,6 +355,7 @@ public class PlayerAchievementService : IPlayerAchievementService
         {
             AchievementId = achievement.AchievementId,
             Title = achievement.Title,
+            Description = achievement.Description,
             IconUrl = achievement.IconUrl,
             MetricCode = achievement.MetricCode,
             ProgressValue = progressValue,
