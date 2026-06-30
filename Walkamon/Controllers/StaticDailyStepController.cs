@@ -6,11 +6,11 @@ namespace Walkamon.Controllers
     [ApiController]
     [Route("api/Static-steps")]
     [Authorize(Roles = "User")]
-    public class StaticDailtStepController :BaseController
+    public class StaticDailyStepController :BaseController
     {
         private readonly IDailyStepService _dailyStepService;
 
-        public StaticDailtStepController(
+        public StaticDailyStepController(
             IDailyStepService dailyStepService)
         {
             _dailyStepService = dailyStepService;

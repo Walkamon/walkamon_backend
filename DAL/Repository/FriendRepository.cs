@@ -49,6 +49,10 @@ namespace DAL.Repository
                 .Include(x => x.ReceiverUser)
                     .ThenInclude(x => x.UserProfile)
                 .Where(x => x.ReceiverUserId == userId)
+                .GroupBy(x => x.SenderUserId)
+                .Select(g => g
+                    .OrderByDescending(x => x.CreatedAt)
+                    .First())
                 .ToListAsync();
         }
 
@@ -60,6 +64,48 @@ namespace DAL.Repository
                 .Include(x => x.ReceiverUser)
                     .ThenInclude(x => x.UserProfile)
                 .Where(x => x.SenderUserId == userId)
+                .GroupBy(x => x.ReceiverUserId)
+                .Select(g => g
+                    .OrderByDescending(x => x.CreatedAt)
+                    .First())
+                .ToListAsync();
+        }
+
+        public async Task<List<UserSummaryDto>> GetAvailableUsersAsync(Guid currentUserId)
+        {
+            var friendIds = await _context.Friendships
+                .Where(x =>
+                    x.UserLowId == currentUserId ||
+                    x.UserHighId == currentUserId)
+                .Select(x => x.UserLowId == currentUserId
+                    ? x.UserHighId
+                    : x.UserLowId)
+                .ToListAsync();
+
+            var pendingIds = await _context.FriendRequests
+                .Where(x =>
+                    x.StatusCode == "pending" &&
+                    (x.SenderUserId == currentUserId ||
+                     x.ReceiverUserId == currentUserId))
+                .Select(x => x.SenderUserId == currentUserId
+                    ? x.ReceiverUserId
+                    : x.SenderUserId)
+                .ToListAsync();
+
+            return await _context.Users
+                .Where(x =>
+                    x.UserId != currentUserId &&
+                    x.StatusCode == "active" &&
+                    x.Role.RoleName == "User" &&
+                    !friendIds.Contains(x.UserId) &&
+                    !pendingIds.Contains(x.UserId))
+                .Select(x => new UserSummaryDto
+                {
+                    UserId = x.UserId,
+                    Email = x.Email,
+                    Username = x.UserProfile!.Username,
+                    AvatarUrl = x.UserProfile.AvatarUrl
+                })
                 .ToListAsync();
         }
     }

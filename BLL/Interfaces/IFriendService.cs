@@ -28,10 +28,10 @@ namespace BLL.Interfaces
         Task<IEnumerable<FriendRequestResponse>> GetSentRequestsAsync(
             Guid currentUserId);
 
-        Task<IEnumerable<FriendDto>>
- GetFriendListAsync(Guid currentUserId);
+        Task<IEnumerable<FriendDto>> GetFriendListAsync(Guid currentUserId);
 
-         Task RemoveFriendAsync(
+        Task<IEnumerable<UserSummaryDto>> GetAvailableUsersAsync(Guid currentUserId);
+        Task RemoveFriendAsync(
             Guid currentUserId,
             Guid friendId);
     }
