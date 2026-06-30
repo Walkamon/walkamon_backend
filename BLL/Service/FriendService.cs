@@ -32,11 +32,15 @@ namespace BLL.Service
             if (currentUserId == request.ReceiverUserId)
                 throw new BadRequestException("Cannot send friend request to yourself.");
 
-            var existedRequest =
-                await _friendRequestRepository.AnyAsync(x =>
-                    x.SenderUserId == currentUserId &&
-                    x.ReceiverUserId == request.ReceiverUserId &&
-                    x.StatusCode == "pending");
+            var existedRequest = await _friendRequestRepository.AnyAsync(x =>
+     (
+         (x.SenderUserId == currentUserId &&
+          x.ReceiverUserId == request.ReceiverUserId)
+         ||
+         (x.SenderUserId == request.ReceiverUserId &&
+          x.ReceiverUserId == currentUserId)
+     )
+     && x.StatusCode == "pending");
 
             if (existedRequest)
                 throw new BadRequestException("Friend request already exists.");
