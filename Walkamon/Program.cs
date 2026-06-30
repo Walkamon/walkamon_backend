@@ -125,6 +125,8 @@ builder.Services.AddScoped<IDailyStepService, DailyStepService>();
 builder.Services.AddScoped<IFriendService, FriendService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+builder.Services.AddScoped<IStepGoalRepository, StepGoalRepository>();
+builder.Services.AddScoped<IStepGoalService, StepGoalService>();
 builder.Services.AddHttpContextAccessor();
 #endregion
 
