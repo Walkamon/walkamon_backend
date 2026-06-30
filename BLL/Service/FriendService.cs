@@ -152,8 +152,17 @@ namespace BLL.Service
             return requests.Select(x => new FriendRequestResponse
             {
                 RequestId = x.RequestId,
+
                 SenderUserId = x.SenderUserId,
+                SenderUsername = x.SenderUser.UserProfile?.Username,
+                SenderAvatarUrl = x.SenderUser.UserProfile?.AvatarUrl,
+                SenderEmail = x.SenderUser.Email,
+
                 ReceiverUserId = x.ReceiverUserId,
+                ReceiverUsername = x.ReceiverUser.UserProfile?.Username,
+                ReceiverAvatarUrl = x.ReceiverUser.UserProfile?.AvatarUrl,
+                ReceiverEmail = x.ReceiverUser.Email,
+
                 StatusCode = x.StatusCode,
                 CreatedAt = x.CreatedAt,
                 RespondedAt = x.RespondedAt
@@ -170,8 +179,17 @@ namespace BLL.Service
             return requests.Select(x => new FriendRequestResponse
             {
                 RequestId = x.RequestId,
+
                 SenderUserId = x.SenderUserId,
+                SenderUsername = x.SenderUser.UserProfile?.Username,
+                SenderAvatarUrl = x.SenderUser.UserProfile?.AvatarUrl,
+                SenderEmail = x.SenderUser.Email,
+
                 ReceiverUserId = x.ReceiverUserId,
+                ReceiverUsername = x.ReceiverUser.UserProfile?.Username,
+                ReceiverAvatarUrl = x.ReceiverUser.UserProfile?.AvatarUrl,
+                ReceiverEmail = x.ReceiverUser.Email,
+
                 StatusCode = x.StatusCode,
                 CreatedAt = x.CreatedAt,
                 RespondedAt = x.RespondedAt
