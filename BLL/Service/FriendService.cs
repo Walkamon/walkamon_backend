@@ -143,11 +143,10 @@ namespace BLL.Service
         }
 
         public async Task<IEnumerable<FriendRequestResponse>>
-     GetReceivedRequestsAsync(Guid currentUserId)
+ GetReceivedRequestsAsync(Guid currentUserId)
         {
-            var requests =
-                await _friendRequestRepository.FindAsync(
-                    x => x.ReceiverUserId == currentUserId);
+            var requests = await _friendRepository
+                .GetReceivedRequestsAsync(currentUserId);
 
             return requests.Select(x => new FriendRequestResponse
             {
@@ -170,11 +169,10 @@ namespace BLL.Service
         }
 
         public async Task<IEnumerable<FriendRequestResponse>>
-     GetSentRequestsAsync(Guid currentUserId)
+GetSentRequestsAsync(Guid currentUserId)
         {
-            var requests =
-                await _friendRequestRepository.FindAsync(
-                    x => x.SenderUserId == currentUserId);
+            var requests = await _friendRepository
+                .GetSentRequestsAsync(currentUserId);
 
             return requests.Select(x => new FriendRequestResponse
             {
