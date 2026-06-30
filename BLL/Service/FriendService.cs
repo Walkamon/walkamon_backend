@@ -190,7 +190,12 @@ GetSentRequestsAsync(Guid currentUserId)
             });
         }
 
-
+        public async Task<IEnumerable<UserSummaryDto>>
+GetAvailableUsersAsync(Guid currentUserId)
+        {
+            return await _friendRepository
+                .GetAvailableUsersAsync(currentUserId);
+        }
         public async Task<IEnumerable<FriendDto>>
    GetFriendListAsync(Guid currentUserId)
         {

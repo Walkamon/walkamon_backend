@@ -113,5 +113,20 @@ namespace Walkamon.Controllers
                 message = "Friend removed successfully."
             });
         }
+
+        [HttpGet("available-users")]
+        public async Task<IActionResult> GetAvailableUsers()
+        {
+           
+
+            var result = await _friendService
+                .GetAvailableUsersAsync(CurrentUserId);
+
+            return Ok(new ApiResponse<IEnumerable<UserSummaryDto>>
+            {
+                Message = "Users retrieved successfully.",
+                Data = result
+            });
+        }
     }
 }

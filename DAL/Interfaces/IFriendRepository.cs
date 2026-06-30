@@ -15,5 +15,8 @@ namespace DAL.Interfaces
         Task<List<FriendRequest>> GetReceivedRequestsAsync(Guid userId);
 
         Task<List<FriendRequest>> GetSentRequestsAsync(Guid userId);
+
+        Task<List<UserSummaryDto>> GetAvailableUsersAsync(Guid currentUserId);
+
     }
 }
