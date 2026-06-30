@@ -1,12 +1,13 @@
 ﻿using DAL.Data;
 using DAL.DTO;
 using DAL.Interfaces;
+using DAL.Models;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
 namespace DAL.Repository
 {
     public class FriendRepository : IFriendRepository
@@ -37,6 +38,28 @@ namespace DAL.Repository
                     Bio = profile.Bio,
                     Email = profile.User.Email
                 })
+                .ToListAsync();
+        }
+
+        public async Task<List<FriendRequest>> GetReceivedRequestsAsync(Guid userId)
+        {
+            return await _context.FriendRequests
+                .Include(x => x.SenderUser)
+                    .ThenInclude(x => x.UserProfile)
+                .Include(x => x.ReceiverUser)
+                    .ThenInclude(x => x.UserProfile)
+                .Where(x => x.ReceiverUserId == userId)
+                .ToListAsync();
+        }
+
+        public async Task<List<FriendRequest>> GetSentRequestsAsync(Guid userId)
+        {
+            return await _context.FriendRequests
+                .Include(x => x.SenderUser)
+                    .ThenInclude(x => x.UserProfile)
+                .Include(x => x.ReceiverUser)
+                    .ThenInclude(x => x.UserProfile)
+                .Where(x => x.SenderUserId == userId)
                 .ToListAsync();
         }
     }
