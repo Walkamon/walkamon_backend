@@ -10,21 +10,7 @@ namespace DAL.DTO
     {
         public Guid RequestId { get; set; }
 
-        public Guid SenderUserId { get; set; }
-
-        public string SenderEmail { get; set; } = string.Empty;
-
-        public string? SenderUsername { get; set; }
-
-        public string? SenderAvatarUrl { get; set; }
-
-        public Guid ReceiverUserId { get; set; }
-
-        public string ReceiverEmail { get; set; } = string.Empty;
-
-        public string? ReceiverUsername { get; set; }
-
-        public string? ReceiverAvatarUrl { get; set; }
+        public UserSummaryDto User { get; set; } = null!;
 
         public string StatusCode { get; set; } = string.Empty;
 

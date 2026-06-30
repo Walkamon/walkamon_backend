@@ -152,15 +152,13 @@ namespace BLL.Service
             {
                 RequestId = x.RequestId,
 
-                SenderUserId = x.SenderUserId,
-                SenderUsername = x.SenderUser.UserProfile?.Username,
-                SenderAvatarUrl = x.SenderUser.UserProfile?.AvatarUrl,
-                SenderEmail = x.SenderUser.Email,
-
-                ReceiverUserId = x.ReceiverUserId,
-                ReceiverUsername = x.ReceiverUser.UserProfile?.Username,
-                ReceiverAvatarUrl = x.ReceiverUser.UserProfile?.AvatarUrl,
-                ReceiverEmail = x.ReceiverUser.Email,
+                User = new UserSummaryDto
+                {
+                    UserId = x.SenderUserId,
+                    Email = x.SenderUser.Email,
+                    Username = x.SenderUser.UserProfile?.Username,
+                    AvatarUrl = x.SenderUser.UserProfile?.AvatarUrl
+                },
 
                 StatusCode = x.StatusCode,
                 CreatedAt = x.CreatedAt,
@@ -178,15 +176,13 @@ GetSentRequestsAsync(Guid currentUserId)
             {
                 RequestId = x.RequestId,
 
-                SenderUserId = x.SenderUserId,
-                SenderUsername = x.SenderUser.UserProfile?.Username,
-                SenderAvatarUrl = x.SenderUser.UserProfile?.AvatarUrl,
-                SenderEmail = x.SenderUser.Email,
-
-                ReceiverUserId = x.ReceiverUserId,
-                ReceiverUsername = x.ReceiverUser.UserProfile?.Username,
-                ReceiverAvatarUrl = x.ReceiverUser.UserProfile?.AvatarUrl,
-                ReceiverEmail = x.ReceiverUser.Email,
+                User = new UserSummaryDto
+                {
+                    UserId = x.ReceiverUserId,
+                    Email = x.ReceiverUser.Email,
+                    Username = x.ReceiverUser.UserProfile?.Username,
+                    AvatarUrl = x.ReceiverUser.UserProfile?.AvatarUrl
+                },
 
                 StatusCode = x.StatusCode,
                 CreatedAt = x.CreatedAt,
