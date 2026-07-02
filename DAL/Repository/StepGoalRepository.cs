@@ -48,18 +48,15 @@ namespace DAL.Repository
 
         public async Task<List<DailyStep>> GetCompletedGoalHistoryAsync(Guid userId)
         {
-            var goals = _context.StepGoals;
-
             return await _context.DailySteps
                 .Where(ds => ds.UserId == userId)
                 .Where(ds =>
-                    ds.StepCount >= goals
+                    ds.StepCount >= _context.StepGoals
                         .Where(g => g.UserId == ds.UserId &&
                                     g.EffectiveFrom <= ds.StepDate)
                         .OrderByDescending(g => g.EffectiveFrom)
-                        .Select(g => g.TargetSteps)
+                        .Select(g => (int?)g.TargetSteps)
                         .FirstOrDefault())
-                .OrderBy(ds => ds.StepDate)
                 .ToListAsync();
         }
     }
