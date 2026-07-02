@@ -127,6 +127,8 @@ builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IStepGoalRepository, StepGoalRepository>();
 builder.Services.AddScoped<IStepGoalService, StepGoalService>();
+builder.Services.AddScoped<IStreakRewardService, StreakRewardService>();
+builder.Services.AddScoped<IStreakRewardRepository, StreakRewardRepository>();
 builder.Services.AddHttpContextAccessor();
 #endregion
 

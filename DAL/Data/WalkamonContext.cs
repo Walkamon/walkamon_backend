@@ -19,7 +19,7 @@ public partial class WalkamonContext : DbContext
     {
         _httpContextAccessor = httpContextAccessor;
     }
-
+    public virtual DbSet<StreakRewardClaim> StreakRewardClaims { get; set; }
     public virtual DbSet<Achievement> Achievements { get; set; }
 
     public virtual DbSet<AchievementCondition> AchievementConditions { get; set; }
@@ -131,7 +131,23 @@ public partial class WalkamonContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__achieveme__rewar__46B27FE2");
         });
+        modelBuilder.Entity<StreakRewardClaim>(entity =>
+        {
+            entity.HasKey(e => new { e.UserId, e.ClaimDate });
 
+            entity.ToTable("StreakRewardClaim");
+
+            entity.Property(e => e.ClaimDate)
+                .HasColumnType("date");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime");
+
+            entity.HasOne(e => e.User)
+                .WithMany(u => u.StreakRewardClaims)
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<AchievementCondition>(entity =>
         {
             entity.HasKey(e => e.AchievementConditionId);

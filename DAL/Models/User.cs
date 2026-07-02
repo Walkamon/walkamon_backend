@@ -82,4 +82,6 @@ public partial class User
     public virtual UserProfile? UserProfile { get; set; }
 
     public virtual Wallet? Wallet { get; set; }
+    public virtual ICollection<StreakRewardClaim> StreakRewardClaims { get; set; }
+    = new List<StreakRewardClaim>();
 }

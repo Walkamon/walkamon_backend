@@ -1,4 +1,5 @@
 ﻿using BLL.Interfaces;
+using BLL.Service;
 using DAL.DTO;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -11,10 +12,11 @@ namespace Walkamon.Controllers
     public class StepGoalController :BaseController
     {
         private readonly IStepGoalService _stepGoalService;
-
-        public StepGoalController(IStepGoalService service)
+        private readonly IStreakRewardService _streakRewardService;
+        public StepGoalController(IStepGoalService service, IStreakRewardService streakRewardService)
         {
             _stepGoalService = service;
+            _streakRewardService = streakRewardService;
         }
         [HttpPost]
         public async Task<IActionResult> SetGoal(
@@ -68,6 +70,22 @@ namespace Walkamon.Controllers
             return Ok(new ApiResponse<CurrentStreakResponse>
             {
                 Message = "Current streak retrieved successfully.",
+                Data = result
+            });
+        }
+
+        [HttpPost("claim")]
+        public async Task<IActionResult> ClaimReward()
+        {
+
+            var streak = await _stepGoalService.GetCurrentStreakAsync(CurrentUserId);
+
+            var result = await _streakRewardService
+                .ClaimRewardAsync(CurrentUserId,streak);
+
+            return Ok(new ApiResponse<ClaimRewardResponse>
+            {
+                Message = "Reward claimed successfully.",
                 Data = result
             });
         }
