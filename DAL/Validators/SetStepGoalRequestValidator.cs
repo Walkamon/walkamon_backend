@@ -15,8 +15,8 @@ namespace DAL.Validators
             RuleFor(x => x.TargetSteps)
                 .NotEmpty()
                 .WithMessage("Target steps is required.")
-                .GreaterThan(0)
-                .WithMessage("Target steps must be greater than 0.")
+                .GreaterThan(500)
+                .WithMessage("Target steps must be greater than 500.")
                 .LessThanOrEqualTo(100000)
                 .WithMessage("Target steps cannot exceed 100000.");
         }
