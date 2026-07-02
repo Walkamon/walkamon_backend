@@ -102,8 +102,10 @@ namespace BLL.Service
 
         public async Task<LongestStreakResponse> GetLongestStreakAsync(Guid currentUserId)
         {
-            var history = await _stepGoalRepository
-                .GetCompletedGoalHistoryAsync(currentUserId);
+            var history = (await _stepGoalRepository
+                .GetCompletedGoalHistoryAsync(currentUserId))
+                .OrderBy(x => x.StepDate)
+                .ToList();
 
             if (!history.Any())
             {
@@ -118,8 +120,7 @@ namespace BLL.Service
 
             for (int i = 1; i < history.Count; i++)
             {
-                if (history[i].StepDate.DayNumber ==
-                    history[i - 1].StepDate.DayNumber + 1)
+                if (history[i].StepDate == history[i - 1].StepDate.AddDays(1))
                 {
                     current++;
                 }
@@ -139,21 +140,24 @@ namespace BLL.Service
         }
         public async Task<CurrentStreakResponse> GetCurrentStreakAsync(Guid currentUserId)
         {
-            var history = await _stepGoalRepository
-                .GetCompletedGoalHistoryAsync(currentUserId);
+            var history = (await _stepGoalRepository
+                .GetCompletedGoalHistoryAsync(currentUserId))
+                .OrderByDescending(x => x.StepDate)
+                .ToList();
 
             if (!history.Any())
+            {
                 return new CurrentStreakResponse
                 {
                     CurrentStreak = 0
                 };
+            }
 
             var today = GetToday();
 
             int streak = 0;
 
-            
-            DateOnly expectedDate = history[0].StepDate == today
+            var expectedDate = history.First().StepDate == today
                 ? today
                 : today.AddDays(-1);
 
