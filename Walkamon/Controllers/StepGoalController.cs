@@ -30,6 +30,8 @@ namespace Walkamon.Controllers
 
             return Ok(new 
             {
+              Success = true,
+  Status = StatusCodes.Status200OK,
                 Message = "Step goal saved successfully."
             });
         }
@@ -43,6 +45,8 @@ namespace Walkamon.Controllers
 
             return Ok(new 
             {
+              Success = true,
+  Status = StatusCodes.Status200OK,
                 Message = "Goal progress retrieved successfully.",
                 Data = result
             });
@@ -56,6 +60,8 @@ namespace Walkamon.Controllers
 
             return Ok(new 
             {
+              Success = true,
+  Status = StatusCodes.Status200OK,
                 Message = "Longest streak retrieved successfully.",
                 Data = result
             });
@@ -69,6 +75,8 @@ namespace Walkamon.Controllers
 
             return Ok(new 
             {
+              Success = true,
+  Status = StatusCodes.Status200OK,
                 Message = "Current streak retrieved successfully.",
                 Data = result
             });
@@ -85,6 +93,8 @@ namespace Walkamon.Controllers
 
             return Ok(new 
             {
+              Success = true,
+  Status = StatusCodes.Status200OK,
                 Message = "Reward claimed successfully.",
                 Data = result
             });
