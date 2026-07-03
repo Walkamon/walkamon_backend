@@ -41,7 +41,7 @@ namespace Walkamon.Controllers
             var result = await _stepGoalService
                 .GetGoalProgressAsync(CurrentUserId);
 
-            return Ok(new ApiResponse<GoalProgressResponse>
+            return Ok(new 
             {
                 Message = "Goal progress retrieved successfully.",
                 Data = result
@@ -54,7 +54,7 @@ namespace Walkamon.Controllers
            
             var result = await _stepGoalService.GetLongestStreakAsync(CurrentUserId);
 
-            return Ok(new ApiResponse<LongestStreakResponse>
+            return Ok(new 
             {
                 Message = "Longest streak retrieved successfully.",
                 Data = result
@@ -67,7 +67,7 @@ namespace Walkamon.Controllers
 
             var result = await _stepGoalService.GetCurrentStreakAsync(CurrentUserId);
 
-            return Ok(new ApiResponse<CurrentStreakResponse>
+            return Ok(new 
             {
                 Message = "Current streak retrieved successfully.",
                 Data = result
@@ -83,7 +83,7 @@ namespace Walkamon.Controllers
             var result = await _streakRewardService
                 .ClaimRewardAsync(CurrentUserId,streak);
 
-            return Ok(new ApiResponse<ClaimRewardResponse>
+            return Ok(new 
             {
                 Message = "Reward claimed successfully.",
                 Data = result
