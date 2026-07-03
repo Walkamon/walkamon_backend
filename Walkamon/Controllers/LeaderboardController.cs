@@ -29,7 +29,13 @@ namespace Walkamon.Controllers
                 type,
                 date);
 
-            return Ok(result);
+            return Ok(new
+ {
+     Success = true,
+     Status = StatusCodes.Status200OK,
+     message = "Friend request sent successfully.",
+      Data = result
+ });
         }
     }
 }
