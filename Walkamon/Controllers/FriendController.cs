@@ -122,7 +122,7 @@ namespace Walkamon.Controllers
             var result = await _friendService
                 .GetAvailableUsersAsync(CurrentUserId);
 
-            return Ok(new ApiResponse<IEnumerable<UserSummaryDto>>
+            return Ok(new 
             {
                 Message = "Users retrieved successfully.",
                 Data = result
