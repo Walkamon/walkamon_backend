@@ -28,6 +28,8 @@ namespace Walkamon.Controllers
 
             return Ok(new
             {
+             Success = true,
+ Status = StatusCodes.Status200OK,
                 message = "Friend request sent successfully."
             });
         }
@@ -44,6 +46,8 @@ namespace Walkamon.Controllers
 
             return Ok(new
             {
+             Success = true,
+ Status = StatusCodes.Status200OK,
                 message = request.IsAccepted
                     ? "Friend request accepted successfully."
                     : "Friend request rejected successfully."
@@ -59,6 +63,8 @@ namespace Walkamon.Controllers
 
             return Ok(new
             {
+             Success = true,
+ Status = StatusCodes.Status200OK,
                 message = "Friend request cancelled successfully."
             });
         }
@@ -71,6 +77,8 @@ namespace Walkamon.Controllers
 
             return Ok(new
             {
+             Success = true,
+ Status = StatusCodes.Status200OK,
                 message = "Received friend requests retrieved successfully.",
                 data = result
             });
@@ -84,6 +92,8 @@ namespace Walkamon.Controllers
 
             return Ok(new
             {
+             Success = true,
+ Status = StatusCodes.Status200OK,
                 message = "Sent friend requests retrieved successfully.",
                 data = result
             });
@@ -96,6 +106,8 @@ namespace Walkamon.Controllers
 
             return Ok(new
             {
+             Success = true,
+ Status = StatusCodes.Status200OK,
                 message = "Friend list retrieved successfully.",
                 data = result
             });
@@ -110,6 +122,8 @@ namespace Walkamon.Controllers
 
             return Ok(new
             {
+             Success = true,
+ Status = StatusCodes.Status200OK,
                 message = "Friend removed successfully."
             });
         }
@@ -124,6 +138,8 @@ namespace Walkamon.Controllers
 
             return Ok(new 
             {
+             Success = true,
+ Status = StatusCodes.Status200OK,
                 Message = "Users retrieved successfully.",
                 Data = result
             });
