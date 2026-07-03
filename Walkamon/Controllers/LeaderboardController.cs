@@ -33,7 +33,7 @@ namespace Walkamon.Controllers
  {
      Success = true,
      Status = StatusCodes.Status200OK,
-     message = "Friend request sent successfully.",
+     message = "get leaderboard successfully.",
       Data = result
  });
         }
