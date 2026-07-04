@@ -54,13 +54,13 @@ public partial class WalkamonContext : DbContext
 
     public virtual DbSet<Pet> Pets { get; set; }
 
+    public virtual DbSet<PetAnimation> PetAnimations { get; set; }
+
     public virtual DbSet<PetEvolutionHistory> PetEvolutionHistories { get; set; }
 
-    public virtual DbSet<PetLevel> PetLevels { get; set; }
-
-    public virtual DbSet<PetSpecy> PetSpecies { get; set; }
-
     public virtual DbSet<PetStage> PetStages { get; set; }
+
+    public virtual DbSet<UserPet> UserPets { get; set; }
 
     public virtual DbSet<PvpMatch> PvpMatches { get; set; }
 
@@ -666,43 +666,74 @@ public partial class WalkamonContext : DbContext
 
         modelBuilder.Entity<Pet>(entity =>
         {
-            entity.HasKey(e => e.UserId).HasName("PK__pets__B9BE370FC8F221EE");
+            entity.HasKey(e => e.PetId);
 
             entity.ToTable("pets");
 
-            entity.Property(e => e.UserId)
-                .ValueGeneratedNever()
-                .HasColumnName("user_id");
+            entity.Property(e => e.PetId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("pet_id");
+            entity.Property(e => e.PetName)
+                .HasMaxLength(50)
+                .HasColumnName("pet_name");
+            entity.Property(e => e.LifeForceRate).HasColumnName("life_force_rate");
+            entity.Property(e => e.EnergyRate).HasColumnName("energy_rate");
+            entity.Property(e => e.BondRate).HasColumnName("bond_rate");
+            entity.Property(e => e.ExpRate).HasColumnName("exp_rate");
+            entity.Property(e => e.LifeForce).HasColumnName("life_force");
+            entity.Property(e => e.Energy).HasColumnName("energy");
             entity.Property(e => e.Bond).HasColumnName("bond");
+            entity.Property(e => e.Exp).HasColumnName("exp");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(sysutcdatetime())")
                 .HasColumnName("created_at");
-            entity.Property(e => e.CurrentStageId).HasColumnName("current_stage_id");
-            entity.Property(e => e.Energy).HasColumnName("energy");
-            entity.Property(e => e.LifeForce).HasColumnName("life_force");
-            entity.Property(e => e.PetName)
-                .HasMaxLength(50)
-                .HasColumnName("pet_name");
+            entity.Property(e => e.UpdatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(sysutcdatetime())")
+                .HasColumnName("updated_at");
+        });
+
+        modelBuilder.Entity<PetAnimation>(entity =>
+        {
+            entity.HasKey(e => e.PetAnimationId);
+
+            entity.ToTable("pet_animations");
+
+            entity.HasIndex(e => e.PetId, "IX_pet_animations_pet_id");
+
+            entity.Property(e => e.PetAnimationId)
+                .HasDefaultValueSql("(newsequentialid())")
+                .HasColumnName("pet_animation_id");
+            entity.Property(e => e.PetId).HasColumnName("pet_id");
+            entity.Property(e => e.AnimationUrl)
+                .HasMaxLength(500)
+                .HasColumnName("animation_url");
+            entity.Property(e => e.TypeAnimation)
+                .HasMaxLength(30)
+                .IsUnicode(false)
+                .HasColumnName("type_animation");
+            entity.Property(e => e.PetStageUse).HasColumnName("pet_stage_use");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(sysutcdatetime())")
+                .HasColumnName("created_at");
             entity.Property(e => e.UpdatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(sysutcdatetime())")
                 .HasColumnName("updated_at");
 
-            entity.HasOne(d => d.CurrentStage).WithMany(p => p.Pets)
-                .HasForeignKey(d => d.CurrentStageId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pets__current_st__1CBC4616");
-
-            entity.HasOne(d => d.User).WithOne(p => p.Pet)
-                .HasForeignKey<Pet>(d => d.UserId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pets__user_id__1BC821DD");
+            entity.HasOne(d => d.Pet).WithMany(p => p.PetAnimations)
+                .HasForeignKey(d => d.PetId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         modelBuilder.Entity<PetEvolutionHistory>(entity =>
         {
-            entity.HasKey(e => e.EvolutionId).HasName("PK__pet_evol__8A72FB15C59C5E8E");
+            entity.HasKey(e => e.EvolutionId);
 
             entity.ToTable("pet_evolution_history");
 
@@ -711,88 +742,94 @@ public partial class WalkamonContext : DbContext
             entity.Property(e => e.EvolutionId)
                 .HasDefaultValueSql("(newsequentialid())")
                 .HasColumnName("evolution_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.StageId).HasColumnName("stage_id");
+            entity.Property(e => e.Level).HasColumnName("level");
             entity.Property(e => e.EvolvedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(sysutcdatetime())")
                 .HasColumnName("evolved_at");
-            entity.Property(e => e.FromStageId).HasColumnName("from_stage_id");
-            entity.Property(e => e.ToStageId).HasColumnName("to_stage_id");
-            entity.Property(e => e.UserId).HasColumnName("user_id");
-
-            entity.HasOne(d => d.FromStage).WithMany(p => p.PetEvolutionHistoryFromStages)
-                .HasForeignKey(d => d.FromStageId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pet_evolu__from___236943A5");
-
-            entity.HasOne(d => d.ToStage).WithMany(p => p.PetEvolutionHistoryToStages)
-                .HasForeignKey(d => d.ToStageId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pet_evolu__to_st__245D67DE");
 
             entity.HasOne(d => d.User).WithMany(p => p.PetEvolutionHistories)
                 .HasForeignKey(d => d.UserId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pet_evolu__user___22751F6C");
-        });
+                .OnDelete(DeleteBehavior.ClientSetNull);
 
-        modelBuilder.Entity<PetLevel>(entity =>
-        {
-            entity.HasKey(e => e.LevelNo).HasName("PK__pet_leve__03463ED1DE3A68D3");
-
-            entity.ToTable("pet_levels");
-
-            entity.HasIndex(e => e.MinLifeForce, "UQ__pet_leve__80046810F97F5916").IsUnique();
-
-            entity.Property(e => e.LevelNo).HasColumnName("level_no");
-            entity.Property(e => e.MinLifeForce).HasColumnName("min_life_force");
-        });
-
-        modelBuilder.Entity<PetSpecy>(entity =>
-        {
-            entity.HasKey(e => e.SpeciesId).HasName("PK__pet_spec__B23DC5C2498F58E0");
-
-            entity.ToTable("pet_species");
-
-            entity.HasIndex(e => e.SpeciesName, "UQ__pet_spec__E552C103BBA3583D").IsUnique();
-
-            entity.Property(e => e.SpeciesId)
-                .HasDefaultValueSql("(newsequentialid())")
-                .HasColumnName("species_id");
-            entity.Property(e => e.IsActive)
-                .HasDefaultValue(true)
-                .HasColumnName("is_active");
-            entity.Property(e => e.SpeciesName)
-                .HasMaxLength(50)
-                .HasColumnName("species_name");
+            entity.HasOne(d => d.Stage).WithMany(p => p.PetEvolutionHistories)
+                .HasForeignKey(d => d.StageId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         modelBuilder.Entity<PetStage>(entity =>
         {
-            entity.HasKey(e => e.StageId).HasName("PK__pet_stag__CFC78760406A7898");
+            entity.HasKey(e => e.StageId);
 
             entity.ToTable("pet_stages");
 
-            entity.HasIndex(e => new { e.SpeciesId, e.StageNo }, "UQ__pet_stag__DEC1C05D1FCFA657").IsUnique();
+            entity.HasIndex(e => new { e.PetId, e.StageNo }, "UX_pet_stages_pet_stage_no").IsUnique();
 
             entity.Property(e => e.StageId)
                 .HasDefaultValueSql("(newsequentialid())")
                 .HasColumnName("stage_id");
-            entity.Property(e => e.RequiredLevel).HasColumnName("required_level");
-            entity.Property(e => e.SpeciesId).HasColumnName("species_id");
+            entity.Property(e => e.PetId).HasColumnName("pet_id");
+            entity.Property(e => e.StateUrl)
+                .HasMaxLength(500)
+                .HasColumnName("state_url");
+            entity.Property(e => e.StageNo).HasColumnName("stage_no");
             entity.Property(e => e.StageName)
                 .HasMaxLength(50)
                 .HasColumnName("stage_name");
-            entity.Property(e => e.StageNo).HasColumnName("stage_no");
+            entity.Property(e => e.RequiredLevel).HasColumnName("required_level");
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(sysutcdatetime())")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(sysutcdatetime())")
+                .HasColumnName("updated_at");
 
-            entity.HasOne(d => d.RequiredLevelNavigation).WithMany(p => p.PetStages)
-                .HasForeignKey(d => d.RequiredLevel)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pet_stage__requi__114A936A");
+            entity.HasOne(d => d.Pet).WithMany(p => p.PetStages)
+                .HasForeignKey(d => d.PetId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+        });
 
-            entity.HasOne(d => d.Species).WithMany(p => p.PetStages)
-                .HasForeignKey(d => d.SpeciesId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__pet_stage__speci__10566F31");
+        modelBuilder.Entity<UserPet>(entity =>
+        {
+            entity.HasKey(e => e.UserId);
+
+            entity.ToTable("user_pets");
+
+            entity.HasIndex(e => e.PetId, "IX_user_pets_pet_id");
+
+            entity.Property(e => e.UserId)
+                .ValueGeneratedNever()
+                .HasColumnName("user_id");
+            entity.Property(e => e.PetId).HasColumnName("pet_id");
+            entity.Property(e => e.Level)
+                .HasDefaultValue(1)
+                .HasColumnName("level");
+            entity.Property(e => e.PetName)
+                .HasMaxLength(50)
+                .HasColumnName("pet_name");
+            entity.Property(e => e.PetExp).HasColumnName("pet_exp");
+            entity.Property(e => e.PetEnergy).HasColumnName("pet_energy");
+            entity.Property(e => e.PetBond).HasColumnName("pet_bond");
+            entity.Property(e => e.PetLifeForce).HasColumnName("pet_life_force");
+            entity.Property(e => e.CurrentPetExp).HasColumnName("current_pet_exp");
+            entity.Property(e => e.CurrentPetEnergy).HasColumnName("current_pet_energy");
+            entity.Property(e => e.CurrentPetBond).HasColumnName("current_pet_bond");
+            entity.Property(e => e.CurrentPetLifeForce).HasColumnName("current_pet_life_force");
+
+            entity.HasOne(d => d.User).WithOne(p => p.UserPet)
+                .HasForeignKey<UserPet>(d => d.UserId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+
+            entity.HasOne(d => d.Pet).WithMany(p => p.UserPets)
+                .HasForeignKey(d => d.PetId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         modelBuilder.Entity<PvpMatch>(entity =>

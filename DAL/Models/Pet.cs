@@ -1,15 +1,21 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace DAL.Models;
 
 public partial class Pet
 {
-    public Guid UserId { get; set; }
-
-    public Guid CurrentStageId { get; set; }
+    public Guid PetId { get; set; }
 
     public string PetName { get; set; } = null!;
+
+    public double LifeForceRate { get; set; }
+
+    public double EnergyRate { get; set; }
+
+    public double BondRate { get; set; }
+
+    public double ExpRate { get; set; }
 
     public int LifeForce { get; set; }
 
@@ -17,13 +23,15 @@ public partial class Pet
 
     public int Bond { get; set; }
 
+    public int Exp { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
 
-    public virtual PetStage CurrentStage { get; set; } = null!;
+    public virtual ICollection<PetStage> PetStages { get; set; } = new List<PetStage>();
 
-    public virtual ICollection<PetEvolutionHistory> PetEvolutionHistories { get; set; } = new List<PetEvolutionHistory>();
+    public virtual ICollection<PetAnimation> PetAnimations { get; set; } = new List<PetAnimation>();
 
-    public virtual User User { get; set; } = null!;
+    public virtual ICollection<UserPet> UserPets { get; set; } = new List<UserPet>();
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace DAL.Models;
@@ -57,7 +57,9 @@ public partial class User
 
     public virtual ICollection<OtpRequest> OtpRequests { get; set; } = new List<OtpRequest>();
 
-    public virtual Pet? Pet { get; set; }
+    public virtual UserPet? UserPet { get; set; }
+
+    public virtual ICollection<PetEvolutionHistory> PetEvolutionHistories { get; set; } = new List<PetEvolutionHistory>();
 
     public virtual ICollection<PvpMatchPlayer> PvpMatchPlayers { get; set; } = new List<PvpMatchPlayer>();
 

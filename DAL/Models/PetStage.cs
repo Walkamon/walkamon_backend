@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace DAL.Models;
@@ -7,21 +7,23 @@ public partial class PetStage
 {
     public Guid StageId { get; set; }
 
-    public Guid SpeciesId { get; set; }
+    public Guid PetId { get; set; }
 
-    public byte StageNo { get; set; }
+    public string? StateUrl { get; set; }
+
+    public int StageNo { get; set; }
 
     public string StageName { get; set; } = null!;
 
-    public byte RequiredLevel { get; set; }
+    public int RequiredLevel { get; set; }
 
-    public virtual ICollection<PetEvolutionHistory> PetEvolutionHistoryFromStages { get; set; } = new List<PetEvolutionHistory>();
+    public bool IsActive { get; set; }
 
-    public virtual ICollection<PetEvolutionHistory> PetEvolutionHistoryToStages { get; set; } = new List<PetEvolutionHistory>();
+    public DateTime CreatedAt { get; set; }
 
-    public virtual ICollection<Pet> Pets { get; set; } = new List<Pet>();
+    public DateTime UpdatedAt { get; set; }
 
-    public virtual PetLevel RequiredLevelNavigation { get; set; } = null!;
+    public virtual Pet Pet { get; set; } = null!;
 
-    public virtual PetSpecy Species { get; set; } = null!;
+    public virtual ICollection<PetEvolutionHistory> PetEvolutionHistories { get; set; } = new List<PetEvolutionHistory>();
 }
