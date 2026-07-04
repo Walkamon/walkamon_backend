@@ -11,8 +11,7 @@ public class InventoryService : IInventoryService
     private readonly IGenericRepository<InventoryItem> _inventoryRepository;
     private readonly IGenericRepository<Item> _itemRepository;
     private readonly IGenericRepository<ItemType> _itemTypeRepository;
-    private readonly IGenericRepository<Pet> _petRepository;
-    private readonly IGenericRepository<PetLevel> _petLevelRepository;
+    private readonly IGenericRepository<UserPet> _userPetRepository;
     private readonly IAchievementProgressService _achievementProgressService;
     private readonly IMissionProgressService _missionProgressService;
 
@@ -20,16 +19,14 @@ public class InventoryService : IInventoryService
         IGenericRepository<InventoryItem> inventoryRepository,
         IGenericRepository<Item> itemRepository,
         IGenericRepository<ItemType> itemTypeRepository,
-        IGenericRepository<Pet> petRepository,
-        IGenericRepository<PetLevel> petLevelRepository,
+        IGenericRepository<UserPet> userPetRepository,
         IAchievementProgressService achievementProgressService,
         IMissionProgressService missionProgressService)
     {
         _inventoryRepository = inventoryRepository;
         _itemRepository = itemRepository;
         _itemTypeRepository = itemTypeRepository;
-        _petRepository = petRepository;
-        _petLevelRepository = petLevelRepository;
+        _userPetRepository = userPetRepository;
         _achievementProgressService = achievementProgressService;
         _missionProgressService = missionProgressService;
     }
@@ -95,8 +92,8 @@ public class InventoryService : IInventoryService
             throw new BadRequestException("Item effect is not configured");
         }
 
-        var pet = await _petRepository.GetByIdAsync(userId);
-        if (pet == null)
+        var userPet = await _userPetRepository.GetByIdAsync(userId);
+        if (userPet == null)
         {
             throw new NotFoundException("Pet not found");
         }
@@ -104,10 +101,9 @@ public class InventoryService : IInventoryService
         var effectTypeCode = item.EffectTypeCode.Trim().ToLowerInvariant();
         var effectValue = item.EffectValue.Value;
 
-        ApplyItemEffect(pet, effectTypeCode, effectValue);
+        ApplyItemEffect(userPet, effectTypeCode, effectValue);
 
         inventoryItem.Quantity--;
-        pet.UpdatedAt = DateTime.UtcNow;
 
         if (inventoryItem.Quantity == 0)
         {
@@ -118,7 +114,7 @@ public class InventoryService : IInventoryService
             _inventoryRepository.Update(inventoryItem);
         }
 
-        _petRepository.Update(pet);
+        _userPetRepository.Update(userPet);
         await _inventoryRepository.SaveAsync();
 
         await _achievementProgressService.AddProgressAsync(userId, "feed_pet", 1);
@@ -126,16 +122,9 @@ public class InventoryService : IInventoryService
 
         if (effectTypeCode is "life_force" or "sml")
         {
-            var levels = (await _petLevelRepository.FindAsync(x => x.MinLifeForce <= pet.LifeForce))
-                .OrderByDescending(x => x.MinLifeForce)
-                .ToList();
-                
-            if (levels.Count > 0)
-            {
-                var currentLevel = levels.First().LevelNo;
-                await _achievementProgressService.SetProgressMaxAsync(userId, "pet_level", currentLevel);
-                await _missionProgressService.SetProgressMaxAsync(userId, "pet_level", currentLevel);
-            }
+            var currentLevel = userPet.Level;
+            await _achievementProgressService.SetProgressMaxAsync(userId, "pet_level", currentLevel);
+            await _missionProgressService.SetProgressMaxAsync(userId, "pet_level", currentLevel);
         }
 
         return new UseItemResponse
@@ -145,9 +134,9 @@ public class InventoryService : IInventoryService
             EffectTypeCode = effectTypeCode,
             EffectValue = effectValue,
             RemainingQuantity = inventoryItem.Quantity,
-            LifeForce = pet.LifeForce,
-            Energy = pet.Energy,
-            Bond = pet.Bond
+            LifeForce = userPet.PetLifeForce,
+            Energy = userPet.PetEnergy,
+            Bond = userPet.PetBond
         };
     }
 
@@ -181,7 +170,7 @@ public class InventoryService : IInventoryService
     }
 
     private static void ApplyItemEffect(
-        Pet pet,
+        UserPet userPet,
         string effectTypeCode,
         int effectValue)
     {
@@ -189,13 +178,16 @@ public class InventoryService : IInventoryService
         {
             case "life_force":
             case "sml":
-                pet.LifeForce += effectValue;
+                userPet.PetLifeForce += effectValue;
+                userPet.CurrentPetLifeForce += effectValue;
                 break;
             case "energy":
-                pet.Energy += effectValue;
+                userPet.PetEnergy += effectValue;
+                userPet.CurrentPetEnergy += effectValue;
                 break;
             case "bond":
-                pet.Bond += effectValue;
+                userPet.PetBond += effectValue;
+                userPet.CurrentPetBond += effectValue;
                 break;
             default:
                 throw new BadRequestException("Unsupported item effect type");
