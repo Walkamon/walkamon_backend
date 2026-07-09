@@ -11,5 +11,7 @@ namespace DAL.Interfaces
     {
         Task<Pet?> GetStarterPetAsync();
         Task<UserPet?> GetUserPetAsync(Guid userId);
+        Task<Pet?> GetPetAsync(Guid petId);
+        Task<UserPet?> GetUserPetWithPetAsync(Guid userId);
     }
 }

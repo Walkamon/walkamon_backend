@@ -15,10 +15,15 @@ namespace BLL.Service
     {
         private readonly IPetRepository _petRepository;
         private readonly IGenericRepository<UserPet> _repository;
-
+        private readonly IGenericRepository<PetInteraction> _PetInteraction;
+        private readonly IPetInteractionRepository _interactionRepository;
         public PetService(
-           IPetRepository petRepository, IGenericRepository<UserPet> repository    )
+           IPetRepository petRepository, IGenericRepository<UserPet> repository ,
+           IPetInteractionRepository petInteractionRepository, IGenericRepository<PetInteraction> PetInteraction
+           )
         {
+            _PetInteraction = PetInteraction;
+            _interactionRepository = petInteractionRepository;
             _petRepository = petRepository;
             _repository = repository;
         }
@@ -80,6 +85,7 @@ namespace BLL.Service
 
             return new PetStatusResponse
             {
+               
                 CurrentEnergy = pet.CurrentPetEnergy,
                 MaxEnergy = pet.PetEnergy,
 
@@ -90,7 +96,223 @@ namespace BLL.Service
                 MaxLifeForce = pet.PetLifeForce
             };
         }
+        public async Task<LevelPetResponse> AddPetExpAsync(
+    Guid userId,
+    int exp)
+        {
+            if (exp <= 0)
+                throw new BadRequestException("Exp must be greater than 0.");
 
+            var userPet = await _petRepository.GetUserPetAsync(userId);
+
+            if (userPet == null)
+                throw new NotFoundException("Pet not found.");
+
+            var pet = await _petRepository.GetPetAsync(userPet.PetId);
+
+            if (pet == null)
+                throw new NotFoundException("Pet template not found.");
+
+            UpdateEnergy(userPet);
+            UpdateBond(userPet);
+            UpdateLifeForce(userPet);
+
+            bool levelUp = false;
+
+            userPet.CurrentPetExp += exp;
+
+            while (userPet.CurrentPetExp >= userPet.PetExp)
+            {
+                userPet.CurrentPetExp -= userPet.PetExp;
+
+                LevelUp(userPet, pet);
+
+                levelUp = true;
+            }
+
+            _repository.Update(userPet);
+
+            await _repository.SaveAsync();
+
+            return new LevelPetResponse
+            {
+                Level = userPet.Level,
+
+                CurrentExp = userPet.CurrentPetExp,
+                MaxExp = userPet.PetExp,
+
+                LevelUp = levelUp
+            };
+        }
+
+        public async Task<PetStatusResponse> TapSpiritAsync(Guid userId)
+        {
+            var today = DateOnly.FromDateTime(GetVietnamNow());
+
+            var interaction = await _interactionRepository
+                .GetTodayInteractionAsync(userId, "tap", today);
+
+            bool isNew = false;
+
+            if (interaction == null)
+            {
+                interaction = new PetInteraction
+                {
+                    InteractionId = Guid.NewGuid(),
+                    UserId = userId,
+                    InteractionType = "tap",
+                    InteractionDate = today,
+                    Count = 0
+                };
+
+                await _PetInteraction.AddAsync(interaction);
+                isNew = true;
+            }
+
+            var userPet = await _petRepository.GetUserPetAsync(userId);
+
+            if (userPet == null)
+                throw new NotFoundException("Pet not found.");
+
+            // Cập nhật trạng thái theo thời gian
+            UpdateEnergy(userPet);
+            UpdateBond(userPet);
+            UpdateLifeForce(userPet);
+
+            // Bond đã đầy
+            if (userPet.CurrentPetBond >= userPet.PetBond)
+                throw new BadRequestException("Pet bond is already full.");
+
+          
+            if (interaction.Count >= 5)
+                throw new BadRequestException("You have reached the maximum tap limit today.");
+
+          
+            userPet.CurrentPetBond = Math.Min(
+                userPet.PetBond,
+                userPet.CurrentPetBond + 20);
+
+            interaction.Count++;
+
+            _repository.Update(userPet);
+
+          
+            if (!isNew)
+            {
+                _PetInteraction.Update(interaction);
+            }
+
+            await _repository.SaveAsync();
+
+            return new PetStatusResponse
+            {
+               
+
+                CurrentEnergy = userPet.CurrentPetEnergy,
+                MaxEnergy = userPet.PetEnergy,
+
+                CurrentBond = userPet.CurrentPetBond,
+                MaxBond = userPet.PetBond,
+
+                CurrentLifeForce = userPet.CurrentPetLifeForce,
+                MaxLifeForce = userPet.PetLifeForce,
+
+               
+            };
+        }
+
+        public async Task<PetStatusResponse> FeedSpiritAsync(Guid userId)
+        {
+            var today = DateOnly.FromDateTime(GetVietnamNow());
+
+            var interaction = await _interactionRepository
+                .GetTodayInteractionAsync(userId, "feed", today);
+
+            bool isNew = false;
+
+            if (interaction == null)
+            {
+                interaction = new PetInteraction
+                {
+                    InteractionId = Guid.NewGuid(),
+                    UserId = userId,
+                    InteractionType = "feed",
+                    InteractionDate = today,
+                    Count = 0
+                };
+
+                await _PetInteraction.AddAsync(interaction);
+                isNew = true;
+            }
+
+            var userPet = await _petRepository.GetUserPetAsync(userId);
+
+            if (userPet == null)
+                throw new NotFoundException("Pet not found.");
+
+            // Cập nhật trạng thái theo thời gian
+            UpdateEnergy(userPet);
+            UpdateBond(userPet);
+            UpdateLifeForce(userPet);
+
+            // LifeForce đã đầy thì không được feed
+            if (userPet.CurrentPetLifeForce >= userPet.PetLifeForce)
+                throw new BadRequestException("Pet life force is already full.");
+
+            // Tối đa 5 lần/ngày
+            if (interaction.Count >= 5)
+                throw new BadRequestException("You have reached the maximum feed limit today.");
+
+            // Cộng 20 điểm LifeForce
+            userPet.CurrentPetLifeForce = Math.Min(
+                userPet.PetLifeForce,
+                userPet.CurrentPetLifeForce + 20);
+
+            interaction.Count++;
+
+            _repository.Update(userPet);
+
+            if (!isNew)
+            {
+                _PetInteraction.Update(interaction);
+            }
+
+            await _repository.SaveAsync();
+
+            return new PetStatusResponse
+            {
+                CurrentEnergy = userPet.CurrentPetEnergy,
+                MaxEnergy = userPet.PetEnergy,
+
+                CurrentBond = userPet.CurrentPetBond,
+                MaxBond = userPet.PetBond,
+
+                CurrentLifeForce = userPet.CurrentPetLifeForce,
+                MaxLifeForce = userPet.PetLifeForce
+            };
+        }
+        public async Task<PetInfoResponse> GetPetInfoAsync(Guid userId)
+        {
+            var userPet = await _petRepository.GetUserPetWithPetAsync(userId);
+
+            if (userPet == null)
+                throw new NotFoundException("Pet not found.");
+
+            return new PetInfoResponse
+            {
+                PetId = userPet.Pet.PetId,
+
+                PetName = userPet.Pet.PetName,
+
+                ExpRate = userPet.Pet.ExpRate,
+
+                EnergyRate = userPet.Pet.EnergyRate,
+
+                BondRate = userPet.Pet.BondRate,
+
+                LifeForceRate = userPet.Pet.LifeForceRate
+            };
+        }
         private void UpdateEnergy(UserPet pet)
         {
             var now = GetVietnamNow();
@@ -148,11 +370,47 @@ namespace BLL.Service
             pet.LifeForceUpdatedAt =
                 pet.LifeForceUpdatedAt.AddMinutes(cycles * 20);
         }
+        private void LevelUp(UserPet userPet, Pet pet)
+        {
+            userPet.Level++;
 
+           
+            userPet.PetEnergy = (int)Math.Ceiling(userPet.PetEnergy * pet.EnergyRate);
+
+            userPet.PetBond = (int)Math.Ceiling(userPet.PetBond * pet.BondRate);
+
+            userPet.PetLifeForce = (int)Math.Ceiling(userPet.PetLifeForce * pet.LifeForceRate);
+
+           
+            userPet.PetExp = (int)Math.Ceiling(userPet.PetExp * pet.ExpRate);
+
+           
+            userPet.CurrentPetEnergy = userPet.PetEnergy;
+            userPet.CurrentPetBond = userPet.PetBond;
+            userPet.CurrentPetLifeForce = userPet.PetLifeForce;
+
+            userPet.ExpUpdatedAt = GetVietnamNow();
+        }
         private static DateTime GetVietnamNow()
         {
             var timeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone);
+        }
+        private static PetStatusResponse MapToResponse(UserPet pet)
+        {
+            return new PetStatusResponse
+            {
+              
+
+                CurrentEnergy = pet.CurrentPetEnergy,
+                MaxEnergy = pet.PetEnergy,
+
+                CurrentBond = pet.CurrentPetBond,
+                MaxBond = pet.PetBond,
+
+                CurrentLifeForce = pet.CurrentPetLifeForce,
+                MaxLifeForce = pet.PetLifeForce
+            };
         }
     }
 }

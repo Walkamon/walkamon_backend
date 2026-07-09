@@ -8,6 +8,8 @@ namespace DAL.DTO
 {
     public class PetStatusResponse
     {
+        
+
         public int CurrentEnergy { get; set; }
 
         public int MaxEnergy { get; set; }
@@ -19,5 +21,7 @@ namespace DAL.DTO
         public int CurrentLifeForce { get; set; }
 
         public int MaxLifeForce { get; set; }
+
+       
     }
 }
