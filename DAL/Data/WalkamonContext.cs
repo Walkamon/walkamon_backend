@@ -19,6 +19,7 @@ public partial class WalkamonContext : DbContext
     {
         _httpContextAccessor = httpContextAccessor;
     }
+    public virtual DbSet<PetInteraction> PetInteractions { get; set; }
     public virtual DbSet<StreakRewardClaim> StreakRewardClaims { get; set; }
     public virtual DbSet<Achievement> Achievements { get; set; }
 
@@ -1367,7 +1368,31 @@ public partial class WalkamonContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__wallets__user_id__6C190EBB");
         });
+        modelBuilder.Entity<PetInteraction>(entity =>
+        {
+            entity.HasKey(e => e.InteractionId);
 
+            entity.ToTable("PetInteraction");
+
+            entity.Property(e => e.InteractionId)
+                .ValueGeneratedNever();
+
+            entity.Property(e => e.InteractionType)
+                .HasMaxLength(20);
+
+            entity.HasIndex(e => new
+            {
+                e.UserId,
+                e.InteractionDate,
+                e.InteractionType
+            });
+
+            entity.HasOne(d => d.User)
+                .WithMany(p => p.PetInteractions)
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_PetInteraction_User");
+        });
         OnModelCreatingPartial(modelBuilder);
     }
 

@@ -52,5 +52,64 @@ namespace Walkamon.Controllers
                 Data = result
             });
         }
+
+        [HttpPost("exp/{exp:int}")]
+        public async Task<IActionResult> AddPetExp(
+    int exp)
+        {
+          
+
+            var result = await _petService.AddPetExpAsync(
+                CurrentUserId,
+                exp);
+
+            return Ok(new 
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Pet exp added successfully.",
+                Data = result
+            });
+        }
+        [HttpPost("tap")]
+        public async Task<IActionResult> TapSpirit()
+        {
+            var result = await _petService.TapSpiritAsync(CurrentUserId);
+
+            return Ok(new ApiResponse<PetStatusResponse>
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Tap spirit successfully.",
+                Data = result
+            });
+        }
+
+        [HttpPost("feed")]
+        public async Task<IActionResult> FeedSpirit()
+        {
+            var result = await _petService.FeedSpiritAsync(CurrentUserId);
+
+            return Ok(new ApiResponse<PetStatusResponse>
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Feed spirit successfully.",
+                Data = result
+            });
+        }
+        [HttpGet("info")]
+        public async Task<IActionResult> GetPetInfo()
+        {
+            var result = await _petService.GetPetInfoAsync(CurrentUserId);
+
+            return Ok(new
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Get pet information successfully.",
+                Data = result
+            });
+        }
     }
 }
