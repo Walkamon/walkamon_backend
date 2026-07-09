@@ -581,6 +581,15 @@ public partial class WalkamonContext : DbContext
                 .HasDefaultValueSql("(sysutcdatetime())")
                 .HasColumnName("created_at");
             entity.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id");
+            entity.Property(e => e.DeliveryFailureCount)
+                .HasDefaultValue(0)
+                .HasColumnName("delivery_failure_count");
+            entity.Property(e => e.DeliverySuccessCount)
+                .HasDefaultValue(0)
+                .HasColumnName("delivery_success_count");
+            entity.Property(e => e.ImageUrl)
+                .HasMaxLength(500)
+                .HasColumnName("image_url");
             entity.Property(e => e.NotificationTypeCode)
                 .HasMaxLength(30)
                 .IsUnicode(false)
@@ -588,6 +597,22 @@ public partial class WalkamonContext : DbContext
             entity.Property(e => e.ScheduledAt)
                 .HasPrecision(0)
                 .HasColumnName("scheduled_at");
+            entity.Property(e => e.RecipientCount)
+                .HasDefaultValue(0)
+                .HasColumnName("recipient_count");
+            entity.Property(e => e.SentAt)
+                .HasPrecision(0)
+                .HasColumnName("sent_at");
+            entity.Property(e => e.StatusCode)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue("sent")
+                .HasColumnName("status_code");
+            entity.Property(e => e.TargetAudienceCode)
+                .HasMaxLength(30)
+                .IsUnicode(false)
+                .HasDefaultValue("all_users")
+                .HasColumnName("target_audience_code");
             entity.Property(e => e.Title)
                 .HasMaxLength(120)
                 .HasColumnName("title");
