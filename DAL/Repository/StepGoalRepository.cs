@@ -64,21 +64,26 @@ namespace DAL.Repository
         {
             return await _context.StepGoals
                 .Where(g => g.UserId == userId)
-                .GroupJoin(
-                    _context.DailySteps,
-                    goal => new { goal.UserId, Date = goal.EffectiveFrom },
-                    step => new { step.UserId, Date = step.StepDate },
-                    (goal, steps) => new StepGoalHistoryResponse
-                    {
-                        GoalDate = goal.EffectiveFrom,
-                        TargetSteps = goal.TargetSteps,
-                        CompletedSteps = steps
-                            .Select(x => x.StepCount)
-                            .FirstOrDefault(),
-                        IsCompleted = steps
-                            .Select(x => x.StepCount)
-                            .FirstOrDefault() >= goal.TargetSteps
-                    })
+                .Select(g => new StepGoalHistoryResponse
+                {
+                    GoalDate = g.EffectiveFrom,
+                    TargetSteps = g.TargetSteps,
+
+                    CompletedSteps = _context.DailySteps
+                        .Where(s =>
+                            s.UserId == g.UserId &&
+                            s.StepDate == g.EffectiveFrom)
+                        .Select(s => s.StepCount)
+                        .FirstOrDefault(),
+
+                    IsCompleted =
+                        _context.DailySteps
+                            .Where(s =>
+                                s.UserId == g.UserId &&
+                                s.StepDate == g.EffectiveFrom)
+                            .Select(s => s.StepCount)
+                            .FirstOrDefault() >= g.TargetSteps
+                })
                 .OrderByDescending(x => x.GoalDate)
                 .ToListAsync();
         }

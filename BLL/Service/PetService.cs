@@ -46,7 +46,13 @@ namespace BLL.Service
                 CurrentPetExp = starterPet.Exp,
                 CurrentPetEnergy = starterPet.Energy,
                 CurrentPetBond = starterPet.Bond,
-                CurrentPetLifeForce = starterPet.LifeForce
+                CurrentPetLifeForce = starterPet.LifeForce,
+
+                EnergyUpdatedAt = GetVietnamNow(),
+                BondUpdatedAt = GetVietnamNow(),
+                LifeForceUpdatedAt = GetVietnamNow(),
+                ExpUpdatedAt = GetVietnamNow()
+
             };
             var existed = await _repository.AnyAsync(x => x.UserId == userId);
 

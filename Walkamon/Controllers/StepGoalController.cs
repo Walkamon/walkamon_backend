@@ -106,7 +106,7 @@ namespace Walkamon.Controllers
 
             var result = await _stepGoalService.GetStepGoalHistoryAsync(CurrentUserId);
 
-            return Ok(new ApiResponse<IEnumerable<StepGoalHistoryResponse>>
+            return Ok(new
             {
                 Success = true,
                 Status = StatusCodes.Status200OK,
@@ -125,6 +125,9 @@ namespace Walkamon.Controllers
 
             return Ok(new ApiResponse<List<StreakHistoryResponse>>
             {
+
+                Success = true,
+                Status = StatusCodes.Status200OK,
                 Message = "Streak history retrieved successfully.",
                 Data = result
             });
