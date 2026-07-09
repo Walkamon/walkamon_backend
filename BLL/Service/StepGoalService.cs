@@ -189,5 +189,59 @@ namespace BLL.Service
 
             return DateOnly.FromDateTime(vnNow);
         }
+        public async Task<IEnumerable<StepGoalHistoryResponse>> GetStepGoalHistoryAsync(Guid currentUserId)
+        {
+            return await _stepGoalRepository.GetStepGoalHistoryAsync(currentUserId);
+        }
+
+        public async Task<List<StreakHistoryResponse>> GetStreakHistoryAsync(Guid currentUserId)
+        {
+            var history = (await _stepGoalRepository
+                .GetCompletedGoalHistoryAsync(currentUserId))
+                .OrderBy(x => x.StepDate)
+                .ToList();
+
+            var result = new List<StreakHistoryResponse>();
+
+            if (!history.Any())
+                return result;
+
+            var start = history[0].StepDate;
+            var end = history[0].StepDate;
+            int streak = 1;
+
+            for (int i = 1; i < history.Count; i++)
+            {
+                if (history[i].StepDate == end.AddDays(1))
+                {
+                    end = history[i].StepDate;
+                    streak++;
+                }
+                else
+                {
+                    result.Add(new StreakHistoryResponse
+                    {
+                        StartDate = start,
+                        EndDate = end,
+                        Streak = streak
+                    });
+
+                    start = history[i].StepDate;
+                    end = history[i].StepDate;
+                    streak = 1;
+                }
+            }
+
+            result.Add(new StreakHistoryResponse
+            {
+                StartDate = start,
+                EndDate = end,
+                Streak = streak
+            });
+
+            return result
+                .OrderByDescending(x => x.EndDate)
+                .ToList();
+        }
     }
 }

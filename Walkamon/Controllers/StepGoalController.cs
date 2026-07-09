@@ -99,5 +99,35 @@ namespace Walkamon.Controllers
                 Data = result
             });
         }
+        [HttpGet("history")]
+        public async Task<IActionResult> GetHistory()
+        {
+         
+
+            var result = await _stepGoalService.GetStepGoalHistoryAsync(CurrentUserId);
+
+            return Ok(new ApiResponse<IEnumerable<StepGoalHistoryResponse>>
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Step goal history retrieved successfully.",
+                Data = result
+            });
+        }
+
+        [HttpGet("streak-history")]
+        public async Task<IActionResult> GetStreakHistory()
+        {
+            
+
+            var result = await _stepGoalService
+                .GetStreakHistoryAsync(CurrentUserId);
+
+            return Ok(new ApiResponse<List<StreakHistoryResponse>>
+            {
+                Message = "Streak history retrieved successfully.",
+                Data = result
+            });
+        }
     }
 }

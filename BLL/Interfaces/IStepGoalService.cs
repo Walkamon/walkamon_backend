@@ -16,5 +16,7 @@ namespace BLL.Interfaces
         Task<GoalProgressResponse> GetGoalProgressAsync(Guid currentUserId);
         Task<LongestStreakResponse> GetLongestStreakAsync(Guid currentUserId);
         Task<CurrentStreakResponse> GetCurrentStreakAsync(Guid currentUserId);
+        Task<IEnumerable<StepGoalHistoryResponse>> GetStepGoalHistoryAsync(Guid currentUserId);
+        Task<List<StreakHistoryResponse>> GetStreakHistoryAsync(Guid currentUserId);
     }
 }
