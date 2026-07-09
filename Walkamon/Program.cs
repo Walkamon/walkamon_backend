@@ -6,6 +6,7 @@ using DAL.Data;
 using DAL.GenericRepository;
 using DAL.Interfaces;
 using DAL.Repository;
+using Walkamon.BackgroundServices;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -84,6 +85,9 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.Configure<SmtpOptions>(
     builder.Configuration.GetSection(SmtpOptions.SectionName));
 
+builder.Services.Configure<FirebaseOptions>(
+    builder.Configuration.GetSection(FirebaseOptions.SectionName));
+
 builder.Services.AddScoped<IEmailSender, GmailSmtpEmailSender>();
 
 builder.Services.AddScoped<IUserService, UserService>();
@@ -131,6 +135,10 @@ builder.Services.AddScoped<IStreakRewardService, StreakRewardService>();
 builder.Services.AddScoped<IStreakRewardRepository, StreakRewardRepository>();
 builder.Services.AddScoped<IPetService, PetService>();
 builder.Services.AddScoped<IPetRepository, PetRepository>();
+builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddSingleton<IFcmPushService, FcmPushService>();
+builder.Services.AddHostedService<NotificationSchedulerService>();
 builder.Services.AddHttpContextAccessor();
 #endregion
 
