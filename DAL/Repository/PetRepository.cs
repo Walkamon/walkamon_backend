@@ -24,5 +24,10 @@ namespace DAL.Repository
             return await _context.Pets
                 .FirstOrDefaultAsync(x => x.PetName == "Starter");
         }
+        public async Task<UserPet?> GetUserPetAsync(Guid userId)
+        {
+            return await _context.UserPets
+                .FirstOrDefaultAsync(x => x.UserId == userId);
+        }
     }
 }

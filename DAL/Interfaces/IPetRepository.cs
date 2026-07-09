@@ -10,5 +10,6 @@ namespace DAL.Interfaces
     public interface IPetRepository
     {
         Task<Pet?> GetStarterPetAsync();
+        Task<UserPet?> GetUserPetAsync(Guid userId);
     }
 }

@@ -55,5 +55,99 @@ namespace BLL.Service
             await _repository.AddAsync(userPet);
             await _repository.SaveAsync();
         }
+        public async Task<PetStatusResponse> GetPetStatusAsync(Guid currentUserId)
+        {
+            var pet = await _petRepository.GetUserPetAsync(currentUserId);
+
+            if (pet == null)
+                throw new NotFoundException("Pet not found.");
+
+            UpdateEnergy(pet);
+
+            UpdateBond(pet);
+
+            UpdateLifeForce(pet);
+
+            _repository.Update(pet);
+
+            await _repository.SaveAsync();
+
+            return new PetStatusResponse
+            {
+                CurrentEnergy = pet.CurrentPetEnergy,
+                MaxEnergy = pet.PetEnergy,
+
+                CurrentBond = pet.CurrentPetBond,
+                MaxBond = pet.PetBond,
+
+                CurrentLifeForce = pet.CurrentPetLifeForce,
+                MaxLifeForce = pet.PetLifeForce
+            };
+        }
+
+        private void UpdateEnergy(UserPet pet)
+        {
+            var now = GetVietnamNow();
+
+            var elapsedMinutes =
+                (int)(now - pet.EnergyUpdatedAt).TotalMinutes;
+
+            if (elapsedMinutes <= 0)
+                return;
+
+            pet.CurrentPetEnergy = Math.Min(
+                pet.PetEnergy,
+                pet.CurrentPetEnergy + elapsedMinutes);
+
+            pet.EnergyUpdatedAt =
+                pet.EnergyUpdatedAt.AddMinutes(elapsedMinutes);
+        }
+
+        private void UpdateBond(UserPet pet)
+        {
+            var now = GetVietnamNow();
+
+            var elapsedMinutes =
+                (int)(now - pet.BondUpdatedAt).TotalMinutes;
+
+            int cycles = elapsedMinutes / 20;
+
+            if (cycles <= 0)
+                return;
+
+            pet.CurrentPetBond = Math.Max(
+                0,
+                pet.CurrentPetBond - cycles * 10);
+
+            pet.BondUpdatedAt =
+                pet.BondUpdatedAt.AddMinutes(cycles * 20);
+        }
+
+        private void UpdateLifeForce(UserPet pet)
+        {
+            var now = GetVietnamNow();
+
+            var elapsedMinutes =
+                (int)(now - pet.LifeForceUpdatedAt).TotalMinutes;
+
+            int cycles = elapsedMinutes / 20;
+
+            if (cycles <= 0)
+                return;
+
+            pet.CurrentPetLifeForce = Math.Max(
+                0,
+                pet.CurrentPetLifeForce - cycles * 10);
+
+            pet.LifeForceUpdatedAt =
+                pet.LifeForceUpdatedAt.AddMinutes(cycles * 20);
+        }
+
+        private static DateTime GetVietnamNow()
+        {
+            var timeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone);
+        }
     }
 }
+
