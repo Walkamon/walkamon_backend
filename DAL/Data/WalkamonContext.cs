@@ -822,7 +822,17 @@ public partial class WalkamonContext : DbContext
             entity.Property(e => e.CurrentPetEnergy).HasColumnName("current_pet_energy");
             entity.Property(e => e.CurrentPetBond).HasColumnName("current_pet_bond");
             entity.Property(e => e.CurrentPetLifeForce).HasColumnName("current_pet_life_force");
+            entity.Property(e => e.EnergyUpdatedAt)
+    .HasColumnName("energy_updated_at");
 
+            entity.Property(e => e.BondUpdatedAt)
+                .HasColumnName("bond_updated_at");
+
+            entity.Property(e => e.LifeForceUpdatedAt)
+                .HasColumnName("life_force_updated_at");
+
+            entity.Property(e => e.ExpUpdatedAt)
+                .HasColumnName("exp_updated_at");
             entity.HasOne(d => d.User).WithOne(p => p.UserPet)
                 .HasForeignKey<UserPet>(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull);
