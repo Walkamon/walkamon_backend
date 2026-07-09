@@ -1,10 +1,10 @@
-﻿using DAL.Models;
+﻿using DAL.DTO;
+using DAL.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using DAL.Models;
 namespace DAL.Interfaces
 {
     public interface IStepGoalRepository
@@ -15,6 +15,7 @@ namespace DAL.Interfaces
 
         Task<DailyStep?> GetDailyStepAsync(Guid userId, DateOnly date);
         Task<List<DailyStep>> GetCompletedGoalHistoryAsync(Guid userId);
+        Task<List<StepGoalHistoryResponse>> GetStepGoalHistoryAsync(Guid userId);
 
     }
 }

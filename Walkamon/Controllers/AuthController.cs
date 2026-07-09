@@ -1,5 +1,6 @@
 using BLL.Interfaces;
 using DAL.DTO;
+using DAL.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -285,7 +286,41 @@ public class AuthController : BaseController
             Data = null
         });
     }
+    [HttpGet("profile-friend/{userId}")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetOtherProfile(Guid userId)
+    {
+        var user = await _userService.GetUserByIdAsync(userId);
 
+        if (user == null)
+        {
+            return NotFound(new ApiResponse<object>
+            {
+                Success = false,
+                Status = StatusCodes.Status404NotFound,
+                Message = "User not found",
+                Data = null
+            });
+        }
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Get profile success",
+            Data = new
+            {
+                Username = user.Profile?.Username,            
+                Gender = user.Profile?.Gender,
+                Bio = user.Profile?.Bio,
+                Dob = user.Profile?.Dob,
+                AvatarUrl = user.Profile?.AvatarUrl
+               
+            }
+        });
+    }
     private string GetRequestedIp()
     {
         return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";

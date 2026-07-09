@@ -129,6 +129,8 @@ builder.Services.AddScoped<IStepGoalRepository, StepGoalRepository>();
 builder.Services.AddScoped<IStepGoalService, StepGoalService>();
 builder.Services.AddScoped<IStreakRewardService, StreakRewardService>();
 builder.Services.AddScoped<IStreakRewardRepository, StreakRewardRepository>();
+builder.Services.AddScoped<IPetService, PetService>();
+builder.Services.AddScoped<IPetRepository, PetRepository>();
 builder.Services.AddHttpContextAccessor();
 #endregion
 
