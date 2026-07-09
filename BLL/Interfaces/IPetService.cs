@@ -10,5 +10,6 @@ namespace BLL.Interfaces
     public interface IPetService
     {
          Task CreateUserPetAsync(Guid userId, CreateUserPetRequest request);
+        Task<PetStatusResponse> GetPetStatusAsync(Guid currentUserId);
     }
 }

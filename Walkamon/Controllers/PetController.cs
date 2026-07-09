@@ -36,5 +36,21 @@ namespace Walkamon.Controllers
                 Message = "Pet created successfully."
             });
         }
+
+        [HttpGet("status")]
+        public async Task<IActionResult> GetPetStatus()
+        {
+          
+
+            var result = await _petService.GetPetStatusAsync(CurrentUserId);
+
+            return Ok(new 
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Pet status retrieved successfully.",
+                Data = result
+            });
+        }
     }
 }
