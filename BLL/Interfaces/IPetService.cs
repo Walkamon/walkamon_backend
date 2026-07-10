@@ -18,5 +18,13 @@ namespace BLL.Interfaces
         Task<PetStatusResponse> FeedSpiritAsync(Guid userId);
         Task<PetStatusResponse> TapSpiritAsync(Guid userId);
         Task<PetInfoResponse> GetPetInfoAsync(Guid userId);
+        Task<List<EvolutionOptionResponse>> GetEvolutionOptionsAsync(Guid userId);
+
+        Task EvolveStarterAsync(Guid userId, Guid petId);
+        Task<List<EvolutionStageResponse>> GetEvolutionStagesAsync(Guid userId);
+        Task<EvolutionStageResponse> EvolveNextAsync(Guid userId);
+        Task<List<PetLeaderboardResponse>> GetLeaderboardAsync();
+        Task<List<EvolutionHistoryResponse>> GetEvolutionHistoryAsync(Guid userId);
+        Task<FriendSpiritResponse> GetFriendSpiritAsync(Guid friendUserId);
     }
 }

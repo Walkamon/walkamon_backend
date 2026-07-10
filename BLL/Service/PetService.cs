@@ -16,12 +16,21 @@ namespace BLL.Service
         private readonly IPetRepository _petRepository;
         private readonly IGenericRepository<UserPet> _repository;
         private readonly IGenericRepository<PetInteraction> _PetInteraction;
+        private readonly IGenericRepository<PetEvolutionHistory> _PetHistory;
         private readonly IPetInteractionRepository _interactionRepository;
+        private readonly IPetEvolutionHistoryRepository _PetEvolutionHistory;
+        private readonly IGenericRepository<Pet> _Pet;
         public PetService(
            IPetRepository petRepository, IGenericRepository<UserPet> repository ,
-           IPetInteractionRepository petInteractionRepository, IGenericRepository<PetInteraction> PetInteraction
-           )
+           IPetInteractionRepository petInteractionRepository, IGenericRepository<PetInteraction> PetInteraction,
+          IPetEvolutionHistoryRepository petEvolutionHistoryRepository,
+          IGenericRepository<PetEvolutionHistory> PetHistory,
+          IGenericRepository<Pet> Pet
+            )
         {
+            _Pet = Pet;
+            _PetHistory = PetHistory;
+            _PetEvolutionHistory = petEvolutionHistoryRepository;
             _PetInteraction = PetInteraction;
             _interactionRepository = petInteractionRepository;
             _petRepository = petRepository;
@@ -174,12 +183,12 @@ namespace BLL.Service
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
-            // Cập nhật trạng thái theo thời gian
+          
             UpdateEnergy(userPet);
             UpdateBond(userPet);
             UpdateLifeForce(userPet);
 
-            // Bond đã đầy
+          
             if (userPet.CurrentPetBond >= userPet.PetBond)
                 throw new BadRequestException("Pet bond is already full.");
 
@@ -250,20 +259,20 @@ namespace BLL.Service
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
-            // Cập nhật trạng thái theo thời gian
+           
             UpdateEnergy(userPet);
             UpdateBond(userPet);
             UpdateLifeForce(userPet);
 
-            // LifeForce đã đầy thì không được feed
+          
             if (userPet.CurrentPetLifeForce >= userPet.PetLifeForce)
                 throw new BadRequestException("Pet life force is already full.");
 
-            // Tối đa 5 lần/ngày
+          
             if (interaction.Count >= 5)
                 throw new BadRequestException("You have reached the maximum feed limit today.");
 
-            // Cộng 20 điểm LifeForce
+          
             userPet.CurrentPetLifeForce = Math.Min(
                 userPet.PetLifeForce,
                 userPet.CurrentPetLifeForce + 20);
@@ -313,6 +322,111 @@ namespace BLL.Service
                 LifeForceRate = userPet.Pet.LifeForceRate
             };
         }
+        public async Task<List<EvolutionOptionResponse>> GetEvolutionOptionsAsync(Guid userId)
+        {
+            var userPet = await _petRepository.GetUserPetWithPetAsync(userId);
+
+            if (userPet == null)
+                throw new NotFoundException("Pet not found.");
+
+            
+            if (!userPet.Pet.PetName.Equals("starter",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BadRequestException(
+                    "Pet has already evolved.");
+            }
+
+            
+            if (userPet.Level < 10)
+            {
+                throw new BadRequestException(
+                    "Pet must reach level 10.");
+            }
+
+            var pets = await _petRepository.GetEvolutionOptionsAsync();
+
+            var result = new List<EvolutionOptionResponse>();
+
+            foreach (var pet in pets)
+            {
+                var stage = await _petRepository.GetFirstStageAsync(pet.PetId);
+
+                result.Add(new EvolutionOptionResponse
+                {
+                    PetId = pet.PetId,
+                    PetName = pet.PetName,
+                    RequiredLevel = stage?.RequiredLevel ?? 1,
+                    StateUrl = stage?.StateUrl
+                });
+            }
+
+            return result;
+        }
+        public async Task EvolveStarterAsync(
+    Guid userId,
+    Guid petId)
+        {
+            var userPet = await _petRepository.GetUserPetWithPetAsync(userId);
+
+            if (userPet == null)
+                throw new NotFoundException("Pet not found.");
+
+            if (!userPet.Pet.PetName.Equals("Starter",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BadRequestException(
+                    "Pet has already evolved.");
+            }
+
+            if (userPet.Level < 5)
+                throw new BadRequestException(
+                    "Pet must reach level 5.");
+
+            var pet = await _Pet.GetByIdAsync(petId);
+
+            if (pet == null)
+                throw new NotFoundException("Evolution pet not found.");
+
+            var firstStage = await _petRepository
+                .GetFirstStageAsync(petId);
+
+            if (firstStage == null)
+                throw new BadRequestException(
+                    "Evolution stage not found.");
+
+            
+            userPet.PetId = pet.PetId;
+
+          
+            userPet.PetEnergy = pet.Energy;
+            userPet.PetBond = pet.Bond;
+            userPet.PetLifeForce = pet.LifeForce;
+            userPet.PetExp = pet.Exp;
+
+            userPet.CurrentPetEnergy = pet.Energy;
+            userPet.CurrentPetBond = pet.Bond;
+            userPet.CurrentPetLifeForce = pet.LifeForce;
+            userPet.CurrentPetExp = 0;
+
+            userPet.EnergyUpdatedAt = GetVietnamNow();
+            userPet.BondUpdatedAt = GetVietnamNow();
+            userPet.LifeForceUpdatedAt = GetVietnamNow();
+            userPet.ExpUpdatedAt = GetVietnamNow();
+
+            _repository.Update(userPet);
+
+            await _PetHistory.AddAsync(new PetEvolutionHistory
+            {
+                EvolutionId = Guid.NewGuid(),
+                UserId = userId,
+                StageId = firstStage.StageId,
+                Level = userPet.Level,
+                EvolvedAt = GetVietnamNow()
+            });
+
+            await _repository.SaveAsync();
+        }
         private void UpdateEnergy(UserPet pet)
         {
             var now = GetVietnamNow();
@@ -330,7 +444,178 @@ namespace BLL.Service
             pet.EnergyUpdatedAt =
                 pet.EnergyUpdatedAt.AddMinutes(elapsedMinutes);
         }
+        public async Task<List<EvolutionStageResponse>> GetEvolutionStagesAsync(Guid userId)
+        {
+            var userPet = await _petRepository.GetUserPetWithPetAsync(userId);
 
+            if (userPet == null)
+                throw new NotFoundException("Pet not found.");
+
+            var stages = await _petRepository
+                .GetStagesByPetIdAsync(userPet.PetId);
+
+            if (!stages.Any())
+                throw new NotFoundException("Pet stages not found.");
+
+            var latest = await _PetEvolutionHistory
+                .GetLatestAsync(userId);
+
+            int currentStageNo;
+
+          
+            if (latest == null)
+            {
+                currentStageNo = 1;
+            }
+            else
+            {
+                currentStageNo = latest.Stage.StageNo;
+            }
+
+            var result = new List<EvolutionStageResponse>();
+
+            foreach (var stage in stages)
+            {
+                var animations = await _petRepository
+                    .GetAnimationsAsync(
+                        userPet.PetId,
+                        stage.StageNo);
+
+                result.Add(new EvolutionStageResponse
+                {
+                    StageId = stage.StageId,
+
+                    StageNo = stage.StageNo,
+
+                    StageName = stage.StageName,
+
+                    StateUrl = stage.StateUrl,
+
+                    RequiredLevel = stage.RequiredLevel,
+
+                    IsCurrent = stage.StageNo == currentStageNo,
+
+                    IsUnlocked = userPet.Level >= stage.RequiredLevel,
+
+                    Animations = animations
+                        .Select(a => new PetAnimationResponse
+                        {
+                            TypeAnimation = a.TypeAnimation,
+                            AnimationUrl = a.AnimationUrl
+                        })
+                        .ToList()
+                });
+            }
+
+            return result;
+        }
+        public async Task<EvolutionStageResponse> EvolveNextAsync(Guid userId)
+        {
+            var userPet = await _petRepository.GetUserPetWithPetAsync(userId);
+
+            if (userPet == null)
+                throw new NotFoundException("Pet not found.");
+
+            var latest = await _PetEvolutionHistory.GetLatestAsync(userId);
+
+            int currentStageNo = latest?.Stage.StageNo ?? 1;
+
+            var nextStage = await _petRepository.GetNextStageAsync(
+                userPet.PetId,
+                currentStageNo);
+
+            if (nextStage == null)
+                throw new BadRequestException("Pet is already at the final evolution stage.");
+
+            if (userPet.Level < nextStage.RequiredLevel)
+                throw new BadRequestException(
+                    $"Pet must reach level {nextStage.RequiredLevel}.");
+
+            var history = new PetEvolutionHistory
+            {
+                EvolutionId = Guid.NewGuid(),
+                UserId = userId,
+                StageId = nextStage.StageId,
+                Level = userPet.Level,
+                EvolvedAt = GetVietnamNow()
+            };
+
+            await _PetHistory.AddAsync(history);
+            await _repository.SaveAsync();
+
+            var animations = await _petRepository.GetAnimationsAsync(
+                userPet.PetId,
+                nextStage.StageNo);
+
+            return new EvolutionStageResponse
+            {
+                StageId = nextStage.StageId,
+                StageNo = nextStage.StageNo,
+                StageName = nextStage.StageName,
+                StateUrl = nextStage.StateUrl,
+                RequiredLevel = nextStage.RequiredLevel,
+                IsCurrent = true,
+                IsUnlocked = true,
+                Animations = animations.Select(x => new PetAnimationResponse
+                {
+                    TypeAnimation = x.TypeAnimation,
+                    AnimationUrl = x.AnimationUrl
+                }).ToList()
+            };
+        }
+        public async Task<List<PetLeaderboardResponse>> GetLeaderboardAsync()
+        {
+            var userPets = await _petRepository.GetLeaderboardAsync();
+
+            var result = new List<PetLeaderboardResponse>();
+
+            int rank = 1;
+
+            foreach (var userPet in userPets)
+            {
+                var latestEvolution = await _PetEvolutionHistory
+                    .GetLatestAsync(userPet.UserId);
+
+                PetStage? stage;
+
+                if (latestEvolution != null)
+                {
+                    stage = latestEvolution.Stage;
+                }
+                else
+                {
+                    stage = await _petRepository.GetFirstStageAsync(userPet.PetId);
+                }
+
+                result.Add(new PetLeaderboardResponse
+                {
+                    Rank = rank,
+
+                    UserId = userPet.UserId,
+
+                    UserName = userPet.User?.UserProfile?.Username
+                                ?? "Unknown",
+
+                    PetName = userPet.Pet?.PetName
+                              ?? "Unknown",
+
+                    Level = userPet.Level,
+
+                    CurrentExp = userPet.CurrentPetExp,
+
+                    MaxExp = userPet.PetExp,
+
+                    StageName = stage?.StageName
+                                ?? "Unknown",
+
+                    StageImage = stage?.StateUrl
+                });
+
+                rank++;
+            }
+
+            return result;
+        }
         private void UpdateBond(UserPet pet)
         {
             var now = GetVietnamNow();
@@ -410,6 +695,79 @@ namespace BLL.Service
 
                 CurrentLifeForce = pet.CurrentPetLifeForce,
                 MaxLifeForce = pet.PetLifeForce
+            };
+        }
+        public async Task<List<EvolutionHistoryResponse>> GetEvolutionHistoryAsync(Guid userId)
+        {
+            var history = await _PetEvolutionHistory.GetHistoryAsync(userId);
+
+            return history.Select(x => new EvolutionHistoryResponse
+            {
+                PetName = x.Stage.Pet.PetName,
+                StageName = x.Stage.StageName,
+                StageNo = x.Stage.StageNo,
+                Level = x.Level,
+                EvolvedAt = x.EvolvedAt
+            }).ToList();
+        }
+        public async Task<FriendSpiritResponse> GetFriendSpiritAsync(Guid friendUserId)
+        {
+            var userPet = await _petRepository.GetFriendPetAsync(friendUserId);
+
+            if (userPet == null)
+                throw new NotFoundException("Friend spirit not found.");
+
+            var latest = await _PetEvolutionHistory.GetLatestAsync(friendUserId);
+
+            PetStage? stage;
+
+            if (latest != null)
+            {
+                stage = latest.Stage;
+            }
+            else
+            {
+                stage = await _petRepository.GetFirstStageAsync(userPet.PetId);
+            }
+
+            var animations = await _petRepository.GetAnimationsAsync(
+                userPet.PetId,
+                stage!.StageNo);
+
+            return new FriendSpiritResponse
+            {
+                UserId = friendUserId,
+
+                UserName = userPet.User.UserProfile.Username,
+
+                PetNickName = userPet.PetName,
+
+                PetName = userPet.Pet.PetName,
+
+                Level = userPet.Level,
+
+                CurrentExp = userPet.CurrentPetExp,
+
+                MaxExp = userPet.PetExp,
+
+                CurrentEnergy = userPet.CurrentPetEnergy,
+                MaxEnergy = userPet.PetEnergy,
+
+                CurrentBond = userPet.CurrentPetBond,
+                MaxBond = userPet.PetBond,
+
+                CurrentLifeForce = userPet.CurrentPetLifeForce,
+                MaxLifeForce = userPet.PetLifeForce,
+
+                StageName = stage.StageName,
+
+                StageImage = stage.StateUrl,
+
+                Animations = animations.Select(x => new PetAnimationResponse
+                {
+                    TypeAnimation = x.TypeAnimation,
+                    AnimationUrl = x.AnimationUrl
+                }).ToList()
             };
         }
     }

@@ -111,5 +111,100 @@ namespace Walkamon.Controllers
                 Data = result
             });
         }
+        [HttpGet("evolution/options")]
+        public async Task<IActionResult> GetEvolutionOptions()
+        {
+            var result = await _petService
+                .GetEvolutionOptionsAsync(CurrentUserId);
+
+            return Ok(new
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Data = result
+            });
+        }
+        [HttpPost("evolution")]
+        public async Task<IActionResult> Evolve(
+    EvolutionRequest request)
+        {
+            await _petService.EvolveStarterAsync(
+                CurrentUserId,
+                request.PetId);
+
+            return Ok(new
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Evolution successful."
+            });
+        }
+        [HttpGet("evolution/stages")]
+        public async Task<IActionResult> GetStages()
+        {
+            var result = await _petService
+                .GetEvolutionStagesAsync(CurrentUserId);
+
+            return Ok(new
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Get evolution stages successfully.",
+                Data = result
+            });
+        }
+        [HttpPost("evolution/next")]
+        public async Task<IActionResult> EvolveNext()
+        {
+            var result = await _petService.EvolveNextAsync(CurrentUserId);
+
+            return Ok(new
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Evolution successful.",
+                Data = result
+            });
+        }
+        [HttpGet("leaderboard")]
+public async Task<IActionResult> GetLeaderboard()
+{
+    var result = await _petService.GetLeaderboardAsync();
+
+    return Ok(new
+    {
+        Success = true,
+        Status = StatusCodes.Status200OK,
+        Message = "Get leaderboard successfully.",
+        Data = result
+    });
+}
+        [HttpGet("evolution/history")]
+        public async Task<IActionResult> GetHistory()
+        {
+            var result = await _petService.GetEvolutionHistoryAsync(CurrentUserId);
+
+            return Ok(new
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Get evolution history successfully.",
+                Data = result
+            });
+        }
+
+        [HttpGet("friend/{friendUserId:guid}")]
+        public async Task<IActionResult> GetFriendSpirit(Guid friendUserId)
+        {
+            var result = await _petService.GetFriendSpiritAsync(friendUserId);
+
+            return Ok(new
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Get friend spirit successfully.",
+                Data = result
+            });
+        }
     }
 }
