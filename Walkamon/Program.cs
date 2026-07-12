@@ -88,6 +88,9 @@ builder.Services.Configure<SmtpOptions>(
 builder.Services.Configure<FirebaseOptions>(
     builder.Configuration.GetSection(FirebaseOptions.SectionName));
 
+builder.Services.Configure<DailyLoginRewardOptions>(
+    builder.Configuration.GetSection(DailyLoginRewardOptions.SectionName));
+
 builder.Services.AddScoped<IEmailSender, GmailSmtpEmailSender>();
 
 builder.Services.AddScoped<IUserService, UserService>();
@@ -133,6 +136,8 @@ builder.Services.AddScoped<IStepGoalRepository, StepGoalRepository>();
 builder.Services.AddScoped<IStepGoalService, StepGoalService>();
 builder.Services.AddScoped<IStreakRewardService, StreakRewardService>();
 builder.Services.AddScoped<IStreakRewardRepository, StreakRewardRepository>();
+builder.Services.AddScoped<IDailyLoginRewardRepository, DailyLoginRewardRepository>();
+builder.Services.AddScoped<IDailyLoginRewardService, DailyLoginRewardService>();
 builder.Services.AddScoped<IPetService, PetService>();
 builder.Services.AddScoped<IPetRepository, PetRepository>();
 

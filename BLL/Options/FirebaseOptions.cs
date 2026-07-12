@@ -9,4 +9,6 @@ public class FirebaseOptions
     public string? ServiceAccountPath { get; set; }
 
     public string? ServiceAccountJsonBase64 { get; set; }
+
+    public string AndroidChannelId { get; set; } = "high_importance_channel";
 }

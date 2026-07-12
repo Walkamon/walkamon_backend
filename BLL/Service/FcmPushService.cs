@@ -55,6 +55,15 @@ public class FcmPushService : IFcmPushService
                 Body = notification.Body,
                 ImageUrl = notification.ImageUrl
             },
+            Android = string.IsNullOrWhiteSpace(_options.AndroidChannelId)
+                ? null
+                : new AndroidConfig
+                {
+                    Notification = new AndroidNotification
+                    {
+                        ChannelId = _options.AndroidChannelId
+                    }
+                },
             Data = new Dictionary<string, string>
             {
                 ["notificationId"] = notification.NotificationId.ToString(),
