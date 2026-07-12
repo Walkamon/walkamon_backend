@@ -29,6 +29,8 @@ public partial class WalkamonContext : DbContext
 
     public virtual DbSet<DailyStep> DailySteps { get; set; }
 
+    public virtual DbSet<DailyLoginRewardClaim> DailyLoginRewardClaims { get; set; }
+
     public virtual DbSet<DeviceToken> DeviceTokens { get; set; }
 
     public virtual DbSet<ExternalLogin> ExternalLogins { get; set; }
@@ -146,6 +148,26 @@ public partial class WalkamonContext : DbContext
 
             entity.HasOne(e => e.User)
                 .WithMany(u => u.StreakRewardClaims)
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<DailyLoginRewardClaim>(entity =>
+        {
+            entity.HasKey(e => new { e.UserId, e.ClaimDate });
+
+            entity.ToTable("daily_login_reward_claims");
+
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.ClaimDate).HasColumnName("claim_date");
+            entity.Property(e => e.CycleDay).HasColumnName("cycle_day");
+            entity.Property(e => e.Reward).HasColumnName("reward");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(sysutcdatetime())")
+                .HasColumnName("created_at");
+
+            entity.HasOne(e => e.User)
+                .WithMany(u => u.DailyLoginRewardClaims)
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

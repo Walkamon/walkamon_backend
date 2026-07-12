@@ -37,6 +37,8 @@ public partial class User
 
     public virtual ICollection<DailyStep> DailySteps { get; set; } = new List<DailyStep>();
 
+    public virtual ICollection<DailyLoginRewardClaim> DailyLoginRewardClaims { get; set; } = new List<DailyLoginRewardClaim>();
+
     public virtual ICollection<DeviceToken> DeviceTokens { get; set; } = new List<DeviceToken>();
 
     public virtual ICollection<ExternalLogin> ExternalLogins { get; set; } = new List<ExternalLogin>();
