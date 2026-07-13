@@ -105,5 +105,11 @@ namespace DAL.Repository
                     .ThenInclude(x => x.UserProfile)
                 .FirstOrDefaultAsync(x => x.UserId == userId);
         }
+        public async Task<List<Pet>> GetEvolutionPetsAsync()
+        {
+            return await _context.Pets
+                .Where(x => x.PetName != "Starter")
+                .ToListAsync();
+        }
     }
 }

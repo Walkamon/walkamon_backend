@@ -338,10 +338,10 @@ namespace BLL.Service
             }
 
             
-            if (userPet.Level < 10)
+            if (userPet.Level < 5)
             {
                 throw new BadRequestException(
-                    "Pet must reach level 10.");
+                    "Pet must reach level 5.");
             }
 
             var pets = await _petRepository.GetEvolutionOptionsAsync();
@@ -769,6 +769,59 @@ namespace BLL.Service
                     AnimationUrl = x.AnimationUrl
                 }).ToList()
             };
+        }
+        public async Task<List<PetEvolutionPreviewResponse>>
+GetEvolutionPreviewAsync()
+        {
+            var pets = await _petRepository.GetEvolutionPetsAsync();
+
+            var result = new List<PetEvolutionPreviewResponse>();
+
+            foreach (var pet in pets)
+            {
+                var stages = await _petRepository
+                    .GetStagesByPetIdAsync(pet.PetId);
+
+                var stageResponses = new List<PetStageAnimationResponse>();
+
+                foreach (var stage in stages)
+                {
+                    var animations = await _petRepository
+                        .GetAnimationsAsync(
+                            pet.PetId,
+                            stage.StageNo);
+
+                    stageResponses.Add(new PetStageAnimationResponse
+                    {
+                        StageNo = stage.StageNo,
+
+                        StageName = stage.StageName,
+
+                        StageImage = stage.StateUrl,
+
+                        RequiredLevel = stage.RequiredLevel,
+
+                        Animations = animations
+                            .Select(x => new PetAnimationInfoResponse
+                            {
+                                TypeAnimation = x.TypeAnimation,
+                                AnimationUrl = x.AnimationUrl
+                            })
+                            .ToList()
+                    });
+                }
+
+                result.Add(new PetEvolutionPreviewResponse
+                {
+                    PetId = pet.PetId,
+
+                    PetName = pet.PetName,
+
+                    Stages = stageResponses
+                });
+            }
+
+            return result;
         }
     }
 }
