@@ -26,5 +26,7 @@ namespace BLL.Interfaces
         Task<List<PetLeaderboardResponse>> GetLeaderboardAsync();
         Task<List<EvolutionHistoryResponse>> GetEvolutionHistoryAsync(Guid userId);
         Task<FriendSpiritResponse> GetFriendSpiritAsync(Guid friendUserId);
+        Task<List<PetEvolutionPreviewResponse>>
+GetEvolutionPreviewAsync();
     }
 }

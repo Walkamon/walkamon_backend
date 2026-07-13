@@ -206,5 +206,19 @@ public async Task<IActionResult> GetLeaderboard()
                 Data = result
             });
         }
+        [HttpGet("evolution/preview")]
+        public async Task<IActionResult> GetEvolutionPreview()
+        {
+            var result = await _petService
+                .GetEvolutionPreviewAsync();
+
+            return Ok(new
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Get evolution preview successfully.",
+                Data = result
+            });
+        }
     }
 }

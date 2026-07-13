@@ -26,5 +26,6 @@ namespace DAL.Interfaces
         Task<PetStage?> GetNextStageAsync(Guid petId, int currentStageNo);
         Task<List<UserPet>> GetLeaderboardAsync();
         Task<UserPet?> GetFriendPetAsync(Guid userId);
+        Task<List<Pet>> GetEvolutionPetsAsync();
     }
 }
