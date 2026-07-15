@@ -2,6 +2,7 @@ using BLL.Exceptions;
 using BLL.Interfaces;
 using DAL.Data;
 using DAL.DTO;
+using DAL.Extensions;
 using DAL.Interfaces;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
@@ -118,26 +119,26 @@ public class PlayerAchievementService : IPlayerAchievementService
 
         var rewardPackage = await _rewardPackageRepository.GetByIdAsync(achievement.RewardPackageId);
         var rewardItems = (await _rewardPackageItemRepository.FindAsync(x => x.RewardPackageId == achievement.RewardPackageId)).ToList();
-        
+
         var itemIds = rewardItems.Select(x => x.ItemId).ToHashSet();
-        var items = itemIds.Count > 0 
-            ? (await _itemRepository.FindAsync(x => itemIds.Contains(x.ItemId))).ToDictionary(x => x.ItemId) 
+        var items = itemIds.Count > 0
+            ? (await _itemRepository.FindAsync(x => itemIds.Contains(x.ItemId))).ToDictionary(x => x.ItemId)
             : new Dictionary<Guid, Item>();
-            
+
         var userAchievement = await _userAchievementRepository.FirstOrDefaultAsync(x => x.UserId == userId && x.AchievementId == achievementId);
         var conditions = (await _achievementConditionRepository.FindAsync(x => x.AchievementId == achievementId && x.ConditionGroup == "assignment")).ToList();
 
-        var rewardPackagesDict = rewardPackage != null 
-            ? new Dictionary<Guid, RewardPackage> { [rewardPackage.RewardPackageId] = rewardPackage } 
+        var rewardPackagesDict = rewardPackage != null
+            ? new Dictionary<Guid, RewardPackage> { [rewardPackage.RewardPackageId] = rewardPackage }
             : new Dictionary<Guid, RewardPackage>();
-            
-        var userAchievementsDict = userAchievement != null 
-            ? new Dictionary<Guid, UserAchievement> { [userAchievement.AchievementId] = userAchievement } 
+
+        var userAchievementsDict = userAchievement != null
+            ? new Dictionary<Guid, UserAchievement> { [userAchievement.AchievementId] = userAchievement }
             : new Dictionary<Guid, UserAchievement>();
-            
-        var assignmentConditionsDict = new Dictionary<Guid, List<AchievementCondition>> 
-        { 
-            [achievementId] = conditions 
+
+        var assignmentConditionsDict = new Dictionary<Guid, List<AchievementCondition>>
+        {
+            [achievementId] = conditions
         };
 
         // We also need to fetch referenced user achievements to check prerequisites properly.
@@ -167,10 +168,9 @@ public class PlayerAchievementService : IPlayerAchievementService
         Guid userId,
         Guid achievementId)
     {
-        await using var transaction = await _context.Database.BeginTransactionAsync(
-            IsolationLevel.Serializable);
-
-        try
+        var response = await _context.ExecuteInTransactionAsync(
+            IsolationLevel.Serializable,
+            async () =>
         {
             var achievement = await _achievementRepository.FirstOrDefaultAsync(x =>
                 x.AchievementId == achievementId
@@ -287,13 +287,6 @@ public class PlayerAchievementService : IPlayerAchievementService
             _userAchievementRepository.Update(userAchievement);
 
             await _userAchievementRepository.SaveAsync();
-            await transaction.CommitAsync();
-
-            if (rewardPackage.WalletAmount > 0)
-            {
-                await _achievementProgressService.AddProgressAsync(userId, "wallet_earned", rewardPackage.WalletAmount);
-                await _missionProgressService.AddProgressAsync(userId, "wallet_earned", rewardPackage.WalletAmount);
-            }
 
             return new ClaimAchievementRewardResponse
             {
@@ -303,12 +296,15 @@ public class PlayerAchievementService : IPlayerAchievementService
                 WalletBalance = wallet.Balance,
                 ClaimedAt = claimedAt
             };
-        }
-        catch
+        });
+
+        if (response.WalletAmount > 0)
         {
-            await transaction.RollbackAsync();
-            throw;
+            await _achievementProgressService.AddProgressAsync(userId, "wallet_earned", response.WalletAmount);
+            await _missionProgressService.AddProgressAsync(userId, "wallet_earned", response.WalletAmount);
         }
+
+        return response;
     }
 
     private static PlayerAchievementItemResponse ToAchievementItemResponse(

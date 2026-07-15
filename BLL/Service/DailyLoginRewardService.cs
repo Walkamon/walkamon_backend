@@ -1,7 +1,9 @@
 using BLL.Exceptions;
 using BLL.Interfaces;
 using BLL.Options;
+using DAL.Data;
 using DAL.DTO;
+using DAL.Extensions;
 using DAL.Interfaces;
 using DAL.Models;
 using Microsoft.Data.SqlClient;
@@ -16,13 +18,16 @@ public class DailyLoginRewardService : IDailyLoginRewardService
     private const string VietnamTimeZoneId = "SE Asia Standard Time";
 
     private readonly IDailyLoginRewardRepository _repository;
+    private readonly WalkamonContext _context;
     private readonly DailyLoginRewardOptions _options;
 
     public DailyLoginRewardService(
         IDailyLoginRewardRepository repository,
+        WalkamonContext context,
         IOptions<DailyLoginRewardOptions> options)
     {
         _repository = repository;
+        _context = context;
         _options = options.Value;
     }
 
@@ -40,62 +45,57 @@ public class DailyLoginRewardService : IDailyLoginRewardService
         var rewards = GetRewards();
         var today = GetToday();
 
-        await using var transaction = await _repository
-            .BeginTransactionAsync(IsolationLevel.Serializable);
-
         try
         {
-            var lastClaim = await _repository.GetLatestClaimAsync(userId);
-            if (lastClaim?.ClaimDate == today)
+            return await _context.ExecuteInTransactionAsync(
+                IsolationLevel.Serializable,
+                async () =>
             {
-                throw new BadRequestException("Daily login reward has already been claimed today.");
-            }
+                var lastClaim = await _repository.GetLatestClaimAsync(userId);
+                if (lastClaim?.ClaimDate == today)
+                {
+                    throw new BadRequestException("Daily login reward has already been claimed today.");
+                }
 
-            var wallet = await _repository.GetWalletAsync(userId);
-            if (wallet == null)
-            {
-                throw new NotFoundException("Wallet not found.");
-            }
+                var wallet = await _repository.GetWalletAsync(userId);
+                if (wallet == null)
+                {
+                    throw new NotFoundException("Wallet not found.");
+                }
 
-            var claimedDay = GetNextDay(lastClaim, rewards.Length);
-            var reward = rewards[claimedDay - 1];
+                var claimedDay = GetNextDay(lastClaim, rewards.Length);
+                var reward = rewards[claimedDay - 1];
 
-            checked
-            {
-                wallet.Balance += reward;
-            }
+                checked
+                {
+                    wallet.Balance += reward;
+                }
 
-            _repository.UpdateWallet(wallet);
-            await _repository.AddClaimAsync(new DailyLoginRewardClaim
-            {
-                UserId = userId,
-                ClaimDate = today,
-                CycleDay = claimedDay,
-                Reward = reward,
-                CreatedAt = DateTime.UtcNow
+                _repository.UpdateWallet(wallet);
+                await _repository.AddClaimAsync(new DailyLoginRewardClaim
+                {
+                    UserId = userId,
+                    ClaimDate = today,
+                    CycleDay = claimedDay,
+                    Reward = reward,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                await _repository.SaveChangesAsync();
+
+                return new DailyLoginRewardClaimResponse
+                {
+                    ClaimDate = today,
+                    ClaimedDay = claimedDay,
+                    Reward = reward,
+                    Balance = wallet.Balance,
+                    NextDay = claimedDay == rewards.Length ? 1 : claimedDay + 1
+                };
             });
-
-            await _repository.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return new DailyLoginRewardClaimResponse
-            {
-                ClaimDate = today,
-                ClaimedDay = claimedDay,
-                Reward = reward,
-                Balance = wallet.Balance,
-                NextDay = claimedDay == rewards.Length ? 1 : claimedDay + 1
-            };
         }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
         {
-            await transaction.RollbackAsync();
             throw new BadRequestException("Daily login reward has already been claimed today.");
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
         }
     }
 

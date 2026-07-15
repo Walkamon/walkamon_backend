@@ -2,8 +2,6 @@ using DAL.Data;
 using DAL.Interfaces;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
-using System.Data;
 
 namespace DAL.Repository;
 
@@ -38,11 +36,6 @@ public class DailyLoginRewardRepository : IDailyLoginRewardRepository
     public void UpdateWallet(Wallet wallet)
     {
         _context.Wallets.Update(wallet);
-    }
-
-    public Task<IDbContextTransaction> BeginTransactionAsync(IsolationLevel isolationLevel)
-    {
-        return _context.Database.BeginTransactionAsync(isolationLevel);
     }
 
     public Task SaveChangesAsync()
