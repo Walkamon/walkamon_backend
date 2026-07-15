@@ -1,5 +1,6 @@
 using BLL.Interfaces;
 using DAL.Data;
+using DAL.Extensions;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -39,7 +40,7 @@ public class MissionProgressService : IMissionProgressService
     {
         var now = DateTime.UtcNow;
         var missions = await _context.Missions
-            .Where(x => x.MetricCode == metricCode 
+            .Where(x => x.MetricCode == metricCode
                 && x.IsActive
                 && (!x.StartAt.HasValue || x.StartAt.Value <= now)
                 && (!x.EndAt.HasValue || x.EndAt.Value >= now))
@@ -47,8 +48,9 @@ public class MissionProgressService : IMissionProgressService
 
         if (missions.Count == 0) return;
 
-        await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
-        try
+        await _context.ExecuteInTransactionAsync(
+            IsolationLevel.Serializable,
+            async () =>
         {
             foreach (var mission in missions)
             {
@@ -104,13 +106,7 @@ public class MissionProgressService : IMissionProgressService
             }
 
             await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
+        });
     }
 
     public async Task<bool> ArePrerequisitesMetAsync(Guid userId, Guid missionId)
@@ -140,8 +136,8 @@ public class MissionProgressService : IMissionProgressService
 
                 var cycleDate = GetCycleDate(refMission.MissionTypeCode, now);
                 var userRefMission = await _context.UserMissions
-                    .FirstOrDefaultAsync(x => x.UserId == userId 
-                        && x.MissionId == refMissionId 
+                    .FirstOrDefaultAsync(x => x.UserId == userId
+                        && x.MissionId == refMissionId
                         && x.CycleDate == cycleDate);
 
                 if (userRefMission == null || !string.Equals(userRefMission.StatusCode, ClaimedStatusCode, StringComparison.OrdinalIgnoreCase))

@@ -2,6 +2,7 @@ using BLL.Exceptions;
 using BLL.Interfaces;
 using DAL.Data;
 using DAL.DTO;
+using DAL.Extensions;
 using DAL.Interfaces;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
@@ -76,10 +77,9 @@ public class PlayerMissionService : IPlayerMissionService
         Guid userId,
         Guid missionId)
     {
-        await using var transaction = await _context.Database.BeginTransactionAsync(
-            IsolationLevel.Serializable);
-
-        try
+        var response = await _context.ExecuteInTransactionAsync(
+            IsolationLevel.Serializable,
+            async () =>
         {
             var now = DateTime.UtcNow;
             var mission = await _missionRepository.FirstOrDefaultAsync(x =>
@@ -210,15 +210,6 @@ public class PlayerMissionService : IPlayerMissionService
             _userMissionRepository.Update(userMission);
 
             await _userMissionRepository.SaveAsync();
-            await transaction.CommitAsync();
-
-            await _achievementProgressService.AddProgressAsync(userId, "mission_completed", 1);
-            await _missionProgressService.AddProgressAsync(userId, "mission_completed", 1);
-            if (rewardPackage.WalletAmount > 0)
-            {
-                await _achievementProgressService.AddProgressAsync(userId, "wallet_earned", rewardPackage.WalletAmount);
-                await _missionProgressService.AddProgressAsync(userId, "wallet_earned", rewardPackage.WalletAmount);
-            }
 
             return new ClaimMissionRewardResponse
             {
@@ -229,12 +220,17 @@ public class PlayerMissionService : IPlayerMissionService
                 WalletBalance = wallet.Balance,
                 ClaimedAt = claimedAt
             };
-        }
-        catch
+        });
+
+        await _achievementProgressService.AddProgressAsync(userId, "mission_completed", 1);
+        await _missionProgressService.AddProgressAsync(userId, "mission_completed", 1);
+        if (response.WalletAmount > 0)
         {
-            await transaction.RollbackAsync();
-            throw;
+            await _achievementProgressService.AddProgressAsync(userId, "wallet_earned", response.WalletAmount);
+            await _missionProgressService.AddProgressAsync(userId, "wallet_earned", response.WalletAmount);
         }
+
+        return response;
     }
 
     private async Task<List<PlayerMissionItemResponse>> GetMissionsAsync(

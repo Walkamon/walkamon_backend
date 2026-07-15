@@ -1,5 +1,6 @@
 using BLL.Interfaces;
 using DAL.Data;
+using DAL.Extensions;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -38,13 +39,9 @@ public class AchievementProgressService : IAchievementProgressService
 
         if (achievements.Count == 0) return;
 
-        // Registration verification already owns an execution-strategy transaction.
-        // Reuse it so SQL Server does not receive a nested user transaction.
-        var ownsTransaction = _context.Database.CurrentTransaction == null;
-        await using var transaction = ownsTransaction
-            ? await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable)
-            : null;
-        try
+        await _context.ExecuteInTransactionAsync(
+            IsolationLevel.Serializable,
+            async () =>
         {
             var newlyUnlockedIds = new List<Guid>();
 
@@ -103,20 +100,7 @@ public class AchievementProgressService : IAchievementProgressService
             {
                 await ProcessCascadingUnlocksAsync(userId, newlyUnlockedIds);
             }
-
-            if (transaction != null)
-            {
-                await transaction.CommitAsync();
-            }
-        }
-        catch
-        {
-            if (transaction != null)
-            {
-                await transaction.RollbackAsync();
-            }
-            throw;
-        }
+        });
     }
 
     private async Task<bool> ArePrerequisitesMetAsync(Guid userId, Guid achievementId)
