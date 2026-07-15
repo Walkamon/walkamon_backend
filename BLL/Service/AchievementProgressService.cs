@@ -38,7 +38,12 @@ public class AchievementProgressService : IAchievementProgressService
 
         if (achievements.Count == 0) return;
 
-        await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        // Registration verification already owns an execution-strategy transaction.
+        // Reuse it so SQL Server does not receive a nested user transaction.
+        var ownsTransaction = _context.Database.CurrentTransaction == null;
+        await using var transaction = ownsTransaction
+            ? await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable)
+            : null;
         try
         {
             var newlyUnlockedIds = new List<Guid>();
@@ -99,11 +104,17 @@ public class AchievementProgressService : IAchievementProgressService
                 await ProcessCascadingUnlocksAsync(userId, newlyUnlockedIds);
             }
 
-            await transaction.CommitAsync();
+            if (transaction != null)
+            {
+                await transaction.CommitAsync();
+            }
         }
         catch
         {
-            await transaction.RollbackAsync();
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
             throw;
         }
     }
