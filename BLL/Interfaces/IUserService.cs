@@ -14,6 +14,12 @@ namespace BLL.Interfaces
             Guid userId,
             UpdateProfileRequest request,
             string? avatarUrl);
+        Task<UserPreferenceResponse> UpdateLanguageModeAsync(
+            Guid userId,
+            UpdateLanguageModeRequest request);
+        Task<UserPreferenceResponse> UpdateThemeModeAsync(
+            Guid userId,
+            UpdateThemeModeRequest request);
         Task DisableUserAsync(Guid userId);
 
         Task EnableUserAsync(Guid userId);
