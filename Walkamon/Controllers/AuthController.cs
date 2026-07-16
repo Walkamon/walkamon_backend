@@ -234,6 +234,52 @@ public class AuthController : BaseController
         });
     }
 
+    [Authorize(Roles = "User")]
+    [HttpPatch("profile/language")]
+    [ProducesResponseType(typeof(ApiResponse<UserPreferenceResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateLanguageMode(
+        UpdateLanguageModeRequest request)
+    {
+        var result = await _userService.UpdateLanguageModeAsync(
+            CurrentUserId,
+            request);
+
+        return Ok(new ApiResponse<UserPreferenceResponse>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Update language mode success",
+            Data = result
+        });
+    }
+
+    [Authorize(Roles = "User")]
+    [HttpPatch("profile/theme")]
+    [ProducesResponseType(typeof(ApiResponse<UserPreferenceResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateThemeMode(
+        UpdateThemeModeRequest request)
+    {
+        var result = await _userService.UpdateThemeModeAsync(
+            CurrentUserId,
+            request);
+
+        return Ok(new ApiResponse<UserPreferenceResponse>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Update theme mode success",
+            Data = result
+        });
+    }
+
     // Đổi mật khẩu, không cho phép Admin.
     [Authorize]
     [HttpPut("change-password")]

@@ -178,6 +178,56 @@ namespace BLL.Service
             return ToUserDetailResponse(user);
         }
 
+        public Task<UserPreferenceResponse> UpdateLanguageModeAsync(
+            Guid userId,
+            UpdateLanguageModeRequest request)
+        {
+            return UpdatePreferenceAsync(
+                userId,
+                profile => profile.LanguageCode = request.LanguageCode);
+        }
+
+        public Task<UserPreferenceResponse> UpdateThemeModeAsync(
+            Guid userId,
+            UpdateThemeModeRequest request)
+        {
+            return UpdatePreferenceAsync(
+                userId,
+                profile => profile.ThemeCode = request.ThemeCode);
+        }
+
+        private async Task<UserPreferenceResponse> UpdatePreferenceAsync(
+            Guid userId,
+            Action<UserProfile> updateProfile)
+        {
+            var user = await _userRepository.GetByIdWithProfileAsync(userId);
+
+            if (user == null)
+            {
+                throw new NotFoundException("User not found");
+            }
+
+            if (user.UserProfile == null)
+            {
+                throw new NotFoundException("User profile not found");
+            }
+
+            var now = DateTime.UtcNow;
+            updateProfile(user.UserProfile);
+            user.UserProfile.UpdatedAt = now;
+            user.UpdatedAt = now;
+
+            _userRepository.Update(user);
+            await _userRepository.SaveAsync();
+
+            return new UserPreferenceResponse
+            {
+                LanguageCode = user.UserProfile.LanguageCode,
+                ThemeCode = user.UserProfile.ThemeCode,
+                UpdatedAt = user.UserProfile.UpdatedAt
+            };
+        }
+
         private static UserDetailResponse ToUserDetailResponse(User user)
         {
             return new UserDetailResponse
