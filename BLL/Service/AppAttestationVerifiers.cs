@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -86,6 +87,8 @@ public sealed class PlayIntegrityAttestationVerifier : IAppAttestationVerifier
             "application/json");
         using var response = await _httpClient.SendAsync(message, cancellationToken);
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            return new(false, "rate_limited", null, null, json, "play_integrity_rate_limited");
         if (!response.IsSuccessStatusCode)
             return new(false, "decode_failed", null, null, json, $"play_integrity_http_{(int)response.StatusCode}");
         return PlayIntegrityVerdictValidator.Validate(json, request.PayloadHash, request.ServerTime, _options);
