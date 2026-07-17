@@ -500,8 +500,15 @@ public sealed class ValidatedStepService : IValidatedStepService
     {
         var date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
             AsUtc(recordedAt), VietnamTimeZone));
-        var daily = await _context.DailySteps
-            .FirstOrDefaultAsync(x => x.UserId == userId && x.StepDate == date, cancellationToken);
+        // A sensor batch can contain multiple events for the same Vietnam date.
+        // The first event may have added this aggregate without saving it yet, so
+        // check the identity map before querying the database and adding another
+        // entity with the same composite key.
+        var daily = _context.DailySteps.Local
+            .FirstOrDefault(x => x.UserId == userId && x.StepDate == date)
+            ?? await _context.DailySteps.FirstOrDefaultAsync(
+                x => x.UserId == userId && x.StepDate == date,
+                cancellationToken);
         if (daily == null)
         {
             daily = new DailyStep

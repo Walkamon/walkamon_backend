@@ -25,7 +25,8 @@ public class CreateAdminNotificationRequestValidator
             .MaximumLength(30);
 
         RuleFor(x => x.ImageUrl)
-            .MaximumLength(500);
+            .MaximumLength(500)
+            .When(x => x.Image == null);
     }
 }
 
@@ -51,6 +52,7 @@ public class UpdateAdminNotificationRequestValidator
             .When(x => x.TargetAudienceCode != null);
 
         RuleFor(x => x.ImageUrl)
-            .MaximumLength(500);
+            .MaximumLength(500)
+            .When(x => x.Image == null);
     }
 }
