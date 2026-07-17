@@ -55,6 +55,14 @@ public partial class User
 
     public virtual MatchmakingQueue? MatchmakingQueue { get; set; }
 
+    public virtual PvpPlayerProfile? PvpPlayerProfile { get; set; }
+
+    public virtual PvpPlayerActivity? PvpPlayerActivity { get; set; }
+
+    public virtual ICollection<PvpSprintInvite> PvpSprintInvitesSent { get; set; } = new List<PvpSprintInvite>();
+
+    public virtual ICollection<PvpSprintInvite> PvpSprintInvitesReceived { get; set; } = new List<PvpSprintInvite>();
+
     public virtual ICollection<Notification> Notifications { get; set; } = new List<Notification>();
 
     public virtual ICollection<OtpRequest> OtpRequests { get; set; } = new List<OtpRequest>();
@@ -64,6 +72,10 @@ public partial class User
     public virtual ICollection<PetEvolutionHistory> PetEvolutionHistories { get; set; } = new List<PetEvolutionHistory>();
 
     public virtual ICollection<PvpMatchPlayer> PvpMatchPlayers { get; set; } = new List<PvpMatchPlayer>();
+
+    public virtual ICollection<PvpStepSession> PvpStepSessions { get; set; } = new List<PvpStepSession>();
+
+    public virtual ICollection<ValidatedStepRecord> ValidatedStepRecords { get; set; } = new List<ValidatedStepRecord>();
 
     public virtual ICollection<PvpMatch> PvpMatches { get; set; } = new List<PvpMatch>();
 

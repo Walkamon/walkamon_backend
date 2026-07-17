@@ -92,14 +92,19 @@ public class InventoryService : IInventoryService
             throw new BadRequestException("Item effect is not configured");
         }
 
+        var effectTypeCode = item.EffectTypeCode.Trim().ToLowerInvariant();
+        var effectValue = item.EffectValue.Value;
+
+        if (effectTypeCode.StartsWith("pvp_", StringComparison.Ordinal))
+        {
+            throw new ConflictException("PvP items can only be used through an active Sprint match.");
+        }
+
         var userPet = await _userPetRepository.GetByIdAsync(userId);
         if (userPet == null)
         {
             throw new NotFoundException("Pet not found");
         }
-
-        var effectTypeCode = item.EffectTypeCode.Trim().ToLowerInvariant();
-        var effectValue = item.EffectValue.Value;
 
         ApplyItemEffect(userPet, effectTypeCode, effectValue);
 

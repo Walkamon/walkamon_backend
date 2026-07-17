@@ -9,6 +9,8 @@ public partial class Pet
 
     public string PetName { get; set; } = null!;
 
+    public string? PvpAffinityCode { get; set; }
+
     public double LifeForceRate { get; set; }
 
     public double EnergyRate { get; set; }
