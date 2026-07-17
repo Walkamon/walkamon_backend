@@ -57,10 +57,10 @@ namespace BLL.Service
                 PetBond = starterPet.Bond,
                 PetLifeForce = starterPet.LifeForce,
 
-                CurrentPetExp = starterPet.Exp,
-                CurrentPetEnergy = starterPet.Energy,
-                CurrentPetBond = starterPet.Bond,
-                CurrentPetLifeForce = starterPet.LifeForce,
+                CurrentPetExp = 0,
+                CurrentPetEnergy = 50,
+                CurrentPetBond = 50,
+                CurrentPetLifeForce = 50,
 
                 EnergyUpdatedAt = GetVietnamNow(),
                 BondUpdatedAt = GetVietnamNow(),
@@ -330,7 +330,7 @@ namespace BLL.Service
                 throw new NotFoundException("Pet not found.");
 
             
-            if (!userPet.Pet.PetName.Equals("starter",
+            if (!userPet.Pet.PetName.Equals("Lumina",
                 StringComparison.OrdinalIgnoreCase))
             {
                 throw new BadRequestException(
@@ -372,7 +372,7 @@ namespace BLL.Service
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
-            if (!userPet.Pet.PetName.Equals("Starter",
+            if (!userPet.Pet.PetName.Equals("Lumina",
                 StringComparison.OrdinalIgnoreCase))
             {
                 throw new BadRequestException(
@@ -596,7 +596,7 @@ namespace BLL.Service
                     UserName = userPet.User?.UserProfile?.Username
                                 ?? "Unknown",
 
-                    PetName = userPet.Pet?.PetName
+                    PetName = userPet.PetName
                               ?? "Unknown",
 
                     Level = userPet.Level,
