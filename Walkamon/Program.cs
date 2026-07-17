@@ -7,6 +7,7 @@ using DAL.GenericRepository;
 using DAL.Interfaces;
 using DAL.Repository;
 using Walkamon.BackgroundServices;
+using Walkamon.Hubs;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -19,6 +20,7 @@ var builder = WebApplication.CreateBuilder(args);
 #region Controllers
 
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 
 builder.Services.AddFluentValidationAutoValidation();
 
@@ -31,7 +33,8 @@ builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>()
 
 builder.Services.AddDbContext<WalkamonContext>(options =>
     options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection")
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sqlServerOptions => sqlServerOptions.EnableRetryOnFailure()
     ));
 
 #endregion
@@ -84,6 +87,12 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 
 builder.Services.Configure<SmtpOptions>(
     builder.Configuration.GetSection(SmtpOptions.SectionName));
+builder.Services.Configure<PvpRealtimeOptions>(
+    builder.Configuration.GetSection(PvpRealtimeOptions.SectionName));
+builder.Services.Configure<StepValidationOptions>(
+    builder.Configuration.GetSection(StepValidationOptions.SectionName));
+builder.Services.Configure<MotionValidationOptions>(
+    builder.Configuration.GetSection(MotionValidationOptions.SectionName));
 
 builder.Services.Configure<FirebaseOptions>(
     builder.Configuration.GetSection(FirebaseOptions.SectionName));
@@ -147,6 +156,42 @@ builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddSingleton<IFcmPushService, FcmPushService>();
 builder.Services.AddHostedService<NotificationSchedulerService>();
+builder.Services.AddScoped<IPvpSprintService, PvpSprintService>();
+builder.Services.AddScoped<IValidatedStepService, ValidatedStepService>();
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSingleton<IAppAttestationVerifier>(
+        new DevelopmentAttestationVerifier(builder.Environment.EnvironmentName));
+}
+else
+{
+    var stepValidation = builder.Configuration
+        .GetSection(StepValidationOptions.SectionName)
+        .Get<StepValidationOptions>() ?? new StepValidationOptions();
+    if (!stepValidation.StrictAttestation)
+        throw new InvalidOperationException("Strict Play Integrity validation is mandatory outside Development.");
+    if (string.IsNullOrWhiteSpace(stepValidation.AndroidPackageName))
+        throw new InvalidOperationException("StepValidation:AndroidPackageName is required outside Development.");
+    if (string.IsNullOrWhiteSpace(stepValidation.GoogleCredentialPath))
+        throw new InvalidOperationException("StepValidation:GoogleCredentialPath is required outside Development.");
+    if (string.Equals(
+            stepValidation.AppRecognitionMode,
+            "certificate_allowlist",
+            StringComparison.OrdinalIgnoreCase) &&
+        string.IsNullOrWhiteSpace(stepValidation.AllowedCertificateSha256Hex))
+        throw new InvalidOperationException(
+            "StepValidation:AllowedCertificateSha256Hex is required in certificate_allowlist mode.");
+    var credentialPath = Path.IsPathRooted(stepValidation.GoogleCredentialPath)
+        ? stepValidation.GoogleCredentialPath
+        : Path.Combine(builder.Environment.ContentRootPath, stepValidation.GoogleCredentialPath);
+    if (!File.Exists(credentialPath))
+        throw new InvalidOperationException($"Play Integrity credential file was not found: {credentialPath}");
+    builder.Services.PostConfigure<StepValidationOptions>(options =>
+        options.GoogleCredentialPath = credentialPath);
+    builder.Services.AddHttpClient<IAppAttestationVerifier, PlayIntegrityAttestationVerifier>();
+}
+builder.Services.AddHostedService<PvpSprintLifecycleService>();
+builder.Services.AddHostedService<PvpOutboxDispatcherService>();
 
 builder.Services.AddHttpContextAccessor();
 #endregion
@@ -179,6 +224,14 @@ builder.Services
 
         options.Events = new JwtBearerEvents
         {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    context.HttpContext.Request.Path.StartsWithSegments("/hubs/pvp-sprint"))
+                    context.Token = accessToken;
+                return Task.CompletedTask;
+            },
             OnChallenge = async context =>
             {
                 context.HandleResponse();
@@ -308,5 +361,6 @@ app.UseAuthorization();
 #endregion
 
 app.MapControllers();
+app.MapHub<SprintHub>("/hubs/pvp-sprint");
 
 app.Run();

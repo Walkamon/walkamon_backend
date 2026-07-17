@@ -20,18 +20,12 @@ namespace Walkamon.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> UpdateStep(
+        public IActionResult UpdateStep(
             [FromBody] UpdateDailyStepRequest request)
         {
-            
-
-            await _dailyStepService.UpdateStepAsync(
-                CurrentUserId,
-                request);
-
-            return Ok(new
+            return StatusCode(StatusCodes.Status410Gone, new
             {
-                Message = "Step updated successfully"
+                Message = "Manual step entry is disabled. Use the validated physical-step sync pipeline."
             });
         }
 

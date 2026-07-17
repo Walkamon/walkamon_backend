@@ -1,5 +1,6 @@
 using BLL.Interfaces;
 using DAL.Data;
+using DAL.Extensions;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -38,8 +39,9 @@ public class AchievementProgressService : IAchievementProgressService
 
         if (achievements.Count == 0) return;
 
-        await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
-        try
+        await _context.ExecuteInTransactionAsync(
+            IsolationLevel.Serializable,
+            async () =>
         {
             var newlyUnlockedIds = new List<Guid>();
 
@@ -98,14 +100,7 @@ public class AchievementProgressService : IAchievementProgressService
             {
                 await ProcessCascadingUnlocksAsync(userId, newlyUnlockedIds);
             }
-
-            await transaction.CommitAsync();
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
+        });
     }
 
     private async Task<bool> ArePrerequisitesMetAsync(Guid userId, Guid achievementId)

@@ -43,7 +43,8 @@ public class FcmPushService : IFcmPushService
         {
             _logger.LogWarning(
                 "Firebase push skipped because Firebase:ProjectId and credentials are not configured.");
-            return;
+            throw new InvalidOperationException(
+                "Firebase push is not configured. Check Firebase credentials and ProjectId.");
         }
 
         var message = new Message

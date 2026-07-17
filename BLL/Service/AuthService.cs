@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using BLL.Exceptions;
 using BLL.Interfaces;
+using DAL.Data;
 using DAL.DTO;
 using DAL.Interfaces;
 using DAL.Models;
@@ -38,6 +39,7 @@ public class AuthService : IAuthService
     private readonly IGenericRepository<Wallet> _walletRepository;
     private readonly IGenericRepository<ExternalLogin> _externalLoginRepository;
     private readonly IAchievementProgressService _achievementProgressService;
+    private readonly WalkamonContext _context;
 
     public AuthService(
         IUserRepository userRepository,
@@ -46,7 +48,8 @@ public class AuthService : IAuthService
         IGenericRepository<ExternalLogin> externalLoginRepository,
         IEmailSender emailSender,
         IConfiguration configuration,
-        IAchievementProgressService achievementProgressService)
+        IAchievementProgressService achievementProgressService,
+        WalkamonContext context)
     {
         _userRepository = userRepository;
         _otpRepository = otpRepository;
@@ -55,6 +58,7 @@ public class AuthService : IAuthService
         _emailSender = emailSender;
         _configuration = configuration;
         _achievementProgressService = achievementProgressService;
+        _context = context;
     }
 
     // Đăng ký: tạo user chờ xác thực và gửi OTP.
@@ -143,64 +147,93 @@ public class AuthService : IAuthService
     public async Task<RegisterResponse> VerifyRegistrationOtpAsync(
         VerifyRegistrationOtpRequest request)
     {
-        var otp = await _userRepository.GetOtpRequestAsync(request.RequestCode);
-        if (otp == null
-            || otp.PurposeCode != VerifyEmailPurposeCode
-            || otp.StatusCode != "pending"
-            || !IsPendingRegistration(otp.User))
-        {
-            throw new BadRequestException("OTP request is invalid");
-        }
+        var strategy = _context.Database.CreateExecutionStrategy();
 
-        var now = DateTime.UtcNow;
-        if (otp.ExpiresAt <= now)
+        var outcome = await strategy.ExecuteAsync(async () =>
         {
-            otp.StatusCode = "expired";
-            otp.UpdatedAt = now;
-            await _userRepository.SaveChangesAsync();
-            throw new BadRequestException("OTP has expired");
-        }
-
-        if (!CryptographicOperations.FixedTimeEquals(otp.OtpHash, HashOtp(request.Otp)))
-        {
-            otp.AttemptCount++;
-            otp.UpdatedAt = now;
-            if (otp.AttemptCount >= otp.MaxAttempts)
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
             {
-                otp.StatusCode = "cancelled";
+                var otp = await _userRepository.GetOtpRequestAsync(request.RequestCode);
+                RegisterResponse? response = null;
+                string? validationError = null;
+
+                if (otp == null
+                    || otp.PurposeCode != VerifyEmailPurposeCode
+                    || otp.StatusCode != "pending"
+                    || !IsPendingRegistration(otp.User))
+                {
+                    validationError = "OTP request is invalid";
+                }
+                else
+                {
+                    var now = DateTime.UtcNow;
+                    if (otp.ExpiresAt <= now)
+                    {
+                        otp.StatusCode = "expired";
+                        otp.UpdatedAt = now;
+                        await _userRepository.SaveChangesAsync();
+                        validationError = "OTP has expired";
+                    }
+                    else if (!CryptographicOperations.FixedTimeEquals(otp.OtpHash, HashOtp(request.Otp)))
+                    {
+                        otp.AttemptCount++;
+                        otp.UpdatedAt = now;
+                        if (otp.AttemptCount >= otp.MaxAttempts)
+                        {
+                            otp.StatusCode = "cancelled";
+                        }
+
+                        await _userRepository.SaveChangesAsync();
+                        validationError = "OTP is invalid";
+                    }
+                    else
+                    {
+                        otp.StatusCode = "verified";
+                        otp.UsedAt = now;
+                        otp.UpdatedAt = now;
+                        otp.User.StatusCode = "active";
+                        otp.User.EmailConfirmed = true;
+                        otp.User.UpdatedAt = now;
+
+                        var wallet = await _walletRepository.GetByIdAsync(otp.User.UserId);
+                        if (wallet == null)
+                        {
+                            await _walletRepository.AddAsync(new Wallet
+                            {
+                                UserId = otp.User.UserId,
+                                Balance = 1000
+                            });
+
+                            await _achievementProgressService.AddProgressAsync(otp.User.UserId, "wallet_earned", 1000);
+                        }
+
+                        await _userRepository.SaveChangesAsync();
+                        response = new RegisterResponse
+                        {
+                            UserId = otp.User.UserId,
+                            Email = otp.User.Email,
+                            Username = otp.User.UserProfile!.Username!
+                        };
+                    }
+                }
+
+                await transaction.CommitAsync();
+                return (response, validationError);
             }
-
-            await _userRepository.SaveChangesAsync();
-            throw new BadRequestException("OTP is invalid");
-        }
-
-        otp.StatusCode = "verified";
-        otp.UsedAt = now;
-        otp.UpdatedAt = now;
-        otp.User.StatusCode = "active";
-        otp.User.EmailConfirmed = true;
-        otp.User.UpdatedAt = now;
-
-        var wallet = await _walletRepository.GetByIdAsync(otp.User.UserId);
-        if (wallet == null)
-        {
-            await _walletRepository.AddAsync(new Wallet
+            catch
             {
-                UserId = otp.User.UserId,
-                Balance = 1000
-            });
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
 
-            await _achievementProgressService.AddProgressAsync(otp.User.UserId, "wallet_earned", 1000);
+        if (outcome.validationError != null)
+        {
+            throw new BadRequestException(outcome.validationError);
         }
 
-        await _userRepository.SaveChangesAsync();
-
-        return new RegisterResponse
-        {
-            UserId = otp.User.UserId,
-            Email = otp.User.Email,
-            Username = otp.User.UserProfile!.Username!
-        };
+        return outcome.response!;
     }
 
     // OTP đăng ký: gửi lại mã xác thực email.
