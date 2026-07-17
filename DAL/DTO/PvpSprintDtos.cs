@@ -131,6 +131,7 @@ public sealed class StepMotionPolicyResponse
 public sealed class PvpStepBatchResponse
 {
     public Guid BatchId { get; set; }
+    public string AttestationStatus { get; set; } = "unavailable";
     public int AcceptedSteps { get; set; }
     public int RejectedSteps { get; set; }
     public int SuspiciousSteps { get; set; }

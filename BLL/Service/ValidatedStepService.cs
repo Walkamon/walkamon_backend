@@ -204,21 +204,50 @@ public sealed class ValidatedStepService : IValidatedStepService
                 .ToListAsync(cancellationToken);
         }
 
+        var verifiedSessionBatch = await _context.StepSensorBatches.AsNoTracking()
+            .Where(x => x.StepSessionId == sessionId &&
+                        (x.AttestationStatus == "verified" ||
+                         x.AttestationStatus == "development_bypass"))
+            .OrderByDescending(x => x.ReceivedAt)
+            .Select(x => new
+            {
+                x.PackageName,
+                x.VerdictTimestamp
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
         AppAttestationResult attestation;
-        try
-        {
-            attestation = await _attestationVerifier.VerifyAsync(
-                new(request.AttestationToken, request.PayloadHash, session.PlatformCode, now),
-                cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception)
+        if (verifiedSessionBatch != null)
         {
             attestation = new(
-                false, "verifier_error", null, null, null, "attestation_verifier_unavailable");
+                true,
+                "session_cached",
+                verifiedSessionBatch.PackageName,
+                verifiedSessionBatch.VerdictTimestamp,
+                null,
+                null);
+        }
+        else
+        {
+            try
+            {
+                attestation = await _attestationVerifier.VerifyAsync(
+                    new(request.AttestationToken, request.PayloadHash, session.PlatformCode, now),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                attestation = new(
+                    false, "verifier_error", null, null, null, "attestation_verifier_unavailable");
+            }
+            if (attestation.Status == "rate_limited")
+                throw new TooManyRequestsException(
+                    "Play Integrity is temporarily rate limited. Retry this batch safely.",
+                    60);
         }
         var motion = MotionValidationEngine.Evaluate(request, _motionOptions);
         var batch = new StepSensorBatch
@@ -415,6 +444,7 @@ public sealed class ValidatedStepService : IValidatedStepService
         return new PvpStepBatchResponse
         {
             BatchId = batch.StepSensorBatchId,
+            AttestationStatus = batch.AttestationStatus,
             AcceptedSteps = batch.AcceptedSteps,
             RejectedSteps = batch.RejectedSteps,
             SuspiciousSteps = batch.SuspiciousSteps,
@@ -445,6 +475,7 @@ public sealed class ValidatedStepService : IValidatedStepService
         return new PvpStepBatchResponse
         {
             BatchId = batch.StepSensorBatchId,
+            AttestationStatus = batch.AttestationStatus,
             AcceptedSteps = batch.AcceptedSteps,
             RejectedSteps = batch.RejectedSteps,
             SuspiciousSteps = batch.SuspiciousSteps,
