@@ -1,6 +1,8 @@
 ﻿using System.Text.Json;
 using DAL.DTO;
 using BLL.Exceptions;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 public class ExceptionMiddleware
 {
     private static readonly JsonSerializerOptions SerializerOptions =
@@ -40,6 +42,13 @@ public class ExceptionMiddleware
         {
             statusCode = appEx.StatusCode;
             message = appEx.Message;
+        }
+        else if (ex is DbUpdateConcurrencyException ||
+                 ex is DbUpdateException { InnerException: SqlException { Number: 2601 or 2627 or 1205 } } ||
+                 ex is SqlException { Number: 2601 or 2627 or 1205 })
+        {
+            statusCode = StatusCodes.Status409Conflict;
+            message = "The request conflicted with another operation. Refresh state and retry safely.";
         }
         else
         {

@@ -11,6 +11,8 @@ public partial class DailyStep
 
     public int StepCount { get; set; }
 
+    public int EligibleStepCount { get; set; }
+
     public DateTime UpdatedAt { get; set; }
 
     public virtual User User { get; set; } = null!;
