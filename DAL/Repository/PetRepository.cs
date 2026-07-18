@@ -111,5 +111,17 @@ namespace DAL.Repository
                 .Where(x => x.PetName != "Starter")
                 .ToListAsync();
         }
+        public async Task<PetAnimation?> GetAnimationAsync(
+    Guid petId,
+    int stageNo,
+    string type)
+        {
+            return await _context.PetAnimations
+                .FirstOrDefaultAsync(x =>
+                    x.PetId == petId &&
+                    x.PetStageUse == stageNo &&
+                    x.TypeAnimation == type &&
+                    x.IsActive);
+        }
     }
 }

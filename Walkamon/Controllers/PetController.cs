@@ -220,5 +220,18 @@ public async Task<IActionResult> GetLeaderboard()
                 Data = result
             });
         }
+        [HttpGet("current-animation")]
+        public async Task<IActionResult> GetCurrentAnimation()
+        {
+            var result = await _petService.GetCurrentAnimationAsync(CurrentUserId);
+
+            return Ok(new
+            {
+                Success = true,
+                Status = 200,
+                Message = "Get current animation successfully.",
+                Data = result
+            });
+        }
     }
 }

@@ -27,5 +27,9 @@ namespace DAL.Interfaces
         Task<List<UserPet>> GetLeaderboardAsync();
         Task<UserPet?> GetFriendPetAsync(Guid userId);
         Task<List<Pet>> GetEvolutionPetsAsync();
+        Task<PetAnimation?> GetAnimationAsync(
+    Guid petId,
+    int stageNo,
+    string type);
     }
 }
