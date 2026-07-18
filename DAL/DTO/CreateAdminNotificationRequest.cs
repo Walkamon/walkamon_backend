@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+
 namespace DAL.DTO;
 
 public class CreateAdminNotificationRequest
@@ -15,4 +17,6 @@ public class CreateAdminNotificationRequest
     public bool SendNow { get; set; }
 
     public string? ImageUrl { get; set; }
+
+    public IFormFile? Image { get; set; }
 }

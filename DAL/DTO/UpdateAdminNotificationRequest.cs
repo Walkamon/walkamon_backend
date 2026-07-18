@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+
 namespace DAL.DTO;
 
 public class UpdateAdminNotificationRequest
@@ -13,4 +15,6 @@ public class UpdateAdminNotificationRequest
     public DateTime? ScheduleTime { get; set; }
 
     public string? ImageUrl { get; set; }
+
+    public IFormFile? Image { get; set; }
 }

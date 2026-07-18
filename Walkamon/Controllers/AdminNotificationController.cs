@@ -11,10 +11,14 @@ namespace Walkamon.Controllers;
 public class AdminNotificationController : BaseController
 {
     private readonly INotificationService _notificationService;
+    private readonly ICloudinaryService _cloudinaryService;
 
-    public AdminNotificationController(INotificationService notificationService)
+    public AdminNotificationController(
+        INotificationService notificationService,
+        ICloudinaryService cloudinaryService)
     {
         _notificationService = notificationService;
+        _cloudinaryService = cloudinaryService;
     }
 
     [HttpGet]
@@ -70,13 +74,19 @@ public class AdminNotificationController : BaseController
     }
 
     [HttpPost]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ApiResponse<AdminNotificationDetailResponse>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> CreateNotification(
-        CreateAdminNotificationRequest request)
+        [FromForm] CreateAdminNotificationRequest request)
     {
+        if (request.Image != null)
+        {
+            request.ImageUrl = await _cloudinaryService.UploadImageAsync(request.Image);
+        }
+
         var result = await _notificationService.CreateAdminNotificationAsync(
             CurrentUserId,
             request);
@@ -93,6 +103,7 @@ public class AdminNotificationController : BaseController
     }
 
     [HttpPut("{notificationId:guid}")]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ApiResponse<AdminNotificationDetailResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
@@ -100,8 +111,13 @@ public class AdminNotificationController : BaseController
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateNotification(
         Guid notificationId,
-        UpdateAdminNotificationRequest request)
+        [FromForm] UpdateAdminNotificationRequest request)
     {
+        if (request.Image != null)
+        {
+            request.ImageUrl = await _cloudinaryService.UploadImageAsync(request.Image);
+        }
+
         var result = await _notificationService.UpdateAdminNotificationAsync(
             notificationId,
             request);
