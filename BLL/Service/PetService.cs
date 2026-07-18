@@ -823,6 +823,81 @@ GetEvolutionPreviewAsync()
 
             return result;
         }
+        public async Task<CurrentAnimationResponse> GetCurrentAnimationAsync(Guid userId)
+        {
+            var userPet = await _petRepository.GetUserPetAsync(userId);
+
+            if (userPet == null)
+                throw new NotFoundException("Pet not found.");
+
+            UpdateEnergy(userPet);
+            UpdateBond(userPet);
+            UpdateLifeForce(userPet);
+
+            var latest = await _PetEvolutionHistory.GetLatestAsync(userId);
+
+            PetStage stage;
+
+            if (latest == null)
+            {
+                stage = await _petRepository.GetStageAsync(userPet.PetId, 1);
+            }
+            else
+            {
+                stage = latest.Stage;
+            }
+
+            string animationType;
+
+            double energyPercent =
+                (double)userPet.CurrentPetEnergy / userPet.PetEnergy;
+
+            double bondPercent =
+                (double)userPet.CurrentPetBond / userPet.PetBond;
+
+            double lifePercent =
+                (double)userPet.CurrentPetLifeForce / userPet.PetLifeForce;
+
+            if (energyPercent <= 0.2)
+            {
+                animationType = "sleep";
+            }
+            else if (lifePercent <= 0.2)
+            {
+                animationType = "hungry";
+            }
+            else if (bondPercent <= 0.2)
+            {
+                animationType = "sad";
+            }
+            else if (
+                energyPercent >= 0.8 &&
+                bondPercent >= 0.8 &&
+                lifePercent >= 0.8)
+            {
+                animationType = "happy";
+            }
+            else
+            {
+                animationType = "idle";
+            }
+
+            var animation = await _petRepository.GetAnimationAsync(
+                userPet.PetId,
+                stage.StageNo,
+                animationType);
+
+            if (animation == null)
+                throw new NotFoundException("Animation not found.");
+
+            return new CurrentAnimationResponse
+            {
+                AnimationType = animationType,
+                AnimationUrl = animation.AnimationUrl!,
+                StageNo = stage.StageNo,
+                StageName = stage.StageName
+            };
+        }
     }
 }
 

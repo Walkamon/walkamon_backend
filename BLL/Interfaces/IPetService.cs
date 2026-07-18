@@ -28,5 +28,7 @@ namespace BLL.Interfaces
         Task<FriendSpiritResponse> GetFriendSpiritAsync(Guid friendUserId);
         Task<List<PetEvolutionPreviewResponse>>
 GetEvolutionPreviewAsync();
+
+        Task<CurrentAnimationResponse> GetCurrentAnimationAsync(Guid userId);
     }
 }
