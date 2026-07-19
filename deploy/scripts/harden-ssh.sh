@@ -24,7 +24,9 @@ install -d -m 0700 -o "$operator" -g "$operator" "${home_dir}/.ssh"
 chown "$operator:$operator" "$authorized_keys"
 chmod 0600 "$authorized_keys"
 
-config=/etc/ssh/sshd_config.d/99-walkamon-hardening.conf
+# OpenSSH keeps the first value it reads for most scalar options. Cloud-init
+# writes 50-cloud-init.conf, so this drop-in must sort before it.
+config=/etc/ssh/sshd_config.d/00-walkamon-hardening.conf
 cat >"$config" <<'EOF'
 PermitRootLogin no
 PasswordAuthentication no
@@ -33,6 +35,7 @@ PubkeyAuthentication yes
 AuthenticationMethods publickey
 EOF
 chmod 0644 "$config"
+rm -f /etc/ssh/sshd_config.d/99-walkamon-hardening.conf
 
 /usr/sbin/sshd -t
 systemctl reload ssh.service
