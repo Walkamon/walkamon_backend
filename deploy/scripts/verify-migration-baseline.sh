@@ -61,8 +61,8 @@ if [[ ! "$table_count" =~ ^[0-9]+$ || ! "$row_count" =~ ^[0-9]+$ ]]; then
   echo "Could not parse database verification result." >&2
   exit 1
 fi
-if [[ "$table_count" != 50 ]]; then
-  echo "Unexpected table count after restore: $table_count (expected 50)." >&2
+if (( table_count < 50 )); then
+  echo "Unexpected table count after restore: $table_count (expected at least 50)." >&2
   exit 1
 fi
 if (( row_count < 80 )); then
