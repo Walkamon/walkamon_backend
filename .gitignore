@@ -483,3 +483,18 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Walkamon production secrets, credentials, backups, and local infrastructure
+.env
+.env.*
+!.env.example
+*.bak
+*.restic-password
+deploy/secrets/
+deploy/runtime/
+*.iso
+*.vmdk
+*.vmem
+*.vmss
+*.vmsn
+*.vmx

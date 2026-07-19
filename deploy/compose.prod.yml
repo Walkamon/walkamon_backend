@@ -1,0 +1,145 @@
+name: walkamon
+
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-CU26-ubuntu-22.04
+    container_name: walkamon-db
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?MSSQL_SA_PASSWORD is required}
+    ports:
+      - "127.0.0.1:1433:1433"
+    volumes:
+      - /srv/walkamon/mssql/data:/var/opt/mssql/data
+      - /srv/walkamon/mssql/log:/var/opt/mssql/log
+      - /srv/walkamon/mssql/backup:/var/opt/mssql/backup
+    networks:
+      management:
+        ipv4_address: 172.29.0.3
+      data:
+        ipv4_address: 172.31.0.3
+    mem_limit: 3g
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" -b -o /dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    logging: &default-logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  api:
+    image: ${API_IMAGE:-ghcr.io/walkamon/walkamon_backend:main}
+    container_name: walkamon-api
+    user: "1654:1654"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_HTTP_PORTS: "8080"
+      AllowedHosts: api.walkamon.xyz;localhost;127.0.0.1;api
+      ConnectionStrings__DefaultConnection: Server=db,1433;Database=Walkamon;User Id=walkamon_app;Password=${WALKAMON_DB_PASSWORD:?WALKAMON_DB_PASSWORD is required};Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True
+      Jwt__Key: ${JWT_KEY:?JWT_KEY is required}
+      Jwt__Issuer: WalkamonAPI
+      Jwt__Audience: WalkamonClient
+      Smtp__Host: smtp.gmail.com
+      Smtp__Port: "587"
+      Smtp__UseStartTls: "true"
+      Smtp__FromName: Walkamon
+      Smtp__Username: ${SMTP_USERNAME:?SMTP_USERNAME is required}
+      Smtp__AppPassword: ${SMTP_APP_PASSWORD:?SMTP_APP_PASSWORD is required}
+      CloudinarySettings__CloudName: ${CLOUDINARY_CLOUD_NAME:?CLOUDINARY_CLOUD_NAME is required}
+      CloudinarySettings__ApiKey: ${CLOUDINARY_API_KEY:?CLOUDINARY_API_KEY is required}
+      CloudinarySettings__ApiSecret: ${CLOUDINARY_API_SECRET:?CLOUDINARY_API_SECRET is required}
+      GoogleAuth__ClientIds__0: ${GOOGLE_AUTH_CLIENT_ID:?GOOGLE_AUTH_CLIENT_ID is required}
+      Firebase__ProjectId: ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID is required}
+      Firebase__ServiceAccountPath: /run/secrets/firebase-service-account.json
+      Firebase__AndroidChannelId: high_importance_channel
+      PvpRealtime__Enabled: "true"
+      StepValidation__StrictAttestation: "true"
+      StepValidation__AndroidPackageName: ${ANDROID_PACKAGE_NAME:?ANDROID_PACKAGE_NAME is required}
+      StepValidation__GoogleCredentialPath: /run/secrets/play-integrity-service-account.json
+      StepValidation__AppRecognitionMode: certificate_allowlist
+      StepValidation__AllowedCertificateSha256Hex: ${ANDROID_CERTIFICATE_SHA256:?ANDROID_CERTIFICATE_SHA256 is required}
+      StepValidation__MinimumVersionCode: "1"
+      StepValidation__RequireDeviceIntegrity: "true"
+      StepValidation__RequireLicensingVerdict: "false"
+      MotionValidation__Enabled: "true"
+      MotionValidation__Enforce: "true"
+      MotionValidation__AcceptedScore: "60"
+      MotionValidation__RejectedScore: "40"
+      ReverseProxy__KnownProxies__0: 172.30.0.3
+      RateLimiting__PermitLimit: "120"
+      RateLimiting__WindowSeconds: "60"
+      Cors__AllowedOrigins__0: ${CORS_WEB_ORIGIN:-https://purple-island-059194d00.7.azurestaticapps.net}
+      Cors__AllowedOrigins__1: capacitor://localhost
+      Cors__AllowedOrigins__2: ionic://localhost
+      Cors__AllowedOrigins__3: http://localhost
+      Cors__AllowedOrigins__4: https://localhost
+      Cors__AllowNullOrigin: "false"
+      Swagger__Enabled: ${SWAGGER_ENABLED:-true}
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - /etc/walkamon/secrets/play-integrity-service-account.json:/run/secrets/play-integrity-service-account.json:ro
+      - /etc/walkamon/secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+    networks:
+      edge:
+        ipv4_address: 172.30.0.2
+      data:
+        ipv4_address: 172.31.0.2
+    mem_limit: 1536m
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://localhost:8080/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    logging: *default-logging
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.7.2
+    container_name: walkamon-cloudflared
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
+    networks:
+      edge:
+        ipv4_address: 172.30.0.3
+    mem_limit: 256m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+networks:
+  management:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  data:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24

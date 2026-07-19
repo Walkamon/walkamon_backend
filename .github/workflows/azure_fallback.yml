@@ -1,0 +1,35 @@
+name: Emergency Azure fallback deployment
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-azure:
+    runs-on: windows-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish
+        run: dotnet publish Walkamon/Walkamon.csproj --configuration Release --output "${{ runner.temp }}/walkamon"
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_7121A083F8DD4BF180290B2A57DFDC77 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_B833E32EE0C14B2F9FA80AD33F18D5A1 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_5B8A15EAA07D4B1EB3CD3A726074F10F }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: Walkamon
+          slot-name: Production
+          package: ${{ runner.temp }}/walkamon
