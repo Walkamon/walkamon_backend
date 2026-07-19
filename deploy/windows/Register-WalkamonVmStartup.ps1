@@ -5,6 +5,8 @@ param(
     [string]$VmrunPath = "C:\Program Files\VMware\VMware Workstation\vmrun.exe"
 )
 
+$ErrorActionPreference = "Stop"
+
 $resolvedVmx = (Resolve-Path -LiteralPath $VmxPath).Path
 $resolvedVmrun = (Resolve-Path -LiteralPath $VmrunPath).Path
 $taskName = "Walkamon Ubuntu VM"
