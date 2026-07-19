@@ -36,7 +36,7 @@ public sealed class PvpOutboxDispatcherService : BackgroundService
 ;WITH claim AS
 (
     SELECT TOP (50) *
-    FROM dbo.outbox_events WITH (UPDLOCK, READPAST, ROWLOCK)
+    FROM dbo.outbox_events WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK, ROWLOCK)
     WHERE published_at IS NULL
       AND (lease_until IS NULL OR lease_until < {now})
     ORDER BY created_at
