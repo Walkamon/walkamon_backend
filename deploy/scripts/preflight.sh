@@ -3,10 +3,15 @@ set -Eeuo pipefail
 
 ENV_FILE=/etc/walkamon/walkamon.env
 COMPOSE_FILE=/opt/walkamon/compose.prod.yml
+mode=${1:-full}
 
 if [[ $EUID -ne 0 ]]; then
   echo "Run preflight as root." >&2
   exit 1
+fi
+if [[ "$mode" != full && "$mode" != --core ]]; then
+  echo "Usage: $0 [--core]" >&2
+  exit 2
 fi
 
 if [[ ! -f "$ENV_FILE" || ! -f "$COMPOSE_FILE" ]]; then
@@ -38,12 +43,16 @@ required=(
   FIREBASE_PROJECT_ID
   ANDROID_PACKAGE_NAME
   ANDROID_CERTIFICATE_SHA256
-  CLOUDFLARE_TUNNEL_TOKEN
-  RESTIC_REPOSITORY
-  RESTIC_PASSWORD
-  AWS_ACCESS_KEY_ID
-  AWS_SECRET_ACCESS_KEY
 )
+if [[ "$mode" == full ]]; then
+  required+=(
+    CLOUDFLARE_TUNNEL_TOKEN
+    RESTIC_REPOSITORY
+    RESTIC_PASSWORD
+    AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY
+  )
+fi
 
 for key in "${required[@]}"; do
   value=${!key:-}
@@ -107,4 +116,4 @@ if (( available_kb < 15 * 1024 * 1024 )); then
 fi
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet
-echo "Walkamon production preflight passed."
+echo "Walkamon production preflight passed ($mode)."
