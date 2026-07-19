@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily Walkamon SQL Server Express size check
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Asia/Ho_Chi_Minh
+Persistent=true
+
+[Install]
+WantedBy=timers.target

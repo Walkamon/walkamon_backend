@@ -1,0 +1,17 @@
+[Unit]
+Description=Walkamon production Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/opt/walkamon/scripts/preflight.sh
+ExecStart=/usr/bin/docker compose --env-file /etc/walkamon/walkamon.env -f /opt/walkamon/compose.prod.yml up -d
+ExecStop=/usr/bin/docker compose --env-file /etc/walkamon/walkamon.env -f /opt/walkamon/compose.prod.yml stop --timeout 45
+TimeoutStartSec=300
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

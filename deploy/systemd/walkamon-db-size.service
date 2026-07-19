@@ -1,0 +1,9 @@
+[Unit]
+Description=Check Walkamon SQL Server Express database size
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/walkamon/scripts/check-database-size.sh
+TimeoutStartSec=120

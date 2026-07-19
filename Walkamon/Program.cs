@@ -7,13 +7,19 @@ using DAL.GenericRepository;
 using DAL.Interfaces;
 using DAL.Repository;
 using Walkamon.BackgroundServices;
+using Walkamon.Health;
 using Walkamon.Hubs;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Net;
 using System.Text;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,8 +43,19 @@ builder.Services.AddDbContext<WalkamonContext>(options =>
         sqlServerOptions => sqlServerOptions.EnableRetryOnFailure()
     ));
 
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database");
+
 #endregion
 #region CORS
+
+var configuredCorsOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? [];
+var corsOrigins = new HashSet<string>(
+    configuredCorsOrigins.Where(origin => !string.IsNullOrWhiteSpace(origin)),
+    StringComparer.OrdinalIgnoreCase);
+var allowNullCorsOrigin = builder.Configuration.GetValue<bool>("Cors:AllowNullOrigin");
 
 builder.Services.AddCors(options =>
 {
@@ -47,32 +64,65 @@ builder.Services.AddCors(options =>
         policy
             .SetIsOriginAllowed(origin =>
             {
-                if (string.Equals(
-                    origin,
-                    "https://purple-island-059194d00.7.azurestaticapps.net",
-                    StringComparison.OrdinalIgnoreCase))
-                 {
-                    return true;
-                }
-
-                if (string.Equals(origin, "null", StringComparison.OrdinalIgnoreCase))
+                if (corsOrigins.Contains(origin))
                 {
                     return true;
                 }
 
-                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                if (allowNullCorsOrigin
+                    && string.Equals(origin, "null", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (!builder.Environment.IsDevelopment()
+                    || !Uri.TryCreate(origin, UriKind.Absolute, out var uri))
                 {
                     return false;
                 }
 
-                var isAllowedScheme = uri.Scheme is "http" or "https" or "capacitor" or "ionic";
-                var isAllowedHost = uri.Host is "localhost" or "127.0.0.1" or "::1";
-
-                return isAllowedScheme && isAllowedHost;
+                return uri.Scheme is "http" or "https" or "capacitor" or "ionic"
+                    && uri.Host is "localhost" or "127.0.0.1" or "::1";
             })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
+    });
+});
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+    foreach (var configuredProxy in builder.Configuration
+                 .GetSection("ReverseProxy:KnownProxies")
+                 .Get<string[]>() ?? [])
+    {
+        if (IPAddress.TryParse(configuredProxy, out var proxyAddress))
+        {
+            options.KnownProxies.Add(proxyAddress);
+        }
+    }
+});
+
+var rateLimitPermitCount = builder.Configuration.GetValue("RateLimiting:PermitLimit", 120);
+var rateLimitWindowSeconds = builder.Configuration.GetValue("RateLimiting:WindowSeconds", 60);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        var clientAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            clientAddress,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = rateLimitPermitCount,
+                Window = TimeSpan.FromSeconds(rateLimitWindowSeconds),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
     });
 });
 
@@ -338,16 +388,24 @@ var app = builder.Build();
 
 #region Middleware
 
-app.UseSwagger();
+if (app.Environment.IsDevelopment()
+    || builder.Configuration.GetValue<bool>("Swagger:Enabled"))
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
-app.UseSwaggerUI();
+app.UseForwardedHeaders();
+app.UseRateLimiter();
 
 // Local Android devices connect through `adb reverse` to the HTTP launch
 // profile. Redirecting that request to the ASP.NET development HTTPS
 // certificate makes the device reject the connection.
 if (!app.Environment.IsDevelopment())
 {
-    app.UseHttpsRedirection();
+    app.UseWhen(
+        context => !context.Request.Path.StartsWithSegments("/health"),
+        branch => branch.UseHttpsRedirection());
 }
 
 app.UseCors("AllowFrontend");
@@ -362,5 +420,13 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<SprintHub>("/hubs/pvp-sprint");
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = registration => registration.Name == "database"
+});
 
 app.Run();

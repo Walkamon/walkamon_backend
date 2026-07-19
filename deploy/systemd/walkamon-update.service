@@ -1,0 +1,10 @@
+[Unit]
+Description=Pull and health-check the latest Walkamon API image
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/walkamon/scripts/deploy.sh
+TimeoutStartSec=600

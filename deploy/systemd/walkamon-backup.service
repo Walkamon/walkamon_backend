@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up Walkamon SQL Server to encrypted Cloudflare R2 storage
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/walkamon/scripts/backup.sh
+TimeoutStartSec=3600
