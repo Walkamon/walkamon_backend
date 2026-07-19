@@ -12,12 +12,12 @@ public sealed class PvpSchemaIntegrationTests
         var databaseName = $"WalkamonSchemaTests_{Guid.NewGuid():N}";
         var master = "Server=(localdb)\\MSSQLLocalDB;Database=master;Integrated Security=true;TrustServerCertificate=true";
         var database = $"Server=(localdb)\\MSSQLLocalDB;Database={databaseName};Integrated Security=true;TrustServerCertificate=true";
-        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../"));
-        var freshSql = await File.ReadAllTextAsync(Path.Combine(root, "Database", "FINAlFINAL.sql"));
+        var sqlDirectory = Path.Combine(AppContext.BaseDirectory, "Sql");
+        var freshSql = await File.ReadAllTextAsync(Path.Combine(sqlDirectory, "WalkamonFreshSchema.sql"));
         freshSql = freshSql
             .Replace("CREATE DATABASE Walkamon;", $"CREATE DATABASE [{databaseName}];", StringComparison.Ordinal)
             .Replace("USE Walkamon;", $"USE [{databaseName}];", StringComparison.Ordinal);
-        var upgradeSql = await File.ReadAllTextAsync(Path.Combine(root, "Database", "pvp_sprint_upgrade.sql"));
+        var upgradeSql = await File.ReadAllTextAsync(Path.Combine(sqlDirectory, "pvp_sprint_upgrade.sql"));
 
         try
         {

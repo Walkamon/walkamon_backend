@@ -33,14 +33,6 @@ jobs:
       - name: Test
         run: dotnet test Walkamon.sln --configuration Release --no-build --logger "trx;LogFileName=walkamon-tests.trx"
 
-      - name: Upload test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: walkamon-test-results
-          path: "**/TestResults/*.trx"
-          if-no-files-found: warn
-
   publish-image:
     if: github.ref == 'refs/heads/main'
     needs: test

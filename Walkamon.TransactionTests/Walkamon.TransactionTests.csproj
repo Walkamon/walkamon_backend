@@ -22,4 +22,8 @@
     <ProjectReference Include="..\BLL\BLL.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Sql\*.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
