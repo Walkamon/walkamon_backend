@@ -12,7 +12,7 @@ if [[ ! -r "$ENV_FILE" ]]; then
   exit 1
 fi
 
-/opt/walkamon/scripts/preflight.sh
+/opt/walkamon/scripts/preflight.sh --core
 
 set -a
 source "$ENV_FILE"
