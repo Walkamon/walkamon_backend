@@ -231,8 +231,9 @@ sudo systemctl start walkamon-db-size.timer
 
 Nightly backups use SQL checksum plus `RESTORE VERIFYONLY`, then restic encrypts
 and uploads them. Retention is 7 daily, 4 weekly, and 6 monthly snapshots. A
-full temporary restore plus `DBCC CHECKDB` runs monthly. Store the restic
-password separately in a password manager.
+full temporary restore downloaded from the latest R2 snapshot plus
+`DBCC CHECKDB` runs monthly. Store the restic password separately in a password
+manager.
 
 ## 7. Acceptance checks
 
