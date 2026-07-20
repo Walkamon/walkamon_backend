@@ -22,7 +22,9 @@ public class CloudinaryService : ICloudinaryService
     public async Task<string> UploadImageAsync(IFormFile file)
     {
         if (file == null || file.Length == 0)
-            return null;
+        {
+            throw new ArgumentException("An image file is required", nameof(file));
+        }
 
         await using var stream = file.OpenReadStream();
 
@@ -34,6 +36,19 @@ public class CloudinaryService : ICloudinaryService
 
         var result = await _cloudinary.UploadAsync(uploadParams);
 
-        return result.SecureUrl.ToString();
+        if (result.Error != null)
+        {
+            throw new InvalidOperationException(
+                $"Cloudinary upload failed: {result.Error.Message}");
+        }
+
+        if (result.SecureUrl == null
+            || result.SecureUrl.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new InvalidOperationException(
+                "Cloudinary upload did not return a secure URL");
+        }
+
+        return result.SecureUrl.AbsoluteUri;
     }
 }

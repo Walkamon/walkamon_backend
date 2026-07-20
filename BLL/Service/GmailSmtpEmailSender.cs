@@ -85,7 +85,9 @@ public class GmailSmtpEmailSender : IEmailSender
             : SecureSocketOptions.None;
 
         await client.ConnectAsync(_options.Host, _options.Port, socketOptions);
-        await client.AuthenticateAsync(_options.Username, _options.AppPassword);
+        await client.AuthenticateAsync(
+            _options.Username.Trim(),
+            NormalizeAppPassword(_options.AppPassword));
         await client.SendAsync(message);
         await client.DisconnectAsync(true);
     }
@@ -194,11 +196,14 @@ public class GmailSmtpEmailSender : IEmailSender
             socketOptions);
 
         await client.AuthenticateAsync(
-            _options.Username,
-            _options.AppPassword);
+            _options.Username.Trim(),
+            NormalizeAppPassword(_options.AppPassword));
 
         await client.SendAsync(message);
 
         await client.DisconnectAsync(true);
     }
+
+    private static string NormalizeAppPassword(string appPassword) =>
+        string.Concat(appPassword.Where(character => !char.IsWhiteSpace(character)));
 }

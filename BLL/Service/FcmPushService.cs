@@ -54,7 +54,7 @@ public class FcmPushService : IFcmPushService
             {
                 Title = notification.Title,
                 Body = notification.Body,
-                ImageUrl = notification.ImageUrl
+                ImageUrl = NormalizeImageUrl(notification.ImageUrl)
             },
             Android = string.IsNullOrWhiteSpace(_options.AndroidChannelId)
                 ? null
@@ -74,6 +74,18 @@ public class FcmPushService : IFcmPushService
 
         await FirebaseMessaging.GetMessaging(app)
             .SendAsync(message, dryRun: false, cancellationToken);
+    }
+
+    internal static string? NormalizeImageUrl(string? imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl)
+            || !Uri.TryCreate(imageUrl.Trim(), UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+        {
+            return null;
+        }
+
+        return uri.AbsoluteUri;
     }
 
     private FirebaseApp? GetOrCreateApp()
