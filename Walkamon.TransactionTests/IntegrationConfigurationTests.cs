@@ -40,4 +40,15 @@ public class IntegrationConfigurationTests
 
         Assert.Contains(result.Errors, error => error.PropertyName == "ImageUrl");
     }
+
+    [Theory]
+    [InlineData("walkamonn@gmail.com")]
+    [InlineData("\uFEFFwalkamonn@gmail.com")]
+    [InlineData("  \uFEFFwalkamonn@gmail.com  ")]
+    public void SmtpUsername_HiddenBom_IsRemoved(string username)
+    {
+        Assert.Equal(
+            "walkamonn@gmail.com",
+            GmailSmtpEmailSender.NormalizeUsername(username));
+    }
 }
