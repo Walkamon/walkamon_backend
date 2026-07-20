@@ -108,15 +108,11 @@ namespace BLL.Service
                 MaxLifeForce = pet.PetLifeForce
             };
         }
+       
         public async Task<LevelPetResponse> AddPetExpAsync(Guid userId)
         {
             var setting = await _systemSettingRepository.GetByKeyAsync("StepToExpRate");
-
-            if (setting == null)
-                throw new NotFoundException("StepToExpRate not found.");
-
-            
-            int rewardExp = int.Parse(setting.SettingValue);
+          
 
             var userPet = await _petRepository.GetUserPetAsync(userId);
 
@@ -128,14 +124,15 @@ namespace BLL.Service
             if (pet == null)
                 throw new NotFoundException("Pet template not found.");
 
+           
             UpdateEnergy(userPet);
             UpdateBond(userPet);
             UpdateLifeForce(userPet);
 
             bool levelUp = false;
 
-        
-            userPet.CurrentPetExp += rewardExp;
+            
+            userPet.CurrentPetExp += int.Parse(setting.SettingValue);
 
             while (userPet.CurrentPetExp >= userPet.PetExp)
             {
@@ -158,7 +155,6 @@ namespace BLL.Service
                 LevelUp = levelUp
             };
         }
-
         public async Task<PetStatusResponse> TapSpiritAsync(Guid userId)
         {
             var today = DateOnly.FromDateTime(GetVietnamNow());
