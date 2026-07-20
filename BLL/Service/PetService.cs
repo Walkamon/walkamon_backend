@@ -910,7 +910,7 @@ GetEvolutionPreviewAsync()
             return new UserPetNameResponse
             {
                 PetId = userPet.PetId,
-                PetName = userPet.Pet.PetName
+                PetName = userPet.PetName
             };
         }
     }
