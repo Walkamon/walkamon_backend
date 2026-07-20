@@ -126,6 +126,39 @@ services:
       - no-new-privileges:true
     logging: *default-logging
 
+  dozzle:
+    image: amir20/dozzle:v10.6.11
+    container_name: walkamon-dozzle
+    restart: unless-stopped
+    environment:
+      DOZZLE_HOSTNAME: Walkamon Ubuntu Production
+      DOZZLE_FILTER: name=walkamon
+      DOZZLE_NO_ANALYTICS: "true"
+      DOZZLE_DISABLE_AVATARS: "true"
+      DOZZLE_ENABLE_ACTIONS: "false"
+      DOZZLE_ENABLE_SHELL: "false"
+      DOZZLE_ENABLE_MCP: "false"
+    ports:
+      - "192.168.120.10:8081:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv/walkamon/dozzle:/data
+    networks:
+      - management
+    mem_limit: 256m
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/dozzle", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging: *default-logging
+
 networks:
   management:
     driver: bridge

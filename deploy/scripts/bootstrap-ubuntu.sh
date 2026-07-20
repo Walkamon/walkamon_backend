@@ -31,6 +31,7 @@ install -m 0750 -o 10001 -g 0 -d \
   /srv/walkamon/mssql/data \
   /srv/walkamon/mssql/log \
   /srv/walkamon/mssql/backup
+install -m 0750 -d /srv/walkamon/dozzle
 
 install -m 0644 "$repo_root/deploy/compose.prod.yml" /opt/walkamon/compose.prod.yml
 install -m 0750 "$repo_root"/deploy/scripts/*.sh /opt/walkamon/scripts/
@@ -48,6 +49,7 @@ usermod -aG docker "$operator"
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow from "$host_only_source" to any port 22 proto tcp comment 'SSH from Windows host only'
+ufw allow from "$host_only_source" to 192.168.120.10 port 8081 proto tcp comment 'Dozzle from Windows host only'
 ufw --force enable
 
 systemctl enable --now docker unattended-upgrades

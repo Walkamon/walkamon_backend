@@ -54,5 +54,6 @@ if [[ "$healthy" != true ]]; then
 fi
 
 "${compose[@]}" up -d cloudflared
+"${compose[@]}" up -d dozzle
 docker image prune --force --filter "until=168h" >/dev/null
 echo "Walkamon is healthy on image $new_image_id"

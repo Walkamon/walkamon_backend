@@ -153,6 +153,13 @@ ssh -L 14330:127.0.0.1:1433 <ubuntu-user>@192.168.120.10
 
 Connect SSMS to `127.0.0.1,14330`.
 
+Container logs and live CPU/memory statistics are available from the Windows
+host at `http://192.168.120.10:8081`. This Dozzle endpoint is bound only to the
+VM host-only address; UFW permits it only from `192.168.120.1`. Container
+actions, shell access, MCP access, and analytics are disabled. Do not publish
+this port through Cloudflare or the router because Dozzle can read the Docker
+API and application logs.
+
 Schema changes are a manual maintenance operation. The wrapper below first
 creates a checksum-verified, encrypted R2 backup and only then executes the
 approved SQL file with the administrative login:
@@ -240,6 +247,7 @@ manager.
 ```bash
 curl --fail http://127.0.0.1:8080/health/live
 curl --fail http://127.0.0.1:8080/health/ready
+curl --fail http://192.168.120.10:8081/healthcheck
 docker compose --env-file /etc/walkamon/walkamon.env \
   -f /opt/walkamon/compose.prod.yml ps
 systemctl list-timers 'walkamon-*'
