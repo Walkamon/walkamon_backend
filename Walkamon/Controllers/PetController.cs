@@ -53,15 +53,14 @@ namespace Walkamon.Controllers
             });
         }
 
-        [HttpPost("exp/{exp:int}")]
+        [HttpPost("exp")]
         public async Task<IActionResult> AddPetExp(
     int exp)
         {
           
 
             var result = await _petService.AddPetExpAsync(
-                CurrentUserId,
-                exp);
+                CurrentUserId);
 
             return Ok(new 
             {
