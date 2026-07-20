@@ -29,5 +29,6 @@ namespace BLL.Interfaces
 GetEvolutionPreviewAsync();
 
         Task<CurrentAnimationResponse> GetCurrentAnimationAsync(Guid userId);
+        Task<UserPetNameResponse> GetUserPetNameAsync(Guid userId);
     }
 }
