@@ -92,100 +92,6 @@ public sealed class PetOverviewServiceTests
     }
 
     [Fact]
-    public async Task AddPetExp_WhenSettingIsMissing_ThrowsSystemErrorWithoutUpdatingPet()
-    {
-        var fixture = new PetServiceFixture();
-        fixture.SystemSettings
-            .Setup(x => x.GetByKeyAsync("StepToExpRate"))
-            .ReturnsAsync((SystemSetting?)null);
-
-        var error = await Assert.ThrowsAsync<AppSystemException>(
-            () => fixture.Service.AddPetExpAsync(Guid.NewGuid()));
-
-        Assert.Equal("Step-to-exp rate is not configured correctly.", error.Message);
-        fixture.UserPets.Verify(x => x.SaveAsync(), Times.Never);
-    }
-
-    [Theory]
-    [InlineData("not-a-number")]
-    [InlineData("0")]
-    [InlineData("-5")]
-    public async Task AddPetExp_WhenSettingIsInvalid_ThrowsSystemError(string settingValue)
-    {
-        var fixture = new PetServiceFixture();
-        fixture.SystemSettings
-            .Setup(x => x.GetByKeyAsync("StepToExpRate"))
-            .ReturnsAsync(new SystemSetting
-            {
-                SettingKey = "StepToExpRate",
-                SettingValue = settingValue,
-                UpdatedAt = DateTime.UtcNow
-            });
-
-        await Assert.ThrowsAsync<AppSystemException>(
-            () => fixture.Service.AddPetExpAsync(Guid.NewGuid()));
-
-        fixture.UserPets.Verify(x => x.SaveAsync(), Times.Never);
-    }
-
-    [Fact]
-    public async Task AddPetExp_WhenSettingIsValid_AddsConfiguredAmount()
-    {
-        var fixture = new PetServiceFixture();
-        var userId = Guid.NewGuid();
-        var petId = Guid.NewGuid();
-        var now = DateTime.UtcNow.AddHours(7);
-        var userPet = new UserPet
-        {
-            UserId = userId,
-            PetId = petId,
-            PetName = "Lumina",
-            Level = 1,
-            CurrentPetExp = 25,
-            PetExp = 500,
-            CurrentPetEnergy = 50,
-            PetEnergy = 100,
-            CurrentPetBond = 50,
-            PetBond = 100,
-            CurrentPetLifeForce = 50,
-            PetLifeForce = 100,
-            EnergyUpdatedAt = now,
-            BondUpdatedAt = now,
-            LifeForceUpdatedAt = now,
-            ExpUpdatedAt = now
-        };
-        fixture.SystemSettings
-            .Setup(x => x.GetByKeyAsync("StepToExpRate"))
-            .ReturnsAsync(new SystemSetting
-            {
-                SettingKey = "StepToExpRate",
-                SettingValue = "100",
-                UpdatedAt = DateTime.UtcNow
-            });
-        fixture.PetRepository
-            .Setup(x => x.GetUserPetAsync(userId))
-            .ReturnsAsync(userPet);
-        fixture.PetRepository
-            .Setup(x => x.GetPetAsync(petId))
-            .ReturnsAsync(new Pet
-            {
-                PetId = petId,
-                PetName = "Lumina",
-                EnergyRate = 1.1,
-                BondRate = 1.1,
-                LifeForceRate = 1.1,
-                ExpRate = 1.2
-            });
-
-        var result = await fixture.Service.AddPetExpAsync(userId);
-
-        Assert.Equal(125, result.CurrentExp);
-        Assert.False(result.LevelUp);
-        fixture.UserPets.Verify(x => x.Update(userPet), Times.Once);
-        fixture.UserPets.Verify(x => x.SaveAsync(), Times.Once);
-    }
-
-    [Fact]
     public async Task GetUserPetName_LoadsPetNavigationAndReturnsNickname()
     {
         var fixture = new PetServiceFixture();
@@ -219,7 +125,6 @@ public sealed class PetOverviewServiceTests
         private Mock<IPetEvolutionHistoryRepository> EvolutionHistory { get; } = new();
         private Mock<IGenericRepository<PetEvolutionHistory>> PetHistory { get; } = new();
         private Mock<IGenericRepository<Pet>> Pets { get; } = new();
-        public Mock<ISystemSettingRepository> SystemSettings { get; } = new();
 
         public PetServiceFixture()
         {
@@ -234,8 +139,7 @@ public sealed class PetOverviewServiceTests
                 PetInteractions.Object,
                 EvolutionHistory.Object,
                 PetHistory.Object,
-                Pets.Object,
-                SystemSettings.Object);
+                Pets.Object);
         }
 
         public PetService Service { get; }

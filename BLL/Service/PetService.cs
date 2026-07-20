@@ -20,14 +20,12 @@ namespace BLL.Service
         private readonly IPetInteractionRepository _interactionRepository;
         private readonly IPetEvolutionHistoryRepository _PetEvolutionHistory;
         private readonly IGenericRepository<Pet> _Pet;
-        private readonly ISystemSettingRepository _systemSettingRepository;
         public PetService(
            IPetRepository petRepository, IGenericRepository<UserPet> repository ,
            IPetInteractionRepository petInteractionRepository, IGenericRepository<PetInteraction> PetInteraction,
           IPetEvolutionHistoryRepository petEvolutionHistoryRepository,
           IGenericRepository<PetEvolutionHistory> PetHistory,
-          IGenericRepository<Pet> Pet,
-          ISystemSettingRepository systemSettingRepository
+          IGenericRepository<Pet> Pet
             )
         {
             _Pet = Pet;
@@ -37,7 +35,6 @@ namespace BLL.Service
             _interactionRepository = petInteractionRepository;
             _petRepository = petRepository;
             _repository = repository;
-            _systemSettingRepository = systemSettingRepository;
         }
         public async Task CreateUserPetAsync(Guid userId, CreateUserPetRequest request)
         {
@@ -168,59 +165,6 @@ namespace BLL.Service
                 CanEvolve = nextEvolutionLevel.HasValue
                     && userPet.Level >= nextEvolutionLevel.Value,
                 NextEvolutionLevel = nextEvolutionLevel
-            };
-        }
-        public async Task<LevelPetResponse> AddPetExpAsync(Guid userId)
-        {
-            var setting = await _systemSettingRepository.GetByKeyAsync("StepToExpRate");
-
-            if (setting == null
-                || !int.TryParse(setting.SettingValue, out var expToAdd)
-                || expToAdd <= 0)
-            {
-                throw new AppSystemException(
-                    "Step-to-exp rate is not configured correctly.");
-            }
-
-            var userPet = await _petRepository.GetUserPetAsync(userId);
-
-            if (userPet == null)
-                throw new NotFoundException("Pet not found.");
-
-            var pet = await _petRepository.GetPetAsync(userPet.PetId);
-
-            if (pet == null)
-                throw new NotFoundException("Pet template not found.");
-
-           
-            UpdateEnergy(userPet);
-            UpdateBond(userPet);
-            UpdateLifeForce(userPet);
-
-            bool levelUp = false;
-
-            
-            userPet.CurrentPetExp += expToAdd;
-
-            while (userPet.CurrentPetExp >= userPet.PetExp)
-            {
-                userPet.CurrentPetExp -= userPet.PetExp;
-
-                LevelUp(userPet, pet);
-
-                levelUp = true;
-            }
-
-            _repository.Update(userPet);
-
-            await _repository.SaveAsync();
-
-            return new LevelPetResponse
-            {
-                Level = userPet.Level,
-                CurrentExp = userPet.CurrentPetExp,
-                MaxExp = userPet.PetExp,
-                LevelUp = levelUp
             };
         }
         public async Task<PetStatusResponse> TapSpiritAsync(Guid userId)
@@ -723,27 +667,6 @@ namespace BLL.Service
 
             pet.LifeForceUpdatedAt =
                 pet.LifeForceUpdatedAt.AddMinutes(cycles * 20);
-        }
-        private void LevelUp(UserPet userPet, Pet pet)
-        {
-            userPet.Level++;
-
-           
-            userPet.PetEnergy = (int)Math.Ceiling(userPet.PetEnergy * pet.EnergyRate);
-
-            userPet.PetBond = (int)Math.Ceiling(userPet.PetBond * pet.BondRate);
-
-            userPet.PetLifeForce = (int)Math.Ceiling(userPet.PetLifeForce * pet.LifeForceRate);
-
-           
-            userPet.PetExp = (int)Math.Ceiling(userPet.PetExp * pet.ExpRate);
-
-           
-            userPet.CurrentPetEnergy = userPet.PetEnergy;
-            userPet.CurrentPetBond = userPet.PetBond;
-            userPet.CurrentPetLifeForce = userPet.PetLifeForce;
-
-            userPet.ExpUpdatedAt = GetVietnamNow();
         }
         private static DateTime GetVietnamNow()
         {

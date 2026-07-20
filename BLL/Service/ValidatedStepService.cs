@@ -186,6 +186,20 @@ public sealed class ValidatedStepService : IValidatedStepService
         if (request.Sequence != session.LastSequence + 1)
             throw new ConflictException($"Expected sequence {session.LastSequence + 1}.");
 
+        var expPerStepMilestone = 0;
+        var previousDailyValidatedSteps = 0L;
+        if (purposeCode == "daily")
+        {
+            var configuredExp = await _context.SystemSettings.AsNoTracking()
+                .Where(x => x.SettingKey == "StepToExpRate")
+                .Select(x => x.SettingValue)
+                .SingleOrDefaultAsync(cancellationToken);
+            expPerStepMilestone = StepExperienceReward.ParseExpPerReward(configuredExp);
+            previousDailyValidatedSteps = await GetTotalDailyValidatedStepsAsync(
+                userId,
+                cancellationToken);
+        }
+
         PvpMatch? match = null;
         PvpMatchPlayer? player = null;
         List<PvpMatchEffect> effects = [];
@@ -437,6 +451,17 @@ public sealed class ValidatedStepService : IValidatedStepService
                 player.DistanceUnits / PvpGameplayCalculator.DistanceUnitsPerStep);
             AddMatchProgressEvent(match!, player, accepted, lastMultiplier, now);
         }
+        if (purposeCode == "daily" && batch.AcceptedSteps > 0)
+        {
+            var rewardsCrossed = StepExperienceReward.CalculateRewardsCrossed(
+                previousDailyValidatedSteps,
+                batch.AcceptedSteps);
+            if (rewardsCrossed > 0)
+            {
+                var expToAdd = checked(rewardsCrossed * expPerStepMilestone);
+                await AwardPetExperienceAsync(userId, expToAdd, now, cancellationToken);
+            }
+        }
         session.LastSequence = request.Sequence;
         session.LastSubmittedAt = now;
         session.LastSensorTotal = rollingSensorTotal;
@@ -535,6 +560,35 @@ public sealed class ValidatedStepService : IValidatedStepService
         }
         daily.UpdatedAt = now;
         return eligible;
+    }
+
+    private async Task<long> GetTotalDailyValidatedStepsAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        return await _context.ValidatedStepRecords.AsNoTracking()
+            .Where(x =>
+                x.UserId == userId &&
+                x.StepSession != null &&
+                x.StepSession.PurposeCode == "daily")
+            .Select(x => (long?)x.EligibleStepCount)
+            .SumAsync(cancellationToken) ?? 0L;
+    }
+
+    private async Task AwardPetExperienceAsync(
+        Guid userId,
+        int expToAdd,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var userPet = await _context.UserPets
+            .Include(x => x.Pet)
+            .FirstOrDefaultAsync(x => x.UserId == userId, cancellationToken);
+        if (userPet == null)
+            return;
+
+        var vietnamNow = TimeZoneInfo.ConvertTimeFromUtc(now, VietnamTimeZone);
+        StepExperienceReward.ApplyExperience(userPet, userPet.Pet, expToAdd, vietnamNow);
     }
 
     private void AddMatchProgressEvent(
