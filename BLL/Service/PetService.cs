@@ -230,7 +230,7 @@ namespace BLL.Service
             };
         }
 
-        public async Task<PetStatusResponse> FeedSpiritAsync(Guid userId)
+        public async Task<PetStatusResponse>  FeedSpiritAsync(Guid userId)
         {
             var today = DateOnly.FromDateTime(GetVietnamNow());
 
