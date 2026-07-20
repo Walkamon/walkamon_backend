@@ -205,7 +205,6 @@ builder.Services.AddScoped<  IPetEvolutionHistoryRepository, PetEvolutionHistory
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddSingleton<IFcmPushService, FcmPushService>();
-builder.Services.AddHostedService<NotificationSchedulerService>();
 builder.Services.AddScoped<IPvpSprintService, PvpSprintService>();
 builder.Services.AddScoped<IValidatedStepService, ValidatedStepService>();
 if (builder.Environment.IsDevelopment())
@@ -240,8 +239,15 @@ else
         options.GoogleCredentialPath = credentialPath);
     builder.Services.AddHttpClient<IAppAttestationVerifier, PlayIntegrityAttestationVerifier>();
 }
-builder.Services.AddHostedService<PvpSprintLifecycleService>();
-builder.Services.AddHostedService<PvpOutboxDispatcherService>();
+var backgroundServicesEnabled = builder.Configuration.GetValue(
+    "BackgroundServices:Enabled",
+    true);
+if (backgroundServicesEnabled)
+{
+    builder.Services.AddHostedService<NotificationSchedulerService>();
+    builder.Services.AddHostedService<PvpSprintLifecycleService>();
+    builder.Services.AddHostedService<PvpOutboxDispatcherService>();
+}
 builder.Services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();
 builder.Services.AddScoped<ISystemSettingRepository, SystemSettingRepository>();
 builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();

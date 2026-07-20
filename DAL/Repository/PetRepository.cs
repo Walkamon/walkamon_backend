@@ -45,7 +45,7 @@ namespace DAL.Repository
         public async Task<List<Pet>> GetEvolutionOptionsAsync()
         {
             return await _context.Pets
-                .Where(x => x.PetName != "Starter")
+                .Where(x => x.PetName != "Starter" && x.PetName != "Lumina")
                 .ToListAsync();
         }
         public async Task<List<PetStage>> GetStagesByPetIdAsync(Guid petId)
@@ -108,7 +108,7 @@ namespace DAL.Repository
         public async Task<List<Pet>> GetEvolutionPetsAsync()
         {
             return await _context.Pets
-                .Where(x => x.PetName != "Starter")
+                .Where(x => x.PetName != "Starter" && x.PetName != "Lumina")
                 .ToListAsync();
         }
         public async Task<PetAnimation?> GetAnimationAsync(

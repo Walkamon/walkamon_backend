@@ -14,8 +14,9 @@ if [[ "$mode" != full && "$mode" != --core ]]; then
   exit 2
 fi
 
-if [[ ! -f "$ENV_FILE" || ! -f "$COMPOSE_FILE" ]]; then
-  echo "Missing production environment or Compose file." >&2
+if [[ ! -f "$ENV_FILE" || ! -f "$COMPOSE_FILE" \
+      || ! -f /opt/walkamon/caddy/Caddyfile.template ]]; then
+  echo "Missing production environment, Compose file, or Caddy template." >&2
   exit 1
 fi
 

@@ -11,6 +11,7 @@ namespace BLL.Interfaces
     {
          Task CreateUserPetAsync(Guid userId, CreateUserPetRequest request);
         Task<PetStatusResponse> GetPetStatusAsync(Guid currentUserId);
+        Task<PetOverviewResponse> GetPetOverviewAsync(Guid currentUserId);
         Task<LevelPetResponse> AddPetExpAsync(
     Guid currentUserId);
 

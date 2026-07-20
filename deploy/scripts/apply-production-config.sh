@@ -97,6 +97,9 @@ jq empty /etc/walkamon/secrets/firebase-service-account.json
 jq empty /etc/walkamon/secrets/play-integrity-service-account.json
 
 install -m 0644 "$SOURCE_ROOT/compose.prod.yml" /opt/walkamon/compose.prod.yml
+install -m 0755 -d /opt/walkamon/caddy /srv/walkamon/deploy /srv/walkamon/gateway
+install -m 0644 "$SOURCE_ROOT/caddy/Caddyfile.template" \
+  /opt/walkamon/caddy/Caddyfile.template
 install -m 0750 "$SOURCE_ROOT"/scripts/*.sh /opt/walkamon/scripts/
 install -m 0644 "$SOURCE_ROOT"/systemd/*.service /etc/systemd/system/
 install -m 0644 "$SOURCE_ROOT"/systemd/*.timer /etc/systemd/system/

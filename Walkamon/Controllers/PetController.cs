@@ -53,6 +53,20 @@ namespace Walkamon.Controllers
             });
         }
 
+        [HttpGet("me")]
+        public async Task<IActionResult> GetPetOverview()
+        {
+            var result = await _petService.GetPetOverviewAsync(CurrentUserId);
+
+            return Ok(new ApiResponse<PetOverviewResponse>
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Pet overview retrieved successfully.",
+                Data = result
+            });
+        }
+
         [HttpPost("exp")]
         public async Task<IActionResult> AddPetExp()
         {

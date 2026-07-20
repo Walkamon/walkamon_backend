@@ -26,14 +26,27 @@ echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] https://download
 apt-get update
 apt-get install --yes docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-install -m 0750 -d /etc/walkamon /etc/walkamon/secrets /opt/walkamon/scripts
+install -m 0750 -d \
+  /etc/walkamon \
+  /etc/walkamon/secrets \
+  /opt/walkamon/scripts \
+  /opt/walkamon/caddy
 install -m 0750 -o 10001 -g 0 -d \
   /srv/walkamon/mssql/data \
   /srv/walkamon/mssql/log \
   /srv/walkamon/mssql/backup
 install -m 0750 -d /srv/walkamon/dozzle
+install -m 0755 -d /srv/walkamon/deploy /srv/walkamon/gateway
 
 install -m 0644 "$repo_root/deploy/compose.prod.yml" /opt/walkamon/compose.prod.yml
+install -m 0644 "$repo_root/deploy/caddy/Caddyfile.template" \
+  /opt/walkamon/caddy/Caddyfile.template
+if [[ ! -e /srv/walkamon/gateway/Caddyfile ]]; then
+  sed 's/__UPSTREAM__/api-blue/g' \
+    "$repo_root/deploy/caddy/Caddyfile.template" \
+    > /srv/walkamon/gateway/Caddyfile
+  chmod 0644 /srv/walkamon/gateway/Caddyfile
+fi
 install -m 0750 "$repo_root"/deploy/scripts/*.sh /opt/walkamon/scripts/
 install -m 0600 "$repo_root/deploy/walkamon.env.example" /etc/walkamon/walkamon.env.example
 
@@ -50,6 +63,7 @@ ufw default deny incoming
 ufw default allow outgoing
 ufw allow from "$host_only_source" to any port 22 proto tcp comment 'SSH from Windows host only'
 ufw allow from "$host_only_source" to 192.168.120.10 port 8081 proto tcp comment 'Dozzle from Windows host only'
+ufw allow from "$host_only_source" to 192.168.120.10 port 8082 proto tcp comment 'DbGate from Windows host only'
 ufw --force enable
 
 systemctl enable --now docker unattended-upgrades
