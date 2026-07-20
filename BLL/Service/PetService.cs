@@ -20,12 +20,14 @@ namespace BLL.Service
         private readonly IPetInteractionRepository _interactionRepository;
         private readonly IPetEvolutionHistoryRepository _PetEvolutionHistory;
         private readonly IGenericRepository<Pet> _Pet;
+        private readonly ISystemSettingRepository _systemSettingRepository;
         public PetService(
            IPetRepository petRepository, IGenericRepository<UserPet> repository ,
            IPetInteractionRepository petInteractionRepository, IGenericRepository<PetInteraction> PetInteraction,
           IPetEvolutionHistoryRepository petEvolutionHistoryRepository,
           IGenericRepository<PetEvolutionHistory> PetHistory,
-          IGenericRepository<Pet> Pet
+          IGenericRepository<Pet> Pet,
+          ISystemSettingRepository systemSettingRepository
             )
         {
             _Pet = Pet;
@@ -35,6 +37,7 @@ namespace BLL.Service
             _interactionRepository = petInteractionRepository;
             _petRepository = petRepository;
             _repository = repository;
+            _systemSettingRepository = systemSettingRepository;
         }
         public async Task CreateUserPetAsync(Guid userId, CreateUserPetRequest request)
         {
@@ -105,12 +108,14 @@ namespace BLL.Service
                 MaxLifeForce = pet.PetLifeForce
             };
         }
-        public async Task<LevelPetResponse> AddPetExpAsync(
-    Guid userId,
-    int exp)
+        public async Task<LevelPetResponse> AddPetExpAsync(Guid userId)
         {
-            if (exp <= 0)
-                throw new BadRequestException("Exp must be greater than 0.");
+            var setting = await _systemSettingRepository.GetByKeyAsync("StepToExpRate");
+
+            if (setting == null)
+                throw new NotFoundException("StepToExpRate not found.");
+
+            int baseExp = int.Parse(setting.SettingValue);
 
             var userPet = await _petRepository.GetUserPetAsync(userId);
 
@@ -128,7 +133,10 @@ namespace BLL.Service
 
             bool levelUp = false;
 
-            userPet.CurrentPetExp += exp;
+            // EXP nhận được = BaseExp × ExpRate
+            int rewardExp = (int)Math.Round(baseExp * pet.ExpRate);
+
+            userPet.CurrentPetExp += rewardExp;
 
             while (userPet.CurrentPetExp >= userPet.PetExp)
             {
@@ -146,10 +154,8 @@ namespace BLL.Service
             return new LevelPetResponse
             {
                 Level = userPet.Level,
-
                 CurrentExp = userPet.CurrentPetExp,
                 MaxExp = userPet.PetExp,
-
                 LevelUp = levelUp
             };
         }
