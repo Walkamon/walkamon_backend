@@ -242,7 +242,9 @@ else
 }
 builder.Services.AddHostedService<PvpSprintLifecycleService>();
 builder.Services.AddHostedService<PvpOutboxDispatcherService>();
+builder.Services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();
 
+builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();
 builder.Services.AddHttpContextAccessor();
 #endregion
 
