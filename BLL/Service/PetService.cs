@@ -115,7 +115,7 @@ namespace BLL.Service
             if (setting == null)
                 throw new NotFoundException("StepToExpRate not found.");
 
-            // EXP nhận được mỗi lần FE gọi API (100 bước)
+            
             int rewardExp = int.Parse(setting.SettingValue);
 
             var userPet = await _petRepository.GetUserPetAsync(userId);
@@ -134,7 +134,7 @@ namespace BLL.Service
 
             bool levelUp = false;
 
-            // Cộng EXP trực tiếp
+        
             userPet.CurrentPetExp += rewardExp;
 
             while (userPet.CurrentPetExp >= userPet.PetExp)
@@ -901,6 +901,20 @@ GetEvolutionPreviewAsync()
                 AnimationUrl = animation.AnimationUrl!,
                 StageNo = stage.StageNo,
                 StageName = stage.StageName
+            };
+        }
+
+        public async Task<UserPetNameResponse> GetUserPetNameAsync(Guid userId)
+        {
+            var userPet = await _petRepository.GetUserPetAsync(userId);
+
+            if (userPet == null)
+                throw new NotFoundException("Pet not found.");
+
+            return new UserPetNameResponse
+            {
+                PetId = userPet.PetId,
+                PetName = userPet.Pet.PetName
             };
         }
     }

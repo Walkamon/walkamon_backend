@@ -231,5 +231,19 @@ public async Task<IActionResult> GetLeaderboard()
                 Data = result
             });
         }
+
+        [HttpGet("pet-name")]
+        public async Task<IActionResult> GetUserPetName()
+        {
+            var result = await _petService.GetUserPetNameAsync(CurrentUserId);
+
+            return Ok(new
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Pet name retrieved successfully.",
+                Data = result
+            });
+        }
     }
 }
