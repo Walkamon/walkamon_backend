@@ -54,8 +54,7 @@ namespace Walkamon.Controllers
         }
 
         [HttpPost("exp")]
-        public async Task<IActionResult> AddPetExp(
-    int exp)
+        public async Task<IActionResult> AddPetExp()
         {
           
 
