@@ -39,7 +39,7 @@ namespace BLL.Service
                 BaseExp = int.Parse(setting.SettingValue),
 
                 Description =
-                    "Every 100 steps the mobile app automatically calls the API once. Pet EXP = Base EXP × Pet EXP Rate."
+                    "Every 100 steps the mobile app automatically calls the API once. Pet EXP gain = Pet EXP Rate."
             };
         }
 

@@ -115,7 +115,8 @@ namespace BLL.Service
             if (setting == null)
                 throw new NotFoundException("StepToExpRate not found.");
 
-            int baseExp = int.Parse(setting.SettingValue);
+            // EXP nhận được mỗi lần FE gọi API (100 bước)
+            int rewardExp = int.Parse(setting.SettingValue);
 
             var userPet = await _petRepository.GetUserPetAsync(userId);
 
@@ -133,9 +134,7 @@ namespace BLL.Service
 
             bool levelUp = false;
 
-            // EXP nhận được = BaseExp × ExpRate
-            int rewardExp = (int)Math.Round(baseExp * pet.ExpRate);
-
+            // Cộng EXP trực tiếp
             userPet.CurrentPetExp += rewardExp;
 
             while (userPet.CurrentPetExp >= userPet.PetExp)
