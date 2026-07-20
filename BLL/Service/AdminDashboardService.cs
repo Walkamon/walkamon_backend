@@ -20,50 +20,7 @@ namespace BLL.Service
 
         public async Task<DashboardResponseDto> GetDashboardAsync()
         {
-            var totalUsersTask = _repository.GetTotalUsersAsync();
-
-            var activeUsersTask = _repository.GetActiveUsersTodayAsync();
-
-            var totalStepsTask = _repository.GetTotalStepsAsync();
-
-            var growthTask = _repository.GetUserGrowthPercentageAsync();
-
-            var averageTask = _repository.GetAverageStepsPerDayAsync();
-
-            var walkingTodayTask = _repository.GetWalkingUsersTodayAsync();
-
-            var compareTask = _repository.GetCompareWithYesterdayAsync();
-
-            var petTask = _repository.GetPetInteractionStatisticsAsync();
-
-            await Task.WhenAll(
-                totalUsersTask,
-                activeUsersTask,
-                totalStepsTask,
-                growthTask,
-                averageTask,
-                walkingTodayTask,
-                compareTask,
-                petTask);
-
-            return new DashboardResponseDto
-            {
-                TotalUsers = totalUsersTask.Result,
-
-                ActiveUsers = activeUsersTask.Result,
-
-                TotalSteps = totalStepsTask.Result,
-
-                UserGrowthPercentage = growthTask.Result,
-
-                AverageStepsPerDay = averageTask.Result,
-
-                WalkingUsersToday = walkingTodayTask.Result,
-
-                CompareWithYesterday = compareTask.Result,
-
-                PetInteractions = petTask.Result
-            };
+            return await _repository.GetDashboardAsync();
         }
     }
 }

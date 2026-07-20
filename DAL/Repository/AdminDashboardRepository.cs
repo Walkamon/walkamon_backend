@@ -18,149 +18,144 @@ namespace DAL.Repository
             _context = context;
         }
 
-        private static DateTime VietNamNow()
-            => DateTime.UtcNow.AddHours(7);
-
-        private static DateOnly VietNamToday()
-            => DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
-
-        //====================================================
-
-        public async Task<int> GetTotalUsersAsync()
+        public async Task<DashboardResponseDto> GetDashboardAsync()
         {
-            return await _context.Users.CountAsync();
-        }
+            var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+            var yesterday = today.AddDays(-1);
 
-        //====================================================
-
-        public async Task<int> GetActiveUsersTodayAsync()
-        {
-            var today = VietNamToday();
-
-            return await _context.DailySteps
-                .Where(x => x.StepDate == today)
-                .Select(x => x.UserId)
-                .Distinct()
-                .CountAsync();
-        }
-
-        //====================================================
-
-        public async Task<long> GetTotalStepsAsync()
-        {
-            return await _context.DailySteps
-                .SumAsync(x => (long)x.StepCount);
-        }
-
-        //====================================================
-
-        public async Task<double> GetUserGrowthPercentageAsync()
-        {
-            var now = VietNamNow();
+            var now = DateTime.UtcNow.AddHours(7);
 
             var currentMonth = new DateTime(now.Year, now.Month, 1);
-
             var previousMonth = currentMonth.AddMonths(-1);
 
-            var current = await _context.Users
+            //--------------------------------------------------
+            // Users
+            //--------------------------------------------------
+
+            var totalUsers = await _context.Users.CountAsync();
+
+            var currentUsers = await _context.Users
                 .CountAsync(x => x.CreatedAt >= currentMonth);
 
-            var previous = await _context.Users
+            var previousUsers = await _context.Users
                 .CountAsync(x =>
                     x.CreatedAt >= previousMonth &&
                     x.CreatedAt < currentMonth);
 
-            if (previous == 0)
-                return current == 0 ? 0 : 100;
+            double growth = 0;
 
-            return Math.Round(
-                (current - previous) * 100.0 / previous,
-                2);
-        }
+            if (previousUsers == 0)
+            {
+                growth = currentUsers == 0 ? 0 : 100;
+            }
+            else
+            {
+                growth = Math.Round(
+                    (currentUsers - previousUsers) * 100.0 / previousUsers,
+                    2);
+            }
 
-        //====================================================
+            //--------------------------------------------------
+            // Steps
+            //--------------------------------------------------
 
-        public async Task<double> GetAverageStepsPerDayAsync()
-        {
-            if (!await _context.DailySteps.AnyAsync())
-                return 0;
+            var totalSteps = await _context.DailySteps
+                .SumAsync(x => (long?)x.StepCount) ?? 0;
 
-            return await _context.DailySteps
-                .AverageAsync(x => x.StepCount);
-        }
+            var averageSteps = await _context.DailySteps.AnyAsync()
+                ? await _context.DailySteps.AverageAsync(x => x.StepCount)
+                : 0;
 
-        //====================================================
+            //--------------------------------------------------
+            // Active
+            //--------------------------------------------------
 
-        public async Task<int> GetWalkingUsersTodayAsync()
-        {
-            var today = VietNamToday();
-
-            return await _context.DailySteps
-                .Where(x => x.StepDate == today)
-                .Select(x => x.UserId)
-                .Distinct()
-                .CountAsync();
-        }
-
-        //====================================================
-
-        public async Task<double> GetCompareWithYesterdayAsync()
-        {
-            var today = VietNamToday();
-
-            var yesterday = today.AddDays(-1);
-
-            var todayUsers = await _context.DailySteps
+            var walkingToday = await _context.DailySteps
                 .Where(x => x.StepDate == today)
                 .Select(x => x.UserId)
                 .Distinct()
                 .CountAsync();
 
-            var yesterdayUsers = await _context.DailySteps
+            var walkingYesterday = await _context.DailySteps
                 .Where(x => x.StepDate == yesterday)
                 .Select(x => x.UserId)
                 .Distinct()
                 .CountAsync();
 
-            if (yesterdayUsers == 0)
-                return todayUsers == 0 ? 0 : 100;
+            double compare = 0;
 
-            return Math.Round(
-                todayUsers * 100.0 / yesterdayUsers,
-                2);
-        }
+            if (walkingYesterday == 0)
+            {
+                compare = walkingToday == 0 ? 0 : 100;
+            }
+            else
+            {
+                compare = Math.Round(
+                    walkingToday * 100.0 / walkingYesterday,
+                    2);
+            }
 
-        //====================================================
+            //--------------------------------------------------
+            // Feed Tap
+            //--------------------------------------------------
 
-        public async Task<List<PetInteractionStatisticDto>> GetPetInteractionStatisticsAsync()
-        {
             var interactions = await _context.PetInteractions
+
                 .Where(x =>
                     x.InteractionType == "Feed" ||
                     x.InteractionType == "Tap")
+
                 .GroupBy(x => x.InteractionType)
+
                 .Select(g => new
                 {
                     Type = g.Key,
                     Total = g.Sum(x => x.Count)
                 })
+
                 .ToListAsync();
 
-            var total = interactions.Sum(x => x.Total);
+            var interactionTotal = interactions.Sum(x => x.Total);
 
-            return interactions
+            var petInteractions = interactions
+
                 .Select(x => new PetInteractionStatisticDto
                 {
                     InteractionType = x.Type,
+
                     TotalCount = x.Total,
-                    Percentage = total == 0
+
+                    Percentage = interactionTotal == 0
                         ? 0
                         : Math.Round(
-                            x.Total * 100.0 / total,
+                            x.Total * 100.0 / interactionTotal,
                             2)
                 })
+
                 .OrderByDescending(x => x.TotalCount)
+
                 .ToList();
+
+            //--------------------------------------------------
+
+            return new DashboardResponseDto
+            {
+                TotalUsers = totalUsers,
+
+                ActiveUsers = walkingToday,
+
+                TotalSteps = totalSteps,
+
+                UserGrowthPercentage = growth,
+
+                AverageStepsPerDay = Math.Round(averageSteps, 0),
+
+                WalkingUsersToday = walkingToday,
+
+                CompareWithYesterday = compare,
+
+                PetInteractions = petInteractions
+            };
         }
     }
 }
