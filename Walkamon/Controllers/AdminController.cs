@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Walkamon.Controllers
 {
     [Route("api/admin")]
-    [Authorize(Roles = "admin")]
+    [Authorize(Roles = "Admin")]
     public class AdminController : BaseController
     {
         [HttpGet("dashboard")]

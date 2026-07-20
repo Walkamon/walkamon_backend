@@ -91,33 +91,26 @@ namespace DAL.Repository
 
         public async Task CleanupExpiredPendingRegistrationsAsync(DateTime createdBeforeUtc)
         {
-            var users = await _context.Users
-                .Where(user =>
-                    user.StatusCode == "active"
-                    && !user.EmailConfirmed
-                    && user.CreatedAt < createdBeforeUtc)
-                .Include(user => user.UserProfile)
+            var otpRequests = await _context.OtpRequests
+                .Where(otp =>
+                    otp.PurposeCode == "verify_email"
+                    && otp.StatusCode == "pending"
+                    && otp.CreatedAt < createdBeforeUtc
+                    && otp.User.StatusCode == "active"
+                    && !otp.User.EmailConfirmed)
                 .ToListAsync();
 
-            if (users.Count == 0)
+            if (otpRequests.Count == 0)
             {
                 return;
             }
 
-            var userIds = users.Select(user => user.UserId).ToArray();
-
-            var otpRequests = await _context.OtpRequests
-                .Where(otp => userIds.Contains(otp.UserId))
-                .ToListAsync();
-
-            _context.OtpRequests.RemoveRange(otpRequests);
-
-            _context.UserProfiles.RemoveRange(
-                users
-                    .Where(user => user.UserProfile != null)
-                    .Select(user => user.UserProfile!));
-
-            _context.Users.RemoveRange(users);
+            var now = DateTime.UtcNow;
+            foreach (var otpRequest in otpRequests)
+            {
+                otpRequest.StatusCode = "cancelled";
+                otpRequest.UpdatedAt = now;
+            }
 
             await _context.SaveChangesAsync();
         }

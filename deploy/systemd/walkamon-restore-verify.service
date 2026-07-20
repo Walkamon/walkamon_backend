@@ -1,0 +1,9 @@
+[Unit]
+Description=Monthly full restore and DBCC validation of a Walkamon backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/walkamon/scripts/verify-restore.sh
+TimeoutStartSec=3600
