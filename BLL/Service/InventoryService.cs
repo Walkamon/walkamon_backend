@@ -125,13 +125,6 @@ public class InventoryService : IInventoryService
         await _achievementProgressService.AddProgressAsync(userId, "feed_pet", 1);
         await _missionProgressService.AddProgressAsync(userId, "feed_pet", 1);
 
-        if (effectTypeCode is "life_force" or "sml")
-        {
-            var currentLevel = userPet.Level;
-            await _achievementProgressService.SetProgressMaxAsync(userId, "pet_level", currentLevel);
-            await _missionProgressService.SetProgressMaxAsync(userId, "pet_level", currentLevel);
-        }
-
         return new UseItemResponse
         {
             ItemId = item.ItemId,
@@ -139,9 +132,9 @@ public class InventoryService : IInventoryService
             EffectTypeCode = effectTypeCode,
             EffectValue = effectValue,
             RemainingQuantity = inventoryItem.Quantity,
-            LifeForce = userPet.PetLifeForce,
-            Energy = userPet.PetEnergy,
-            Bond = userPet.PetBond
+            LifeForce = userPet.CurrentPetLifeForce,
+            Energy = userPet.CurrentPetEnergy,
+            Bond = userPet.CurrentPetBond
         };
     }
 
@@ -174,29 +167,50 @@ public class InventoryService : IInventoryService
         return item;
     }
 
-    private static void ApplyItemEffect(
+    internal static void ApplyItemEffect(
         UserPet userPet,
         string effectTypeCode,
         int effectValue)
     {
+        if (effectValue < 0)
+        {
+            throw new BadRequestException("Item effect value cannot be negative");
+        }
+
         switch (effectTypeCode)
         {
             case "life_force":
             case "sml":
-                userPet.PetLifeForce += effectValue;
-                userPet.CurrentPetLifeForce += effectValue;
+                userPet.CurrentPetLifeForce = RestoreUpToMaximum(
+                    userPet.CurrentPetLifeForce,
+                    userPet.PetLifeForce,
+                    effectValue);
                 break;
             case "energy":
-                userPet.PetEnergy += effectValue;
-                userPet.CurrentPetEnergy += effectValue;
+                userPet.CurrentPetEnergy = RestoreUpToMaximum(
+                    userPet.CurrentPetEnergy,
+                    userPet.PetEnergy,
+                    effectValue);
                 break;
             case "bond":
-                userPet.PetBond += effectValue;
-                userPet.CurrentPetBond += effectValue;
+                userPet.CurrentPetBond = RestoreUpToMaximum(
+                    userPet.CurrentPetBond,
+                    userPet.PetBond,
+                    effectValue);
                 break;
             default:
                 throw new BadRequestException("Unsupported item effect type");
         }
+    }
+
+    private static int RestoreUpToMaximum(int current, int maximum, int amount)
+    {
+        if (maximum < 0)
+        {
+            throw new BadRequestException("Pet maximum stat is configured incorrectly");
+        }
+
+        return (int)Math.Min(maximum, (long)Math.Max(0, current) + amount);
     }
 
     private static InventoryItemResponse ToInventoryItemResponse(
