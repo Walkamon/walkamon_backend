@@ -14,15 +14,17 @@ public class AuthController : BaseController
     private readonly IAuthService _authService;
     private readonly IUserService _userService;
     private readonly ICloudinaryService _cloudinaryService;
-
+    private readonly IStepGoalService _streakService;
     public AuthController(
         IAuthService authService,
         IUserService userService,
+        IStepGoalService stepGoalService,
         ICloudinaryService cloudinaryService)
     {
         _authService = authService;
         _userService = userService;
         _cloudinaryService = cloudinaryService;
+        _streakService = stepGoalService;
     }
 
     // Đăng nhập.
@@ -336,6 +338,7 @@ public class AuthController : BaseController
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    [HttpGet("other-profile/{userId}")]
     public async Task<IActionResult> GetOtherProfile(Guid userId)
     {
         var user = await _userService.GetUserByIdAsync(userId);
@@ -351,6 +354,10 @@ public class AuthController : BaseController
             });
         }
 
+        var longestStreak = await _streakService.GetLongestStreakAsync(userId);
+        var currentStreak = await _streakService.GetCurrentStreakAsync(userId);
+        var streakHistory = await _streakService.GetStreakHistoryAsync(userId);
+
         return Ok(new ApiResponse<object>
         {
             Success = true,
@@ -358,12 +365,15 @@ public class AuthController : BaseController
             Message = "Get profile success",
             Data = new
             {
-                Username = user.Profile?.Username,            
+                Username = user.Profile?.Username,
                 Gender = user.Profile?.Gender,
                 Bio = user.Profile?.Bio,
                 Dob = user.Profile?.Dob,
-                AvatarUrl = user.Profile?.AvatarUrl
-               
+                AvatarUrl = user.Profile?.AvatarUrl,
+
+                CurrentStreak = currentStreak,
+                LongestStreak = longestStreak,
+                StreakHistory = streakHistory
             }
         });
     }
