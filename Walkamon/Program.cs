@@ -75,14 +75,20 @@ builder.Services.AddCors(options =>
                     return true;
                 }
 
-                if (!builder.Environment.IsDevelopment()
-                    || !Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
                 {
                     return false;
                 }
 
-                return uri.Scheme is "http" or "https" or "capacitor" or "ionic"
-                    && uri.Host is "localhost" or "127.0.0.1" or "::1";
+                var isLocalScheme = uri.Scheme is "http" or "https" or "capacitor" or "ionic";
+                var isLocalhostName = uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                    || uri.Host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase);
+                var isLoopbackAddress = IPAddress.TryParse(uri.Host, out var address)
+                    && IPAddress.IsLoopback(address);
+
+                // Allow local web/mobile development on any port in every environment.
+                // Authentication is still enforced by the API and SignalR hub.
+                return isLocalScheme && (isLocalhostName || isLoopbackAddress);
             })
             .AllowAnyHeader()
             .AllowAnyMethod()
