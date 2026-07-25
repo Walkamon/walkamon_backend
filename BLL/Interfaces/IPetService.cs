@@ -35,8 +35,6 @@ GetEvolutionPreviewAsync();
         Task<PetDetailResponse> GetPetDetailAsync(Guid petId);
 
         Task UpdatePetAsync(Guid petId, UpdatePetRequest request);
-        Task<PetStatusSettingResponse> GetPetStatusSettingAsync();
 
-        Task UpdatePetStatusSettingAsync(UpdatePetStatusSettingRequest request);
     }
 }
