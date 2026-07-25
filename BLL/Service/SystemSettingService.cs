@@ -65,5 +65,57 @@ namespace BLL.Service
 
             await _repository.SaveAsync();
         }
+        public async Task<PetStatusSettingResponse> GetPetStatusSettingAsync()
+        {
+            var energy = await _systemSettingRepository
+                .GetByKeyAsync("EnergyRecoverPerMinute");
+
+            var bond = await _systemSettingRepository
+                .GetByKeyAsync("BondDecreasePerMinute");
+
+            var lifeForce = await _systemSettingRepository
+                .GetByKeyAsync("LifeForceDecreasePerMinute");
+
+            return new PetStatusSettingResponse
+            {
+                EnergyRecoverPerMinute = int.Parse(energy!.SettingValue),
+                BondDecreasePerMinute = int.Parse(bond!.SettingValue),
+                LifeForceDecreasePerMinute = int.Parse(lifeForce!.SettingValue)
+            };
+        }
+        public async Task UpdatePetStatusSettingAsync(UpdatePetStatusSettingRequest request)
+        {
+            var energy = await _systemSettingRepository
+                .GetByKeyAsync("EnergyRecoverPerMinute");
+
+            var bond = await _systemSettingRepository
+                .GetByKeyAsync("BondDecreasePerMinute");
+
+            var lifeForce = await _systemSettingRepository
+                .GetByKeyAsync("LifeForceDecreasePerMinute");
+
+            if (energy == null || bond == null || lifeForce == null)
+                throw new NotFoundException("Pet status settings not found.");
+
+            energy.SettingValue = request.EnergyRecoverPerMinute.ToString();
+            energy.UpdatedAt = GetVietnamNow();
+
+            bond.SettingValue = request.BondDecreasePerMinute.ToString();
+            bond.UpdatedAt = GetVietnamNow();
+
+            lifeForce.SettingValue = request.LifeForceDecreasePerMinute.ToString();
+            lifeForce.UpdatedAt = GetVietnamNow();
+
+            _repository.Update(energy);
+            _repository.Update(bond);
+            _repository.Update(lifeForce);
+
+            await _repository.SaveAsync();
+        }
+        private DateTime GetVietnamNow()
+        {
+            var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
+        }
     }
 }

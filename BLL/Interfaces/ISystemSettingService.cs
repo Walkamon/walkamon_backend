@@ -11,5 +11,8 @@ namespace BLL.Interfaces
         Task<StepExpRateResponse> GetStepExpRateAsync();
 
         Task UpdateStepExpRateAsync(UpdateStepExpRateRequest request);
+        Task<PetStatusSettingResponse> GetPetStatusSettingAsync();
+
+        Task UpdatePetStatusSettingAsync(UpdatePetStatusSettingRequest request);
     }
 }

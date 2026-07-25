@@ -3,6 +3,7 @@ using BLL.Interfaces;
 using DAL.DTO;
 using DAL.Interfaces;
 using DAL.Models;
+using DAL.Repository;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,12 +21,14 @@ namespace BLL.Service
         private readonly IPetInteractionRepository _interactionRepository;
         private readonly IPetEvolutionHistoryRepository _PetEvolutionHistory;
         private readonly IGenericRepository<Pet> _Pet;
+        private readonly ISystemSettingRepository _systemSettingRepository;
         public PetService(
            IPetRepository petRepository, IGenericRepository<UserPet> repository ,
            IPetInteractionRepository petInteractionRepository, IGenericRepository<PetInteraction> PetInteraction,
           IPetEvolutionHistoryRepository petEvolutionHistoryRepository,
           IGenericRepository<PetEvolutionHistory> PetHistory,
-          IGenericRepository<Pet> Pet
+          IGenericRepository<Pet> Pet,
+          ISystemSettingRepository systemSettingRepository
             )
         {
             _Pet = Pet;
@@ -35,6 +38,7 @@ namespace BLL.Service
             _interactionRepository = petInteractionRepository;
             _petRepository = petRepository;
             _repository = repository;
+            _systemSettingRepository = systemSettingRepository;
         }
         public async Task CreateUserPetAsync(Guid userId, CreateUserPetRequest request)
         {
@@ -440,11 +444,16 @@ namespace BLL.Service
 
             await _repository.SaveAsync();
         }
-        private void UpdateEnergy(UserPet pet)
+        private async Task UpdateEnergy(UserPet pet)
         {
+            var setting = await _systemSettingRepository
+                .GetByKeyAsync("EnergyRecoverPerMinute");
+
+            int amount = int.Parse(setting!.SettingValue);
+
             var now = GetVietnamNow();
 
-            var elapsedMinutes =
+            int elapsedMinutes =
                 (int)(now - pet.EnergyUpdatedAt).TotalMinutes;
 
             if (elapsedMinutes <= 0)
@@ -452,7 +461,7 @@ namespace BLL.Service
 
             pet.CurrentPetEnergy = Math.Min(
                 pet.PetEnergy,
-                pet.CurrentPetEnergy + elapsedMinutes);
+                pet.CurrentPetEnergy + elapsedMinutes * amount);
 
             pet.EnergyUpdatedAt =
                 pet.EnergyUpdatedAt.AddMinutes(elapsedMinutes);
@@ -629,44 +638,50 @@ namespace BLL.Service
 
             return result;
         }
-        private void UpdateBond(UserPet pet)
+        private async Task UpdateBond(UserPet pet)
         {
+            var setting = await _systemSettingRepository
+                .GetByKeyAsync("BondDecreasePerMinute");
+
+            int amount = int.Parse(setting!.SettingValue);
+
             var now = GetVietnamNow();
 
-            var elapsedMinutes =
+            int elapsedMinutes =
                 (int)(now - pet.BondUpdatedAt).TotalMinutes;
 
-            int cycles = elapsedMinutes / 20;
-
-            if (cycles <= 0)
+            if (elapsedMinutes <= 0)
                 return;
 
             pet.CurrentPetBond = Math.Max(
                 0,
-                pet.CurrentPetBond - cycles * 10);
+                pet.CurrentPetBond - elapsedMinutes * amount);
 
             pet.BondUpdatedAt =
-                pet.BondUpdatedAt.AddMinutes(cycles * 20);
+                pet.BondUpdatedAt.AddMinutes(elapsedMinutes);
         }
 
-        private void UpdateLifeForce(UserPet pet)
+        private async Task UpdateLifeForce(UserPet pet)
         {
+            var setting = await _systemSettingRepository
+                .GetByKeyAsync("LifeForceDecreasePerMinute");
+
+            int amount = int.Parse(setting!.SettingValue);
+
             var now = GetVietnamNow();
 
-            var elapsedMinutes =
+            int elapsedMinutes =
                 (int)(now - pet.LifeForceUpdatedAt).TotalMinutes;
 
-            int cycles = elapsedMinutes / 20;
-
-            if (cycles <= 0)
+            if (elapsedMinutes <= 0)
                 return;
 
             pet.CurrentPetLifeForce = Math.Max(
                 0,
-                pet.CurrentPetLifeForce - cycles * 10);
+                pet.CurrentPetLifeForce - elapsedMinutes * amount);
 
             pet.LifeForceUpdatedAt =
-                pet.LifeForceUpdatedAt.AddMinutes(cycles * 20);
+                pet.LifeForceUpdatedAt.AddMinutes(elapsedMinutes);
         }
         private static DateTime GetVietnamNow()
         {

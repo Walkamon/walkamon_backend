@@ -49,5 +49,34 @@ namespace Walkamon.Controllers
                 Message = "Step EXP rate updated successfully."
             });
         }
+        [HttpGet("pet-status")]
+        
+        public async Task<IActionResult> GetPetStatusSetting()
+        {
+            var result = await _systemSettingService.GetPetStatusSettingAsync();
+
+            return Ok(new ApiResponse<PetStatusSettingResponse>
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Get pet status settings successfully.",
+                Data = result
+            });
+        }
+        [HttpPut("pet-status")]
+        
+        public async Task<IActionResult> UpdatePetStatusSetting(
+    [FromBody] UpdatePetStatusSettingRequest request)
+        {
+            await _systemSettingService.UpdatePetStatusSettingAsync(request);
+
+            return Ok(new ApiResponse<object>
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Message = "Pet status settings updated successfully.",
+                Data = null
+            });
+        }
     }
 }
