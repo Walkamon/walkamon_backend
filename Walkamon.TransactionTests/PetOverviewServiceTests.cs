@@ -2,6 +2,7 @@ using BLL.Exceptions;
 using BLL.Service;
 using DAL.Interfaces;
 using DAL.Models;
+using DAL.Repository;
 using Moq;
 using Xunit;
 
@@ -125,7 +126,7 @@ public sealed class PetOverviewServiceTests
         private Mock<IPetEvolutionHistoryRepository> EvolutionHistory { get; } = new();
         private Mock<IGenericRepository<PetEvolutionHistory>> PetHistory { get; } = new();
         private Mock<IGenericRepository<Pet>> Pets { get; } = new();
-
+        private Mock<ISystemSettingRepository> SystemSettingRepository { get; } = new();
         public PetServiceFixture()
         {
             UserPets.Setup(x => x.SaveAsync()).Returns(Task.CompletedTask);
@@ -139,7 +140,8 @@ public sealed class PetOverviewServiceTests
                 PetInteractions.Object,
                 EvolutionHistory.Object,
                 PetHistory.Object,
-                Pets.Object);
+                Pets.Object,
+                  SystemSettingRepository.Object);
         }
 
         public PetService Service { get; }
