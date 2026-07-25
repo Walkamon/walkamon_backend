@@ -20,14 +20,12 @@ namespace BLL.Service
         private readonly IPetInteractionRepository _interactionRepository;
         private readonly IPetEvolutionHistoryRepository _PetEvolutionHistory;
         private readonly IGenericRepository<Pet> _Pet;
-        private readonly ISystemSettingRepository _systemSettingRepository;
         public PetService(
            IPetRepository petRepository, IGenericRepository<UserPet> repository ,
            IPetInteractionRepository petInteractionRepository, IGenericRepository<PetInteraction> PetInteraction,
           IPetEvolutionHistoryRepository petEvolutionHistoryRepository,
           IGenericRepository<PetEvolutionHistory> PetHistory,
-          IGenericRepository<Pet> Pet,
-          ISystemSettingRepository systemSettingRepository
+          IGenericRepository<Pet> Pet
             )
         {
             _Pet = Pet;
@@ -37,7 +35,6 @@ namespace BLL.Service
             _interactionRepository = petInteractionRepository;
             _petRepository = petRepository;
             _repository = repository;
-            _systemSettingRepository = systemSettingRepository;
         }
         public async Task CreateUserPetAsync(Guid userId, CreateUserPetRequest request)
         {
@@ -108,51 +105,66 @@ namespace BLL.Service
                 MaxLifeForce = pet.PetLifeForce
             };
         }
-       
-        public async Task<LevelPetResponse> AddPetExpAsync(Guid userId)
+        public async Task<PetOverviewResponse> GetPetOverviewAsync(Guid userId)
         {
-            var setting = await _systemSettingRepository.GetByKeyAsync("StepToExpRate");
-          
-
-            var userPet = await _petRepository.GetUserPetAsync(userId);
+            var userPet = await _petRepository.GetUserPetWithPetAsync(userId);
 
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
-            var pet = await _petRepository.GetPetAsync(userPet.PetId);
-
-            if (pet == null)
-                throw new NotFoundException("Pet template not found.");
-
-           
             UpdateEnergy(userPet);
             UpdateBond(userPet);
             UpdateLifeForce(userPet);
 
-            bool levelUp = false;
-
-            
-            userPet.CurrentPetExp += int.Parse(setting.SettingValue);
-
-            while (userPet.CurrentPetExp >= userPet.PetExp)
-            {
-                userPet.CurrentPetExp -= userPet.PetExp;
-
-                LevelUp(userPet, pet);
-
-                levelUp = true;
-            }
-
             _repository.Update(userPet);
-
             await _repository.SaveAsync();
 
-            return new LevelPetResponse
+            var latest = await _PetEvolutionHistory.GetLatestAsync(userId);
+            var stage = latest?.Stage
+                ?? await _petRepository.GetFirstStageAsync(userPet.PetId);
+
+            var isStarter = userPet.Pet.PetName.Equals(
+                "Lumina",
+                StringComparison.OrdinalIgnoreCase);
+
+            int? nextEvolutionLevel;
+            if (isStarter)
             {
+                nextEvolutionLevel = 5;
+            }
+            else if (stage != null)
+            {
+                var nextStage = await _petRepository.GetNextStageAsync(
+                    userPet.PetId,
+                    stage.StageNo);
+                nextEvolutionLevel = nextStage?.RequiredLevel;
+            }
+            else
+            {
+                nextEvolutionLevel = null;
+            }
+
+            return new PetOverviewResponse
+            {
+                PetId = userPet.PetId,
+                Nickname = userPet.PetName,
+                FormName = userPet.Pet.PetName,
+                AffinityCode = ResolveAffinityCode(userPet.Pet),
                 Level = userPet.Level,
                 CurrentExp = userPet.CurrentPetExp,
                 MaxExp = userPet.PetExp,
-                LevelUp = levelUp
+                CurrentEnergy = userPet.CurrentPetEnergy,
+                MaxEnergy = userPet.PetEnergy,
+                CurrentLifeForce = userPet.CurrentPetLifeForce,
+                MaxLifeForce = userPet.PetLifeForce,
+                CurrentBond = userPet.CurrentPetBond,
+                MaxBond = userPet.PetBond,
+                StageNo = stage?.StageNo ?? 0,
+                StageName = stage?.StageName ?? "Mầm Non",
+                AnimationType = ResolveAnimationType(userPet),
+                CanEvolve = nextEvolutionLevel.HasValue
+                    && userPet.Level >= nextEvolutionLevel.Value,
+                NextEvolutionLevel = nextEvolutionLevel
             };
         }
         public async Task<PetStatusResponse> TapSpiritAsync(Guid userId)
@@ -656,27 +668,6 @@ namespace BLL.Service
             pet.LifeForceUpdatedAt =
                 pet.LifeForceUpdatedAt.AddMinutes(cycles * 20);
         }
-        private void LevelUp(UserPet userPet, Pet pet)
-        {
-            userPet.Level++;
-
-           
-            userPet.PetEnergy = (int)Math.Ceiling(userPet.PetEnergy * pet.EnergyRate);
-
-            userPet.PetBond = (int)Math.Ceiling(userPet.PetBond * pet.BondRate);
-
-            userPet.PetLifeForce = (int)Math.Ceiling(userPet.PetLifeForce * pet.LifeForceRate);
-
-           
-            userPet.PetExp = (int)Math.Ceiling(userPet.PetExp * pet.ExpRate);
-
-           
-            userPet.CurrentPetEnergy = userPet.PetEnergy;
-            userPet.CurrentPetBond = userPet.PetBond;
-            userPet.CurrentPetLifeForce = userPet.PetLifeForce;
-
-            userPet.ExpUpdatedAt = GetVietnamNow();
-        }
         private static DateTime GetVietnamNow()
         {
             var timeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
@@ -848,40 +839,7 @@ GetEvolutionPreviewAsync()
                 stage = latest.Stage;
             }
 
-            string animationType;
-
-            double energyPercent =
-                (double)userPet.CurrentPetEnergy / userPet.PetEnergy;
-
-            double bondPercent =
-                (double)userPet.CurrentPetBond / userPet.PetBond;
-
-            double lifePercent =
-                (double)userPet.CurrentPetLifeForce / userPet.PetLifeForce;
-
-            if (energyPercent <= 0.2)
-            {
-                animationType = "sleep";
-            }
-            else if (lifePercent <= 0.2)
-            {
-                animationType = "hungry";
-            }
-            else if (bondPercent <= 0.2)
-            {
-                animationType = "sad";
-            }
-            else if (
-                energyPercent >= 0.8 &&
-                bondPercent >= 0.8 &&
-                lifePercent >= 0.8)
-            {
-                animationType = "happy";
-            }
-            else
-            {
-                animationType = "idle";
-            }
+            var animationType = ResolveAnimationType(userPet);
 
             var animation = await _petRepository.GetAnimationAsync(
                 userPet.PetId,
@@ -902,7 +860,7 @@ GetEvolutionPreviewAsync()
 
         public async Task<UserPetNameResponse> GetUserPetNameAsync(Guid userId)
         {
-            var userPet = await _petRepository.GetUserPetAsync(userId);
+            var userPet = await _petRepository.GetUserPetWithPetAsync(userId);
 
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
@@ -913,6 +871,7 @@ GetEvolutionPreviewAsync()
                 PetName = userPet.PetName
             };
         }
+
         public async Task<List<PetListResponse>> GetAllPetsAsync()
         {
             var pets = await _petRepository.GetAllWithDetailAsync();
@@ -998,6 +957,44 @@ GetEvolutionPreviewAsync()
             _Pet.Update(pet);
 
             await _repository.SaveAsync();
+
+        private static string ResolveAnimationType(UserPet pet)
+        {
+            var energyPercent = pet.PetEnergy > 0
+                ? (double)pet.CurrentPetEnergy / pet.PetEnergy
+                : 0;
+            var bondPercent = pet.PetBond > 0
+                ? (double)pet.CurrentPetBond / pet.PetBond
+                : 0;
+            var lifePercent = pet.PetLifeForce > 0
+                ? (double)pet.CurrentPetLifeForce / pet.PetLifeForce
+                : 0;
+
+            if (energyPercent <= 0.2) return "sleep";
+            if (lifePercent <= 0.2) return "hungry";
+            if (bondPercent <= 0.2) return "sad";
+            if (energyPercent >= 0.8
+                && bondPercent >= 0.8
+                && lifePercent >= 0.8)
+            {
+                return "happy";
+            }
+
+            return "idle";
+        }
+
+        private static string ResolveAffinityCode(Pet pet)
+        {
+            var configured = pet.PvpAffinityCode?.Trim().ToLowerInvariant();
+            if (configured is "sprout" or "dawn" or "moonlight" or "warm_sun")
+                return configured;
+
+            var name = pet.PetName.ToLowerInvariant();
+            if (name.Contains("bình minh")) return "dawn";
+            if (name.Contains("ánh trăng")) return "moonlight";
+            if (name.Contains("nắng ấm")) return "warm_sun";
+            return "sprout";
+
         }
     }
 }

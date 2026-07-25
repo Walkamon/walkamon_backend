@@ -20,17 +20,23 @@ public sealed class ValidatedStepService : IValidatedStepService
         TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
     private readonly WalkamonContext _context;
     private readonly IAppAttestationVerifier _attestationVerifier;
+    private readonly IAchievementProgressService _achievementProgressService;
+    private readonly IMissionProgressService _missionProgressService;
     private readonly StepValidationOptions _options;
     private readonly MotionValidationOptions _motionOptions;
 
     public ValidatedStepService(
         WalkamonContext context,
         IAppAttestationVerifier attestationVerifier,
+        IAchievementProgressService achievementProgressService,
+        IMissionProgressService missionProgressService,
         IOptions<StepValidationOptions> options,
         IOptions<MotionValidationOptions> motionOptions)
     {
         _context = context;
         _attestationVerifier = attestationVerifier;
+        _achievementProgressService = achievementProgressService;
+        _missionProgressService = missionProgressService;
         _options = options.Value;
         _motionOptions = motionOptions.Value;
     }
@@ -185,6 +191,20 @@ public sealed class ValidatedStepService : IValidatedStepService
         }
         if (request.Sequence != session.LastSequence + 1)
             throw new ConflictException($"Expected sequence {session.LastSequence + 1}.");
+
+        var expPerStepMilestone = 0;
+        var previousDailyValidatedSteps = 0L;
+        if (purposeCode == "daily")
+        {
+            var configuredExp = await _context.SystemSettings.AsNoTracking()
+                .Where(x => x.SettingKey == "StepToExpRate")
+                .Select(x => x.SettingValue)
+                .SingleOrDefaultAsync(cancellationToken);
+            expPerStepMilestone = StepExperienceReward.ParseExpPerReward(configuredExp);
+            previousDailyValidatedSteps = await GetTotalDailyValidatedStepsAsync(
+                userId,
+                cancellationToken);
+        }
 
         PvpMatch? match = null;
         PvpMatchPlayer? player = null;
@@ -437,6 +457,29 @@ public sealed class ValidatedStepService : IValidatedStepService
                 player.DistanceUnits / PvpGameplayCalculator.DistanceUnitsPerStep);
             AddMatchProgressEvent(match!, player, accepted, lastMultiplier, now);
         }
+        int? newPetLevel = null;
+        if (purposeCode == "daily" && batch.AcceptedSteps > 0)
+        {
+            var rewardsCrossed = StepExperienceReward.CalculateRewardsCrossed(
+                previousDailyValidatedSteps,
+                batch.AcceptedSteps);
+            if (rewardsCrossed > 0)
+            {
+                var expToAdd = checked(rewardsCrossed * expPerStepMilestone);
+                newPetLevel = await AwardPetExperienceAsync(
+                    userId,
+                    expToAdd,
+                    now,
+                    cancellationToken);
+            }
+        }
+
+        await SyncAcceptedProgressAsync(
+            userId,
+            batch.AcceptedSteps,
+            newPetLevel,
+            _achievementProgressService,
+            _missionProgressService);
         session.LastSequence = request.Sequence;
         session.LastSubmittedAt = now;
         session.LastSensorTotal = rollingSensorTotal;
@@ -535,6 +578,73 @@ public sealed class ValidatedStepService : IValidatedStepService
         }
         daily.UpdatedAt = now;
         return eligible;
+    }
+
+    private async Task<long> GetTotalDailyValidatedStepsAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        return await _context.ValidatedStepRecords.AsNoTracking()
+            .Where(x =>
+                x.UserId == userId &&
+                x.StepSession != null &&
+                x.StepSession.PurposeCode == "daily")
+            .Select(x => (long?)x.EligibleStepCount)
+            .SumAsync(cancellationToken) ?? 0L;
+    }
+
+    private async Task<int?> AwardPetExperienceAsync(
+        Guid userId,
+        int expToAdd,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var userPet = await _context.UserPets
+            .Include(x => x.Pet)
+            .FirstOrDefaultAsync(x => x.UserId == userId, cancellationToken);
+        if (userPet == null)
+            return null;
+
+        var vietnamNow = TimeZoneInfo.ConvertTimeFromUtc(now, VietnamTimeZone);
+        var previousLevel = userPet.Level;
+        StepExperienceReward.ApplyExperience(userPet, userPet.Pet, expToAdd, vietnamNow);
+        return userPet.Level > previousLevel ? userPet.Level : null;
+    }
+
+    internal static async Task SyncAcceptedProgressAsync(
+        Guid userId,
+        int acceptedSteps,
+        int? newPetLevel,
+        IAchievementProgressService achievementProgressService,
+        IMissionProgressService missionProgressService)
+    {
+        if (acceptedSteps <= 0)
+        {
+            return;
+        }
+
+        await achievementProgressService.AddProgressAsync(
+            userId,
+            MissionMetricCodeCatalog.Steps,
+            acceptedSteps);
+        await missionProgressService.AddProgressAsync(
+            userId,
+            MissionMetricCodeCatalog.Steps,
+            acceptedSteps);
+
+        if (!newPetLevel.HasValue)
+        {
+            return;
+        }
+
+        await achievementProgressService.SetProgressMaxAsync(
+            userId,
+            MissionMetricCodeCatalog.PetLevel,
+            newPetLevel.Value);
+        await missionProgressService.SetProgressMaxAsync(
+            userId,
+            MissionMetricCodeCatalog.PetLevel,
+            newPetLevel.Value);
     }
 
     private void AddMatchProgressEvent(

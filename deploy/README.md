@@ -7,8 +7,9 @@ This directory contains the production runtime for:
 - Cloudflare Tunnel for `https://api.walkamon.xyz`
 - encrypted SQL backups to the private `walkamon-backups` R2 bucket
 
-No public router port forwarding is required. SQL Server and the API bind only
-to VM loopback; `cloudflared` reaches the API through the Docker `edge` network.
+No public router port forwarding is required. SQL Server and the Caddy API
+gateway bind only to VM loopback; `cloudflared` reaches the gateway through the
+Docker `edge` network. The real API runs in blue/green slots without host ports.
 
 ## 1. Windows and VMware
 
@@ -153,6 +154,18 @@ ssh -L 14330:127.0.0.1:1433 <ubuntu-user>@192.168.120.10
 
 Connect SSMS to `127.0.0.1,14330`.
 
+Container logs and live CPU/memory statistics are available from the Windows
+host at `http://192.168.120.10:8081`. This Dozzle endpoint is bound only to the
+VM host-only address; UFW permits it only from `192.168.120.1`. Container
+actions, shell access, MCP access, and analytics are disabled. Do not publish
+this port through Cloudflare or the router because Dozzle can read the Docker
+API and application logs.
+
+The browser database editor is available from the Windows host at
+`http://192.168.120.10:8082`. DbGate connects only to the `Walkamon` database
+with the restricted `walkamon_app` login, not `sa`. The port is bound to the
+host-only adapter and must not be published through Cloudflare or the router.
+
 Schema changes are a manual maintenance operation. The wrapper below first
 creates a checksum-verified, encrypted R2 backup and only then executes the
 approved SQL file with the administrative login:
@@ -177,16 +190,32 @@ ghcr.io/walkamon/walkamon_backend:sha-<full-commit-sha>
 ```
 
 Create a read-only fine-grained GitHub token for the VM with access only to the
-Walkamon package and put it in `GHCR_TOKEN`. Then deploy once:
+Walkamon package and put it in `GHCR_TOKEN`. The first conversion from the
+legacy single API container requires a one-time migration. Save the live
+Compose file before installing the new deployment bundle, then run:
 
 ```bash
-sudo /opt/walkamon/scripts/deploy.sh
+sudo cp /opt/walkamon/compose.prod.yml \
+  /opt/walkamon/compose.pre-blue-green.yml
+sudo /opt/walkamon/scripts/migrate-blue-green.sh
 sudo systemctl start walkamon-stack.service
 sudo systemctl start walkamon-update.timer
 ```
 
-The update timer checks every five minutes. It pulls `main`, starts the API,
-waits for `/health/ready`, and restores the previous image if readiness fails.
+The update timer checks every five minutes. It pulls `main`, starts the inactive
+API slot, waits for `/health/ready`, gracefully reloads Caddy, verifies local and
+public health, updates the single background worker, then drains the previous
+slot for five minutes before stopping it. A failed slot or gateway check leaves
+the previous slot active. Re-running with the same digest for acceptance testing
+is supported without a fake commit:
+
+```bash
+sudo /opt/walkamon/scripts/deploy.sh --force-slot-swap
+```
+
+`api-blue` and `api-green` always set `BackgroundServices__Enabled=false`.
+Only the separate `worker` container runs notification, PVP lifecycle, and
+outbox hosted services, so a deployment never runs those schedulers twice.
 
 ## 5. Cloudflare
 
@@ -211,7 +240,7 @@ steps after the first connector is online:
 2. Put the generated connector token in `CLOUDFLARE_TUNNEL_TOKEN`.
 3. Add cache bypass rules for `/api/*`, `/hubs/*`, `/health/*`,
    and `/swagger/*`.
-4. Protect `api.walkamon.xyz/swagger*` with Cloudflare Access email OTP.
+4. Swagger remains public during beta; do not add a Cloudflare Access policy.
 5. Do not create any DNS/public hostname for SQL Server.
 
 Enable HSTS only after HTTPS, API, WebSocket, and recovery testing succeeds.
@@ -240,6 +269,8 @@ manager.
 ```bash
 curl --fail http://127.0.0.1:8080/health/live
 curl --fail http://127.0.0.1:8080/health/ready
+curl --fail http://192.168.120.10:8081/healthcheck
+curl --fail http://192.168.120.10:8082/
 docker compose --env-file /etc/walkamon/walkamon.env \
   -f /opt/walkamon/compose.prod.yml ps
 systemctl list-timers 'walkamon-*'
@@ -249,7 +280,7 @@ Externally verify:
 
 - `https://api.walkamon.xyz/health/live` returns HTTP 200.
 - SignalR connects to `wss://api.walkamon.xyz/hubs/pvp-sprint`.
-- Swagger requires Cloudflare Access authentication.
+- Swagger is reachable without Cloudflare Access during the beta period.
 - no home router ports are forwarded;
 - `1433` and `22` are not reachable from the Internet;
 - turning the laptop off and on automatically restores the VM, stack, Tunnel,

@@ -1,5 +1,78 @@
 name: walkamon
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-api-environment: &api-environment
+  ASPNETCORE_ENVIRONMENT: Production
+  ASPNETCORE_HTTP_PORTS: "8080"
+  AllowedHosts: api.walkamon.xyz;localhost;127.0.0.1;api;api-blue;api-green;worker
+  ConnectionStrings__DefaultConnection: Server=db,1433;Database=Walkamon;User Id=walkamon_app;Password=${WALKAMON_DB_PASSWORD:?WALKAMON_DB_PASSWORD is required};Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True
+  Jwt__Key: ${JWT_KEY:?JWT_KEY is required}
+  Jwt__Issuer: WalkamonAPI
+  Jwt__Audience: WalkamonClient
+  Smtp__Host: smtp.gmail.com
+  Smtp__Port: "587"
+  Smtp__UseStartTls: "true"
+  Smtp__FromName: Walkamon
+  Smtp__Username: ${SMTP_USERNAME:?SMTP_USERNAME is required}
+  Smtp__AppPassword: ${SMTP_APP_PASSWORD:?SMTP_APP_PASSWORD is required}
+  CloudinarySettings__CloudName: ${CLOUDINARY_CLOUD_NAME:?CLOUDINARY_CLOUD_NAME is required}
+  CloudinarySettings__ApiKey: ${CLOUDINARY_API_KEY:?CLOUDINARY_API_KEY is required}
+  CloudinarySettings__ApiSecret: ${CLOUDINARY_API_SECRET:?CLOUDINARY_API_SECRET is required}
+  GoogleAuth__ClientIds__0: ${GOOGLE_AUTH_CLIENT_ID:?GOOGLE_AUTH_CLIENT_ID is required}
+  Firebase__ProjectId: ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID is required}
+  Firebase__ServiceAccountPath: /run/secrets/firebase-service-account.json
+  Firebase__AndroidChannelId: high_importance_channel
+  PvpRealtime__Enabled: "true"
+  StepValidation__StrictAttestation: "true"
+  StepValidation__AndroidPackageName: ${ANDROID_PACKAGE_NAME:?ANDROID_PACKAGE_NAME is required}
+  StepValidation__GoogleCredentialPath: /run/secrets/play-integrity-service-account.json
+  StepValidation__AppRecognitionMode: certificate_allowlist
+  StepValidation__AllowedCertificateSha256Hex: ${ANDROID_CERTIFICATE_SHA256:?ANDROID_CERTIFICATE_SHA256 is required}
+  StepValidation__MinimumVersionCode: "1"
+  StepValidation__RequireDeviceIntegrity: "true"
+  StepValidation__RequireLicensingVerdict: "false"
+  MotionValidation__Enabled: "true"
+  MotionValidation__Enforce: "true"
+  MotionValidation__AcceptedScore: "60"
+  MotionValidation__RejectedScore: "40"
+  ReverseProxy__KnownProxies__0: 172.30.0.4
+  RateLimiting__PermitLimit: "120"
+  RateLimiting__WindowSeconds: "60"
+  Cors__AllowedOrigins__0: ${CORS_WEB_ORIGIN:-https://purple-island-059194d00.7.azurestaticapps.net}
+  Cors__AllowedOrigins__1: capacitor://localhost
+  Cors__AllowedOrigins__2: ionic://localhost
+  Cors__AllowedOrigins__3: http://localhost
+  Cors__AllowedOrigins__4: https://localhost
+  Cors__AllowNullOrigin: "false"
+  Swagger__Enabled: ${SWAGGER_ENABLED:-true}
+
+x-api-common: &api-common
+  image: ${API_IMAGE:-ghcr.io/walkamon/walkamon_backend:main}
+  user: "1654:1654"
+  restart: unless-stopped
+  depends_on:
+    db:
+      condition: service_healthy
+  volumes:
+    - /etc/walkamon/secrets/play-integrity-service-account.json:/run/secrets/play-integrity-service-account.json:ro
+    - /etc/walkamon/secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+  mem_limit: 1536m
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  healthcheck:
+    test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://localhost:8080/health/ready"]
+    interval: 5s
+    timeout: 4s
+    retries: 12
+    start_period: 20s
+  logging: *default-logging
+
 services:
   db:
     image: mcr.microsoft.com/mssql/server:2022-CU26-ubuntu-22.04
@@ -29,84 +102,69 @@ services:
       timeout: 5s
       retries: 20
       start_period: 30s
-    logging: &default-logging
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+    logging: *default-logging
+
+  api-blue:
+    <<: *api-common
+    container_name: walkamon-api-blue
+    profiles: [slots]
+    environment:
+      <<: *api-environment
+      BackgroundServices__Enabled: "false"
+    networks:
+      edge:
+        ipv4_address: 172.30.0.5
+      data:
+        ipv4_address: 172.31.0.5
+
+  api-green:
+    <<: *api-common
+    container_name: walkamon-api-green
+    profiles: [slots]
+    environment:
+      <<: *api-environment
+      BackgroundServices__Enabled: "false"
+    networks:
+      edge:
+        ipv4_address: 172.30.0.6
+      data:
+        ipv4_address: 172.31.0.6
+
+  worker:
+    <<: *api-common
+    container_name: walkamon-worker
+    environment:
+      <<: *api-environment
+      BackgroundServices__Enabled: "true"
+    networks:
+      edge:
+        ipv4_address: 172.30.0.7
+      data:
+        ipv4_address: 172.31.0.7
 
   api:
-    image: ${API_IMAGE:-ghcr.io/walkamon/walkamon_backend:main}
-    container_name: walkamon-api
-    user: "1654:1654"
+    image: caddy:2.11.4-alpine
+    container_name: walkamon-api-gateway
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_HTTP_PORTS: "8080"
-      AllowedHosts: api.walkamon.xyz;localhost;127.0.0.1;api
-      ConnectionStrings__DefaultConnection: Server=db,1433;Database=Walkamon;User Id=walkamon_app;Password=${WALKAMON_DB_PASSWORD:?WALKAMON_DB_PASSWORD is required};Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True
-      Jwt__Key: ${JWT_KEY:?JWT_KEY is required}
-      Jwt__Issuer: WalkamonAPI
-      Jwt__Audience: WalkamonClient
-      Smtp__Host: smtp.gmail.com
-      Smtp__Port: "587"
-      Smtp__UseStartTls: "true"
-      Smtp__FromName: Walkamon
-      Smtp__Username: ${SMTP_USERNAME:?SMTP_USERNAME is required}
-      Smtp__AppPassword: ${SMTP_APP_PASSWORD:?SMTP_APP_PASSWORD is required}
-      CloudinarySettings__CloudName: ${CLOUDINARY_CLOUD_NAME:?CLOUDINARY_CLOUD_NAME is required}
-      CloudinarySettings__ApiKey: ${CLOUDINARY_API_KEY:?CLOUDINARY_API_KEY is required}
-      CloudinarySettings__ApiSecret: ${CLOUDINARY_API_SECRET:?CLOUDINARY_API_SECRET is required}
-      GoogleAuth__ClientIds__0: ${GOOGLE_AUTH_CLIENT_ID:?GOOGLE_AUTH_CLIENT_ID is required}
-      Firebase__ProjectId: ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID is required}
-      Firebase__ServiceAccountPath: /run/secrets/firebase-service-account.json
-      Firebase__AndroidChannelId: high_importance_channel
-      PvpRealtime__Enabled: "true"
-      StepValidation__StrictAttestation: "true"
-      StepValidation__AndroidPackageName: ${ANDROID_PACKAGE_NAME:?ANDROID_PACKAGE_NAME is required}
-      StepValidation__GoogleCredentialPath: /run/secrets/play-integrity-service-account.json
-      StepValidation__AppRecognitionMode: certificate_allowlist
-      StepValidation__AllowedCertificateSha256Hex: ${ANDROID_CERTIFICATE_SHA256:?ANDROID_CERTIFICATE_SHA256 is required}
-      StepValidation__MinimumVersionCode: "1"
-      StepValidation__RequireDeviceIntegrity: "true"
-      StepValidation__RequireLicensingVerdict: "false"
-      MotionValidation__Enabled: "true"
-      MotionValidation__Enforce: "true"
-      MotionValidation__AcceptedScore: "60"
-      MotionValidation__RejectedScore: "40"
-      ReverseProxy__KnownProxies__0: 172.30.0.3
-      RateLimiting__PermitLimit: "120"
-      RateLimiting__WindowSeconds: "60"
-      Cors__AllowedOrigins__0: ${CORS_WEB_ORIGIN:-https://purple-island-059194d00.7.azurestaticapps.net}
-      Cors__AllowedOrigins__1: capacitor://localhost
-      Cors__AllowedOrigins__2: ionic://localhost
-      Cors__AllowedOrigins__3: http://localhost
-      Cors__AllowedOrigins__4: https://localhost
-      Cors__AllowNullOrigin: "false"
-      Swagger__Enabled: ${SWAGGER_ENABLED:-true}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - /etc/walkamon/secrets/play-integrity-service-account.json:/run/secrets/play-integrity-service-account.json:ro
-      - /etc/walkamon/secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+      - /srv/walkamon/gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
     networks:
       edge:
-        ipv4_address: 172.30.0.2
-      data:
-        ipv4_address: 172.31.0.2
-    mem_limit: 1536m
+        ipv4_address: 172.30.0.4
+    mem_limit: 256m
     read_only: true
     tmpfs:
-      - /tmp:size=64m,mode=1777
+      - /tmp:size=32m,mode=1777
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://localhost:8080/health/ready"]
-      interval: 15s
-      timeout: 5s
-      retries: 8
-      start_period: 20s
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/health/ready"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
     logging: *default-logging
 
   cloudflared:
@@ -125,6 +183,80 @@ services:
     security_opt:
       - no-new-privileges:true
     logging: *default-logging
+
+  dozzle:
+    image: amir20/dozzle:v10.6.11
+    container_name: walkamon-dozzle
+    restart: unless-stopped
+    environment:
+      DOZZLE_HOSTNAME: Walkamon Ubuntu Production
+      DOZZLE_FILTER: name=walkamon
+      DOZZLE_NO_ANALYTICS: "true"
+      DOZZLE_DISABLE_AVATARS: "true"
+      DOZZLE_ENABLE_ACTIONS: "false"
+      DOZZLE_ENABLE_SHELL: "false"
+      DOZZLE_ENABLE_MCP: "false"
+    ports:
+      - "192.168.120.10:8081:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv/walkamon/dozzle:/data
+    networks:
+      - management
+    mem_limit: 256m
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/dozzle", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging: *default-logging
+
+  dbgate:
+    image: dbgate/dbgate:7.2.1-alpine
+    container_name: walkamon-dbgate
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CONNECTIONS: walkamon
+      SINGLE_CONNECTION: walkamon
+      SINGLE_DATABASE: Walkamon
+      LABEL_walkamon: Walkamon Production
+      SERVER_walkamon: db
+      PORT_walkamon: "1433"
+      DATABASE_walkamon: Walkamon
+      USER_walkamon: walkamon_app
+      PASSWORD_walkamon: ${WALKAMON_DB_PASSWORD:?WALKAMON_DB_PASSWORD is required}
+      ENGINE_walkamon: mssql@dbgate-plugin-mssql
+      AUTH_TYPE_walkamon: tedious
+      USE_SSL_walkamon: "true"
+      SSL_TRUST_CERTIFICATE_walkamon: "true"
+      ALLOWED_DATABASES_walkamon: Walkamon
+    ports:
+      - "192.168.120.10:8082:3000"
+    volumes:
+      - dbgate-data:/root/.dbgate
+    networks:
+      management:
+        ipv4_address: 172.29.0.4
+      data:
+        ipv4_address: 172.31.0.4
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+volumes:
+  caddy-data:
+  caddy-config:
+  dbgate-data:
 
 networks:
   management:

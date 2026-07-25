@@ -10,6 +10,7 @@ using Google.Apis.Auth;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -40,6 +41,7 @@ public class AuthService : IAuthService
     private readonly IGenericRepository<ExternalLogin> _externalLoginRepository;
     private readonly IAchievementProgressService _achievementProgressService;
     private readonly WalkamonContext _context;
+    private readonly ILogger<AuthService> _logger;
 
     public AuthService(
         IUserRepository userRepository,
@@ -49,7 +51,8 @@ public class AuthService : IAuthService
         IEmailSender emailSender,
         IConfiguration configuration,
         IAchievementProgressService achievementProgressService,
-        WalkamonContext context)
+        WalkamonContext context,
+        ILogger<AuthService> logger)
     {
         _userRepository = userRepository;
         _otpRepository = otpRepository;
@@ -59,6 +62,7 @@ public class AuthService : IAuthService
         _configuration = configuration;
         _achievementProgressService = achievementProgressService;
         _context = context;
+        _logger = logger;
     }
 
     // Đăng ký: tạo user chờ xác thực và gửi OTP.
@@ -903,8 +907,12 @@ public class AuthService : IAuthService
                     expiryMinutes);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(
+                ex,
+                "Failed to send {OtpPurpose} OTP email.",
+                otp.PurposeCode);
             CancelOtp(otp, DateTime.UtcNow);
             await _userRepository.SaveChangesAsync();
             throw new AppSystemException("Unable to send verification email");

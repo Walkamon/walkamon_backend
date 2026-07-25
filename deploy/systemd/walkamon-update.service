@@ -7,4 +7,4 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/opt/walkamon/scripts/deploy.sh
-TimeoutStartSec=600
+TimeoutStartSec=900

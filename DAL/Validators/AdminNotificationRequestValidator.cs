@@ -26,6 +26,8 @@ public class CreateAdminNotificationRequestValidator
 
         RuleFor(x => x.ImageUrl)
             .MaximumLength(500)
+            .Must(NotificationUrlValidator.BeHttpUrl)
+            .WithMessage("ImageUrl must be an absolute HTTP or HTTPS URL")
             .When(x => x.Image == null);
     }
 }
@@ -53,6 +55,22 @@ public class UpdateAdminNotificationRequestValidator
 
         RuleFor(x => x.ImageUrl)
             .MaximumLength(500)
+            .Must(NotificationUrlValidator.BeHttpUrl)
+            .WithMessage("ImageUrl must be an absolute HTTP or HTTPS URL")
             .When(x => x.Image == null);
+    }
+}
+
+internal static class NotificationUrlValidator
+{
+    internal static bool BeHttpUrl(string? imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl))
+        {
+            return true;
+        }
+
+        return Uri.TryCreate(imageUrl.Trim(), UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
     }
 }

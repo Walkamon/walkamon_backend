@@ -9,10 +9,9 @@ namespace BLL.Interfaces
 {
     public interface IPetService
     {
-         Task CreateUserPetAsync(Guid userId, CreateUserPetRequest request);
+        Task CreateUserPetAsync(Guid userId, CreateUserPetRequest request);
         Task<PetStatusResponse> GetPetStatusAsync(Guid currentUserId);
-        Task<LevelPetResponse> AddPetExpAsync(
-    Guid currentUserId);
+        Task<PetOverviewResponse> GetPetOverviewAsync(Guid currentUserId);
 
         Task<PetStatusResponse> FeedSpiritAsync(Guid userId);
         Task<PetStatusResponse> TapSpiritAsync(Guid userId);

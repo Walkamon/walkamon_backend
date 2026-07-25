@@ -14,8 +14,9 @@ if [[ "$mode" != full && "$mode" != --core ]]; then
   exit 2
 fi
 
-if [[ ! -f "$ENV_FILE" || ! -f "$COMPOSE_FILE" ]]; then
-  echo "Missing production environment or Compose file." >&2
+if [[ ! -f "$ENV_FILE" || ! -f "$COMPOSE_FILE" \
+      || ! -f /opt/walkamon/caddy/Caddyfile.template ]]; then
+  echo "Missing production environment, Compose file, or Caddy template." >&2
   exit 1
 fi
 
@@ -85,9 +86,19 @@ if (( ${#JWT_KEY} < 64 )); then
   exit 1
 fi
 
-certificate_sha=${ANDROID_CERTIFICATE_SHA256//:/}
-if [[ ! "$certificate_sha" =~ ^[[:xdigit:]]{64}$ ]]; then
-  echo "ANDROID_CERTIFICATE_SHA256 must be a 64-character SHA-256 hex value." >&2
+certificate_count=0
+while IFS= read -r certificate; do
+  certificate_sha=$(tr -d '[:space:]:' <<<"$certificate")
+  [[ -z "$certificate_sha" ]] && continue
+  if [[ ! "$certificate_sha" =~ ^[[:xdigit:]]{64}$ ]]; then
+    echo "Every ANDROID_CERTIFICATE_SHA256 allowlist entry must be a 64-character SHA-256 hex value." >&2
+    exit 1
+  fi
+  ((certificate_count += 1))
+done < <(tr ',;' '\n\n' <<<"$ANDROID_CERTIFICATE_SHA256")
+
+if (( certificate_count == 0 )); then
+  echo "ANDROID_CERTIFICATE_SHA256 must contain at least one SHA-256 certificate." >&2
   exit 1
 fi
 
