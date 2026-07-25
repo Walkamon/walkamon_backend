@@ -957,7 +957,7 @@ GetEvolutionPreviewAsync()
             _Pet.Update(pet);
 
             await _repository.SaveAsync();
-
+        }
         private static string ResolveAnimationType(UserPet pet)
         {
             var energyPercent = pet.PetEnergy > 0
