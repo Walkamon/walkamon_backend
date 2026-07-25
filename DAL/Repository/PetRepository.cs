@@ -123,5 +123,25 @@ namespace DAL.Repository
                     x.TypeAnimation == type &&
                     x.IsActive);
         }
+        public async Task<List<Pet>> GetAllWithDetailAsync()
+        {
+            return await _context.Pets
+                .Include(x => x.PetStages.OrderBy(s => s.StageNo))
+                .Include(x => x.PetAnimations.OrderBy(a => a.PetStageUse))
+                .OrderBy(x => x.PetName)
+                .ToListAsync();
+        }
+        public async Task<Pet?> GetPetDetailAsync(Guid petId)
+        {
+            return await _context.Pets
+                .Include(x => x.PetStages.OrderBy(s => s.StageNo))
+                .Include(x => x.PetAnimations.OrderBy(a => a.PetStageUse))
+                .FirstOrDefaultAsync(x => x.PetId == petId);
+        }
+        public async Task<Pet?> GetPetByIdAsync(Guid petId)
+        {
+            return await _context.Pets
+                .FirstOrDefaultAsync(x => x.PetId == petId);
+        }
     }
 }

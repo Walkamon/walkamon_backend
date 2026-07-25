@@ -913,6 +913,92 @@ GetEvolutionPreviewAsync()
                 PetName = userPet.PetName
             };
         }
+        public async Task<List<PetListResponse>> GetAllPetsAsync()
+        {
+            var pets = await _petRepository.GetAllWithDetailAsync();
+
+            return pets.Select(x => new PetListResponse
+            {
+                PetId = x.PetId,
+                PetName = x.PetName,
+                LifeForce = x.LifeForce,
+                Energy = x.Energy,
+                Bond = x.Bond,
+                Exp = x.Exp
+            }).ToList();
+        }
+        public async Task<PetDetailResponse> GetPetDetailAsync(Guid petId)
+        {
+            var pet = await _petRepository.GetPetDetailAsync(petId);
+
+            if (pet == null)
+                throw new NotFoundException("Pet not found.");
+
+            return new PetDetailResponse
+            {
+                PetId = pet.PetId,
+                PetName = pet.PetName,
+
+                LifeForce = pet.LifeForce,
+                Energy = pet.Energy,
+                Bond = pet.Bond,
+                Exp = pet.Exp,
+
+                LifeForceRate = pet.LifeForceRate,
+                EnergyRate = pet.EnergyRate,
+                BondRate = pet.BondRate,
+                ExpRate = pet.ExpRate,
+
+                Stages = pet.PetStages
+                    .OrderBy(x => x.StageNo)
+                    .Select(x => new PetStageDto
+                    {
+                        StageId = x.StageId,
+                        StageNo = x.StageNo,
+                        StageName = x.StageName,
+                        RequiredLevel = x.RequiredLevel,
+                        StateUrl = x.StateUrl,
+                        IsActive = x.IsActive
+                    }).ToList(),
+
+                Animations = pet.PetAnimations
+                    .OrderBy(x => x.PetStageUse)
+                    .ThenBy(x => x.TypeAnimation)
+                    .Select(x => new PetAnimationDto
+                    {
+                        PetAnimationId = x.PetAnimationId,
+                        TypeAnimation = x.TypeAnimation,
+                        PetStageUse = x.PetStageUse,
+                        AnimationUrl = x.AnimationUrl,
+                        IsActive = x.IsActive
+                    }).ToList()
+            };
+        }
+        public async Task UpdatePetAsync(Guid petId, UpdatePetRequest request)
+        {
+            var pet = await _petRepository.GetPetByIdAsync(petId);
+
+            if (pet == null)
+                throw new NotFoundException("Pet not found.");
+
+            pet.PetName = request.PetName;
+
+            pet.LifeForce = request.LifeForce;
+            pet.Energy = request.Energy;
+            pet.Bond = request.Bond;
+            pet.Exp = request.Exp;
+
+            pet.LifeForceRate = request.LifeForceRate;
+            pet.EnergyRate = request.EnergyRate;
+            pet.BondRate = request.BondRate;
+            pet.ExpRate = request.ExpRate;
+
+            pet.UpdatedAt = GetVietnamNow();
+
+            _Pet.Update(pet);
+
+            await _repository.SaveAsync();
+        }
     }
 }
 
