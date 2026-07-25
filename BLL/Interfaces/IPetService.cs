@@ -29,5 +29,11 @@ GetEvolutionPreviewAsync();
 
         Task<CurrentAnimationResponse> GetCurrentAnimationAsync(Guid userId);
         Task<UserPetNameResponse> GetUserPetNameAsync(Guid userId);
+
+        Task<List<PetListResponse>> GetAllPetsAsync();
+
+        Task<PetDetailResponse> GetPetDetailAsync(Guid petId);
+
+        Task UpdatePetAsync(Guid petId, UpdatePetRequest request);
     }
 }

@@ -31,5 +31,10 @@ namespace DAL.Interfaces
     Guid petId,
     int stageNo,
     string type);
+        Task<List<Pet>> GetAllWithDetailAsync();
+
+        Task<Pet?> GetPetDetailAsync(Guid petId);
+
+        Task<Pet?> GetPetByIdAsync(Guid petId);
     }
 }
