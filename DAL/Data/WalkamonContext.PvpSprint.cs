@@ -17,6 +17,8 @@ public partial class WalkamonContext
     public DbSet<PvpRewardRule> PvpRewardRules => Set<PvpRewardRule>();
     public DbSet<PvpMatchRewardEntitlement> PvpMatchRewardEntitlements => Set<PvpMatchRewardEntitlement>();
     public DbSet<PvpMatchRewardItem> PvpMatchRewardItems => Set<PvpMatchRewardItem>();
+    public DbSet<PvpMatchRewardSnapshot> PvpMatchRewardSnapshots => Set<PvpMatchRewardSnapshot>();
+    public DbSet<PvpMatchRewardSnapshotItem> PvpMatchRewardSnapshotItems => Set<PvpMatchRewardSnapshotItem>();
     public DbSet<PvpMatchEvent> PvpMatchEvents => Set<PvpMatchEvent>();
     public DbSet<OutboxEvent> OutboxEvents => Set<OutboxEvent>();
     public DbSet<PvpItemEffectDefinition> PvpItemEffectDefinitions => Set<PvpItemEffectDefinition>();
@@ -55,8 +57,11 @@ public partial class WalkamonContext
             entity.HasKey(x => x.MatchPlayerId);
             entity.Property(x => x.MatchPlayerId).HasColumnName("match_player_id");
             entity.Property(x => x.MatchId).HasColumnName("match_id");
-            entity.Property(x => x.UserId).HasColumnName("user_id");
-            entity.Property(x => x.BotProfileId).HasColumnName("bot_profile_id");
+            // The legacy scaffold configured { MatchId, UserId } as the key, which
+            // made UserId required in EF metadata even after MatchPlayerId became
+            // the real key. Bot participants intentionally have user_id = NULL.
+            entity.Property(x => x.UserId).HasColumnName("user_id").IsRequired(false);
+            entity.Property(x => x.BotProfileId).HasColumnName("bot_profile_id").IsRequired(false);
             entity.Property(x => x.ParticipantTypeCode).HasColumnName("participant_type_code").HasMaxLength(10).IsUnicode(false);
             entity.Property(x => x.MmrBefore).HasColumnName("mmr_before");
             entity.Property(x => x.MmrDelta).HasColumnName("mmr_delta");
@@ -307,6 +312,30 @@ public partial class WalkamonContext
             entity.Property(x => x.Quantity).HasColumnName("quantity");
             entity.HasOne(x => x.Entitlement).WithMany(x => x.Items).HasForeignKey(x => x.MatchRewardEntitlementId);
             entity.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId);
+        });
+
+        modelBuilder.Entity<PvpMatchRewardSnapshot>(entity =>
+        {
+            entity.ToTable("pvp_match_reward_snapshots");
+            entity.HasKey(x => x.MatchRewardSnapshotId);
+            entity.Property(x => x.MatchRewardSnapshotId).HasColumnName("match_reward_snapshot_id");
+            entity.Property(x => x.MatchId).HasColumnName("match_id");
+            entity.Property(x => x.ResultCode).HasColumnName("result_code").HasMaxLength(20).IsUnicode(false);
+            entity.Property(x => x.WalletAmount).HasColumnName("wallet_amount");
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasPrecision(0);
+            entity.HasIndex(x => new { x.MatchId, x.ResultCode }, "UX_pvp_match_reward_snapshots_match_result").IsUnique();
+            entity.HasOne(x => x.Match).WithMany(x => x.RewardSnapshots).HasForeignKey(x => x.MatchId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PvpMatchRewardSnapshotItem>(entity =>
+        {
+            entity.ToTable("pvp_match_reward_snapshot_items");
+            entity.HasKey(x => new { x.MatchRewardSnapshotId, x.ItemId });
+            entity.Property(x => x.MatchRewardSnapshotId).HasColumnName("match_reward_snapshot_id");
+            entity.Property(x => x.ItemId).HasColumnName("item_id");
+            entity.Property(x => x.Quantity).HasColumnName("quantity");
+            entity.HasOne(x => x.Snapshot).WithMany(x => x.Items).HasForeignKey(x => x.MatchRewardSnapshotId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<PvpMatchEvent>(entity =>

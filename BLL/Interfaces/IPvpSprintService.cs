@@ -8,11 +8,12 @@ public interface IPvpSprintService
     Task<PvpInviteResponse> RespondInviteAsync(Guid userId, Guid inviteId, RespondPvpSprintInviteRequest request);
     Task CancelInviteAsync(Guid userId, Guid inviteId);
     Task<PvpPagedResponse<PvpInviteResponse>> GetInvitesAsync(Guid userId, string direction, string? status, int page, int pageSize);
-    Task<PvpMatchResponse> JoinMatchmakingAsync(Guid userId, JoinPvpMatchmakingRequest request);
+    Task<PvpMatchmakingStatusResponse> JoinMatchmakingAsync(Guid userId, JoinPvpMatchmakingRequest request);
+    Task<PvpMatchmakingStatusResponse> GetMatchmakingStatusAsync(Guid userId);
     Task CancelMatchmakingAsync(Guid userId);
     Task<PvpMatchResponse> GetMatchAsync(Guid userId, Guid matchId);
     Task<PvpResultResponse> GetResultAsync(Guid userId, Guid matchId);
-    Task<PvpPagedResponse<PvpMatchResponse>> GetHistoryAsync(Guid userId, int page, int pageSize, string? matchType, string? result, DateTime? from, DateTime? to);
+    Task<PvpPagedResponse<PvpMatchResponse>> GetHistoryAsync(Guid userId, int page, int pageSize, string? matchType, string? result, DateTime? from, DateTime? to, bool includeActive);
     Task<PvpStepSessionResponse> CreateStepSessionAsync(Guid userId, Guid matchId, CreatePvpStepSessionRequest request);
     Task<PvpStepBatchResponse> SubmitStepBatchAsync(Guid userId, Guid matchId, Guid sessionId, SubmitPvpStepBatchRequest request);
     Task<PvpRewardClaimResponse> ClaimRewardAsync(Guid userId, Guid matchId);

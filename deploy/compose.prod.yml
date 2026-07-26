@@ -61,6 +61,7 @@ x-api-common: &api-common
   volumes:
     - /etc/walkamon/secrets/play-integrity-service-account.json:/run/secrets/play-integrity-service-account.json:ro
     - /etc/walkamon/secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+    - /srv/walkamon/deploy:/run/walkamon-deploy:ro
   mem_limit: 1536m
   read_only: true
   tmpfs:
@@ -111,6 +112,9 @@ services:
     environment:
       <<: *api-environment
       BackgroundServices__Enabled: "false"
+      BackgroundServices__PvpOutboxDispatcherEnabled: "true"
+      Deployment__Slot: blue
+      Deployment__ActiveSlotFile: /run/walkamon-deploy/active-slot
     networks:
       edge:
         ipv4_address: 172.30.0.5
@@ -124,6 +128,9 @@ services:
     environment:
       <<: *api-environment
       BackgroundServices__Enabled: "false"
+      BackgroundServices__PvpOutboxDispatcherEnabled: "true"
+      Deployment__Slot: green
+      Deployment__ActiveSlotFile: /run/walkamon-deploy/active-slot
     networks:
       edge:
         ipv4_address: 172.30.0.6
@@ -136,6 +143,7 @@ services:
     environment:
       <<: *api-environment
       BackgroundServices__Enabled: "true"
+      BackgroundServices__PvpOutboxDispatcherEnabled: "false"
     networks:
       edge:
         ipv4_address: 172.30.0.7

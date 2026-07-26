@@ -248,12 +248,21 @@ else
 var backgroundServicesEnabled = builder.Configuration.GetValue(
     "BackgroundServices:Enabled",
     true);
-if (backgroundServicesEnabled)
-{
+var notificationSchedulerEnabled = builder.Configuration.GetValue(
+    "BackgroundServices:NotificationSchedulerEnabled",
+    backgroundServicesEnabled);
+var pvpLifecycleEnabled = builder.Configuration.GetValue(
+    "BackgroundServices:PvpLifecycleEnabled",
+    backgroundServicesEnabled);
+var pvpOutboxDispatcherEnabled = builder.Configuration.GetValue(
+    "BackgroundServices:PvpOutboxDispatcherEnabled",
+    backgroundServicesEnabled);
+if (notificationSchedulerEnabled)
     builder.Services.AddHostedService<NotificationSchedulerService>();
+if (pvpLifecycleEnabled)
     builder.Services.AddHostedService<PvpSprintLifecycleService>();
+if (pvpOutboxDispatcherEnabled)
     builder.Services.AddHostedService<PvpOutboxDispatcherService>();
-}
 builder.Services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();
 builder.Services.AddScoped<ISystemSettingRepository, SystemSettingRepository>();
 builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();

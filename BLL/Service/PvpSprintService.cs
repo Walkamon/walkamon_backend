@@ -10,6 +10,7 @@ using DAL.DTO;
 using DAL.Extensions;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace BLL.Service;
@@ -24,15 +25,18 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private readonly WalkamonContext _context;
     private readonly bool _realtimeEnabled;
     private readonly IValidatedStepService _validatedStepService;
+    private readonly ILogger<PvpSprintService> _logger;
 
     public PvpSprintService(
         WalkamonContext context,
         IOptions<PvpRealtimeOptions> realtimeOptions,
-        IValidatedStepService validatedStepService)
+        IValidatedStepService validatedStepService,
+        ILogger<PvpSprintService> logger)
     {
         _context = context;
         _realtimeEnabled = realtimeOptions.Value.Enabled;
         _validatedStepService = validatedStepService;
+        _logger = logger;
     }
 
     public async Task<PvpInviteResponse> CreateInviteAsync(Guid userId, CreatePvpSprintInviteRequest request)
@@ -123,11 +127,21 @@ public sealed partial class PvpSprintService : IPvpSprintService
     public async Task<PvpPagedResponse<PvpInviteResponse>> GetInvitesAsync(Guid userId, string direction, string? status, int page, int pageSize)
     {
         ValidatePage(ref page, ref pageSize);
+        if (!direction.Equals("incoming", StringComparison.OrdinalIgnoreCase) &&
+            !direction.Equals("sent", StringComparison.OrdinalIgnoreCase))
+            throw new BadRequestException("Direction must be incoming or sent.");
+        var allowedStatuses = new[] { "pending", "accepted", "declined", "cancelled", "expired" };
+        if (!string.IsNullOrWhiteSpace(status) && !allowedStatuses.Contains(status, StringComparer.OrdinalIgnoreCase))
+            throw new BadRequestException("Invite status is invalid.");
         var query = _context.PvpSprintInvites.AsNoTracking().AsQueryable();
         query = direction.Equals("sent", StringComparison.OrdinalIgnoreCase)
             ? query.Where(x => x.InviterUserId == userId)
             : query.Where(x => x.InviteeUserId == userId);
-        if (!string.IsNullOrWhiteSpace(status)) query = query.Where(x => x.StatusCode == status);
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var normalizedStatus = status.ToLowerInvariant();
+            query = query.Where(x => x.StatusCode == normalizedStatus);
+        }
         var total = await query.CountAsync();
         var invites = await query.OrderByDescending(x => x.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         var responses = new List<PvpInviteResponse>();
@@ -136,7 +150,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
         return new PvpPagedResponse<PvpInviteResponse> { Page = page, PageSize = pageSize, Total = total, Items = responses };
     }
 
-    public async Task<PvpMatchResponse> JoinMatchmakingAsync(Guid userId, JoinPvpMatchmakingRequest request)
+    public async Task<PvpMatchmakingStatusResponse> JoinMatchmakingAsync(Guid userId, JoinPvpMatchmakingRequest request)
     {
         if (!string.Equals(request.MatchTypeCode, "ranked", StringComparison.OrdinalIgnoreCase))
             throw new BadRequestException("Only ranked matchmaking is available.");
@@ -161,7 +175,14 @@ public sealed partial class PvpSprintService : IPvpSprintService
             AddActivity(userId, "queue_waiting", userId, now.AddSeconds(15), now);
             AddOutbox("user", userId, "queue.waiting", new { queuedAt = now });
             await _context.SaveChangesAsync();
-            return new PvpMatchResponse { MatchId = Guid.Empty, MatchTypeCode = "ranked", StatusCode = "waiting", CreatedAt = now };
+            return new PvpMatchmakingStatusResponse
+            {
+                ActivityType = "queue_waiting",
+                StatusCode = "waiting",
+                QueuedAt = now,
+                BotFallbackAt = now.AddSeconds(15),
+                ServerTime = now
+            };
         }
 
         _context.MatchmakingQueues.Remove(candidate);
@@ -171,8 +192,62 @@ public sealed partial class PvpSprintService : IPvpSprintService
         AddMatchActivity(candidate.UserId, match, now);
         AddMatchOutbox(match, "match.created");
         await _context.SaveChangesAsync();
-        return await BuildMatchResponseAsync(match.MatchId, userId);
+        return new PvpMatchmakingStatusResponse
+        {
+            ActivityType = "match_countdown",
+            StatusCode = "countdown",
+            MatchId = match.MatchId,
+            ServerTime = now
+        };
         });
+    }
+
+    public async Task<PvpMatchmakingStatusResponse> GetMatchmakingStatusAsync(Guid userId)
+    {
+        await EnsureActiveUserAsync(userId);
+        var now = DateTime.UtcNow;
+        var activity = await _context.PvpPlayerActivities.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.UserId == userId);
+        if (activity == null)
+            return new PvpMatchmakingStatusResponse { ServerTime = now };
+
+        if (activity.ActivityType == "queue_waiting")
+        {
+            var queue = await _context.MatchmakingQueues.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.StatusCode == "waiting");
+            if (queue == null)
+                return new PvpMatchmakingStatusResponse { ServerTime = now };
+            return new PvpMatchmakingStatusResponse
+            {
+                ActivityType = activity.ActivityType,
+                StatusCode = "waiting",
+                QueuedAt = queue.QueuedAt,
+                BotFallbackAt = queue.QueuedAt.AddSeconds(15),
+                ServerTime = now
+            };
+        }
+
+        if (activity.ActivityType.StartsWith("match_", StringComparison.Ordinal))
+        {
+            var match = await _context.PvpMatches.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.MatchId == activity.ActivityId);
+            if (match == null || match.StatusCode is "finished" or "cancelled")
+                return new PvpMatchmakingStatusResponse { ServerTime = now };
+            return new PvpMatchmakingStatusResponse
+            {
+                ActivityType = activity.ActivityType,
+                StatusCode = match.StatusCode,
+                MatchId = match.MatchId,
+                ServerTime = now
+            };
+        }
+
+        return new PvpMatchmakingStatusResponse
+        {
+            ActivityType = activity.ActivityType,
+            StatusCode = activity.ActivityType,
+            ServerTime = now
+        };
     }
 
     public async Task CancelMatchmakingAsync(Guid userId)
@@ -202,21 +277,32 @@ public sealed partial class PvpSprintService : IPvpSprintService
         var rankAfter = PvpGameplayCalculator.ResolveTier(participant.MmrBefore + participant.MmrDelta, tiers);
         return new PvpResultResponse
         {
-            MatchId = response.MatchId, MatchTypeCode = response.MatchTypeCode, StatusCode = response.StatusCode,
+            MatchId = response.MatchId, MatchTypeCode = response.MatchTypeCode, SourceCode = response.SourceCode, StatusCode = response.StatusCode,
             CreatedAt = response.CreatedAt, CountdownEndsAt = response.CountdownEndsAt, StartedAt = response.StartedAt,
             EndedAt = response.EndedAt, SettlementEndsAt = response.SettlementEndsAt, Participants = response.Participants,
-            ServerTime = response.ServerTime, RuleVersion = response.RuleVersion, ActiveEffects = response.ActiveEffects, Loadout = response.Loadout,
+            ServerTime = response.ServerTime, RuleVersion = response.RuleVersion, LastEventSequence = response.LastEventSequence,
+            ActiveEffects = response.ActiveEffects, Loadout = response.Loadout,
             MmrBefore = participant.MmrBefore, MmrDelta = participant.MmrDelta, MmrAfter = participant.MmrBefore + participant.MmrDelta,
             RankBefore = ToTierResponse(rankBefore), RankAfter = ToTierResponse(rankAfter), TierChanged = rankBefore.TierCode != rankAfter.TierCode,
             CanClaimReward = entitlement is { ClaimedAt: null }, ClaimedAt = entitlement?.ClaimedAt
         };
     }
 
-    public async Task<PvpPagedResponse<PvpMatchResponse>> GetHistoryAsync(Guid userId, int page, int pageSize, string? matchType, string? result, DateTime? from, DateTime? to)
+    public async Task<PvpPagedResponse<PvpMatchResponse>> GetHistoryAsync(Guid userId, int page, int pageSize, string? matchType, string? result, DateTime? from, DateTime? to, bool includeActive)
     {
         ValidatePage(ref page, ref pageSize);
-        var query = _context.PvpMatches.AsNoTracking().Where(x => x.PvpMatchPlayers.Any(p => p.UserId == userId && (result == null || p.ResultCode == result)));
-        if (!string.IsNullOrWhiteSpace(matchType)) query = query.Where(x => x.MatchTypeCode == matchType);
+        if (!string.IsNullOrWhiteSpace(matchType) && !MatchTypes.Contains(matchType, StringComparer.OrdinalIgnoreCase))
+            throw new BadRequestException("Match type is invalid.");
+        if (!string.IsNullOrWhiteSpace(result) && !Results.Contains(result, StringComparer.OrdinalIgnoreCase))
+            throw new BadRequestException("Result is invalid.");
+        var normalizedResult = string.IsNullOrWhiteSpace(result) ? null : result.ToLowerInvariant();
+        var query = _context.PvpMatches.AsNoTracking().Where(x => x.PvpMatchPlayers.Any(p => p.UserId == userId && (normalizedResult == null || p.ResultCode == normalizedResult)));
+        if (!includeActive) query = query.Where(x => x.StatusCode == "finished" || x.StatusCode == "cancelled");
+        if (!string.IsNullOrWhiteSpace(matchType))
+        {
+            var normalizedMatchType = matchType.ToLowerInvariant();
+            query = query.Where(x => x.MatchTypeCode == normalizedMatchType);
+        }
         if (from.HasValue) query = query.Where(x => x.CreatedAt >= from);
         if (to.HasValue) query = query.Where(x => x.CreatedAt <= to);
         var total = await query.CountAsync();
@@ -254,7 +340,24 @@ public sealed partial class PvpSprintService : IPvpSprintService
         });
     }
 
-    public async Task<List<PvpRewardRuleResponse>> GetRewardRulesAsync() => await _context.PvpRewardRules.AsNoTracking().Include(x => x.RewardPackage).Select(x => new PvpRewardRuleResponse { MatchTypeCode = x.MatchTypeCode, ResultCode = x.ResultCode, WalletAmount = x.RewardPackage.WalletAmount, IsActive = x.IsActive }).ToListAsync();
+    public async Task<List<PvpRewardRuleResponse>> GetRewardRulesAsync() =>
+        await _context.PvpRewardRules.AsNoTracking()
+            .Include(x => x.RewardPackage)
+            .ThenInclude(x => x.RewardPackageItems)
+            .OrderBy(x => x.MatchTypeCode)
+            .ThenBy(x => x.ResultCode)
+            .Select(x => new PvpRewardRuleResponse
+            {
+                MatchTypeCode = x.MatchTypeCode,
+                ResultCode = x.ResultCode,
+                WalletAmount = x.RewardPackage.WalletAmount,
+                IsActive = x.IsActive,
+                RewardItems = x.RewardPackage.RewardPackageItems
+                    .OrderBy(item => item.ItemId)
+                    .Select(item => new PvpRewardItemRequest { ItemId = item.ItemId, Quantity = item.Quantity })
+                    .ToList()
+            })
+            .ToListAsync();
 
     public async Task UpdateRewardRulesAsync(UpdatePvpRewardRulesRequest request)
     {
@@ -289,55 +392,242 @@ public sealed partial class PvpSprintService : IPvpSprintService
 
     public async Task ProcessDueWorkAsync(CancellationToken cancellationToken = default)
     {
-        await _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
-        {
+        const int batchSize = 100;
         var now = DateTime.UtcNow;
-        var invites = await _context.PvpSprintInvites.Where(x => x.StatusCode == "pending" && x.ExpiresAt <= now).ToListAsync(cancellationToken);
-        foreach (var invite in invites) await ExpireInviteAsync(invite, now);
 
-        var queues = await _context.MatchmakingQueues.Where(x => x.StatusCode == "waiting" && x.QueuedAt <= now.AddSeconds(-15)).ToListAsync(cancellationToken);
-        foreach (var queue in queues)
+        var inviteIds = await _context.PvpSprintInvites.AsNoTracking()
+            .Where(x => x.StatusCode == "pending" && x.ExpiresAt <= now)
+            .OrderBy(x => x.ExpiresAt)
+            .Select(x => x.InviteId)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+        foreach (var inviteId in inviteIds)
+            await ProcessLifecycleRecordAsync("invite", inviteId, () => ProcessExpiredInviteAsync(inviteId, cancellationToken));
+
+        var queueUserIds = await _context.MatchmakingQueues.AsNoTracking()
+            .Where(x => x.StatusCode == "waiting" && x.QueuedAt <= now.AddSeconds(-15))
+            .OrderBy(x => x.QueuedAt)
+            .Select(x => x.UserId)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+        foreach (var queueUserId in queueUserIds)
+            await ProcessLifecycleRecordAsync("queue", queueUserId, () => ProcessDueQueueAsync(queueUserId, cancellationToken));
+
+        var countdownIds = await _context.PvpMatches.AsNoTracking()
+            .Where(x => x.StatusCode == "countdown" && x.CountdownEndsAt <= now)
+            .OrderBy(x => x.CountdownEndsAt)
+            .Select(x => x.MatchId)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+        foreach (var matchId in countdownIds)
+            await ProcessLifecycleRecordAsync("countdown", matchId, () => ProcessDueCountdownAsync(matchId, cancellationToken));
+
+        if (_realtimeEnabled)
         {
-            if (!await IsActiveUserAsync(queue.UserId)) { _context.MatchmakingQueues.Remove(queue); RemoveActivity(queue.UserId); continue; }
+            var botMatchIds = await _context.PvpMatches.AsNoTracking()
+                .Where(x => x.StatusCode == "running" && x.StartedAt != null && x.EndedAt > now &&
+                            x.PvpMatchPlayers.Any(p => p.ParticipantTypeCode == "bot"))
+                .OrderBy(x => x.StartedAt)
+                .Select(x => x.MatchId)
+                .Take(batchSize)
+                .ToListAsync(cancellationToken);
+            foreach (var matchId in botMatchIds)
+                await ProcessLifecycleRecordAsync("bot-items", matchId, () => ProcessBotItemActionsForMatchAsync(matchId, cancellationToken));
+
+            var effectMatchIds = await _context.PvpMatchEffects.AsNoTracking()
+                .Where(x => x.StatusCode == "active" && x.EndsAt <= now)
+                .OrderBy(x => x.EndsAt)
+                .Select(x => x.MatchId)
+                .Distinct()
+                .Take(batchSize)
+                .ToListAsync(cancellationToken);
+            foreach (var matchId in effectMatchIds)
+                await ProcessLifecycleRecordAsync("effect-expiry", matchId, () => ProcessEffectExpirationsForMatchAsync(matchId, cancellationToken));
+        }
+
+        now = DateTime.UtcNow;
+        var runningIds = await _context.PvpMatches.AsNoTracking()
+            .Where(x => x.StatusCode == "running" && x.EndedAt <= now)
+            .OrderBy(x => x.EndedAt)
+            .Select(x => x.MatchId)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+        foreach (var matchId in runningIds)
+            await ProcessLifecycleRecordAsync("running", matchId, () => ProcessDueRunningAsync(matchId, cancellationToken));
+
+        var settlingIds = await _context.PvpMatches.AsNoTracking()
+            .Where(x => x.StatusCode == "settling" && x.SettlementEndsAt <= now)
+            .OrderBy(x => x.SettlementEndsAt)
+            .Select(x => x.MatchId)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+        foreach (var matchId in settlingIds)
+            await ProcessLifecycleRecordAsync("settlement", matchId, () => ProcessDueSettlementAsync(matchId, cancellationToken));
+    }
+
+    private async Task ProcessLifecycleRecordAsync(string operation, Guid aggregateId, Func<Task> action)
+    {
+        try
+        {
+            _context.ChangeTracker.Clear();
+            await action();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            _logger.LogDebug("PvP {Operation} {AggregateId} was already handled by another worker.", operation, aggregateId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "PvP {Operation} failed for {AggregateId}; remaining records will continue.", operation, aggregateId);
+        }
+        finally
+        {
+            _context.ChangeTracker.Clear();
+        }
+    }
+
+    private Task ProcessExpiredInviteAsync(Guid inviteId, CancellationToken cancellationToken) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+        {
+            var now = DateTime.UtcNow;
+            var invite = await _context.PvpSprintInvites
+                .FirstOrDefaultAsync(x => x.InviteId == inviteId && x.StatusCode == "pending" && x.ExpiresAt <= now, cancellationToken);
+            if (invite == null) return;
+            await ExpireInviteAsync(invite, now);
+            await _context.SaveChangesAsync(cancellationToken);
+        });
+
+    private Task ProcessDueQueueAsync(Guid userId, CancellationToken cancellationToken) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+        {
+            var now = DateTime.UtcNow;
+            var queue = await _context.MatchmakingQueues
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.StatusCode == "waiting" && x.QueuedAt <= now.AddSeconds(-15), cancellationToken);
+            if (queue == null) return;
+            if (!await IsActiveUserAsync(queue.UserId))
+            {
+                _context.MatchmakingQueues.Remove(queue);
+                RemoveActivity(queue.UserId);
+                await _context.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
             var playerProfile = await EnsureProfileAsync(queue.UserId, now);
-            var bot = await _context.PvpBotProfiles.Where(x => x.IsActive).OrderBy(x => Math.Abs(x.Mmr - playerProfile.Mmr)).FirstOrDefaultAsync(cancellationToken);
-            if (bot == null) continue;
+            var bot = await _context.PvpBotProfiles
+                .Where(x => x.IsActive)
+                .OrderBy(x => Math.Abs(x.Mmr - playerProfile.Mmr))
+                .ThenBy(x => x.BotProfileId)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (bot == null) return;
+
             _context.MatchmakingQueues.Remove(queue);
             RemoveActivity(queue.UserId);
             var match = await CreateMatchAsync(queue.UserId, null, bot, "ranked", "bot", now);
             AddMatchActivity(queue.UserId, match, now);
             AddMatchOutbox(match, "match.created");
-        }
-
-        var countdown = await _context.PvpMatches.Where(x => x.StatusCode == "countdown" && x.CountdownEndsAt <= now).ToListAsync(cancellationToken);
-        foreach (var match in countdown)
-        {
-            match.StatusCode = "running"; match.StartedAt = now; match.EndedAt = now.AddSeconds(30);
-            if (_realtimeEnabled) await ApplySpiritPassivesAsync(match, now, cancellationToken);
-            foreach (var activity in await _context.PvpPlayerActivities.Where(x => x.ActivityId == match.MatchId).ToListAsync(cancellationToken)) { activity.ActivityType = "match_running"; activity.DueAt = match.EndedAt; activity.UpdatedAt = now; }
-            AddMatchOutbox(match, "match.started");
-        }
-        if (_realtimeEnabled)
-        {
-            await ProcessBotItemActionsAsync(now, cancellationToken);
-            await ProcessEffectExpirationsAsync(now, cancellationToken);
-        }
-        var running = await _context.PvpMatches.Where(x => x.StatusCode == "running" && x.EndedAt <= now).ToListAsync(cancellationToken);
-        foreach (var match in running)
-        {
-            match.StatusCode = "settling"; match.SettlementEndsAt = now.AddSeconds(10);
-            foreach (var activity in await _context.PvpPlayerActivities.Where(x => x.ActivityId == match.MatchId).ToListAsync(cancellationToken)) { activity.ActivityType = "match_settling"; activity.DueAt = match.SettlementEndsAt; activity.UpdatedAt = now; }
-        }
-        var settling = await _context.PvpMatches.Include(x => x.PvpMatchPlayers).Where(x => x.StatusCode == "settling" && x.SettlementEndsAt <= now).ToListAsync(cancellationToken);
-        foreach (var match in settling) await ResolveMatchAsync(match, now, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
         });
+
+    private Task ProcessDueCountdownAsync(Guid matchId, CancellationToken cancellationToken) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+        {
+            var now = DateTime.UtcNow;
+            var match = await _context.PvpMatches
+                .Include(x => x.PvpMatchPlayers)
+                .FirstOrDefaultAsync(x => x.MatchId == matchId && x.StatusCode == "countdown" && x.CountdownEndsAt <= now, cancellationToken);
+            if (match == null) return;
+            if (!match.CountdownEndsAt.HasValue || match.CountdownEndsAt.Value < now.AddMinutes(-2))
+            {
+                await CancelMatchAsync(match, "lifecycle_timeout", now, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            match.StatusCode = "running";
+            match.StartedAt = now;
+            match.EndedAt = now.AddSeconds(30);
+            if (_realtimeEnabled) await ApplySpiritPassivesAsync(match, now, cancellationToken);
+            foreach (var activity in await _context.PvpPlayerActivities
+                         .Where(x => x.ActivityId == match.MatchId)
+                         .ToListAsync(cancellationToken))
+            {
+                activity.ActivityType = "match_running";
+                activity.DueAt = match.EndedAt;
+                activity.UpdatedAt = now;
+            }
+            AddMatchOutbox(match, "match.started");
+            await _context.SaveChangesAsync(cancellationToken);
+        });
+
+    private Task ProcessDueRunningAsync(Guid matchId, CancellationToken cancellationToken) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+        {
+            var now = DateTime.UtcNow;
+            var match = await _context.PvpMatches
+                .Include(x => x.PvpMatchPlayers)
+                .FirstOrDefaultAsync(x => x.MatchId == matchId && x.StatusCode == "running" && x.EndedAt <= now, cancellationToken);
+            if (match == null) return;
+            match.StatusCode = "settling";
+            match.SettlementEndsAt = now.AddSeconds(10);
+            foreach (var activity in await _context.PvpPlayerActivities
+                         .Where(x => x.ActivityId == match.MatchId)
+                         .ToListAsync(cancellationToken))
+            {
+                activity.ActivityType = "match_settling";
+                activity.DueAt = match.SettlementEndsAt;
+                activity.UpdatedAt = now;
+            }
+            AddMatchOutbox(match, "match.settling");
+            await _context.SaveChangesAsync(cancellationToken);
+        });
+
+    private Task ProcessDueSettlementAsync(Guid matchId, CancellationToken cancellationToken) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+        {
+            var now = DateTime.UtcNow;
+            var match = await _context.PvpMatches
+                .Include(x => x.PvpMatchPlayers)
+                .FirstOrDefaultAsync(x => x.MatchId == matchId && x.StatusCode == "settling" && x.SettlementEndsAt <= now, cancellationToken);
+            if (match == null) return;
+            await ResolveMatchAsync(match, now, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+        });
+
+    private async Task CancelMatchAsync(PvpMatch match, string reason, DateTime now, CancellationToken cancellationToken)
+    {
+        match.StatusCode = "cancelled";
+        match.CancelReason = reason;
+        match.ResolvedAt = now;
+        foreach (var player in match.PvpMatchPlayers.Where(x => x.UserId.HasValue))
+            RemoveActivity(player.UserId!.Value);
+        foreach (var session in await _context.PvpStepSessions
+                     .Where(x => x.MatchId == match.MatchId && x.StatusCode == "active")
+                     .ToListAsync(cancellationToken))
+        {
+            session.StatusCode = "closed";
+            session.ClosedReason = reason;
+        }
+        AddMatchOutbox(match, "match.cancelled", notifyUsers: true);
     }
 
     private async Task ResolveMatchAsync(PvpMatch match, DateTime now, CancellationToken cancellationToken)
     {
         var players = match.PvpMatchPlayers.OrderBy(x => x.JoinedAt).ToList();
-        if (players.Count != 2) { match.StatusCode = "cancelled"; return; }
+        if (players.Count != 2)
+        {
+            await CancelMatchAsync(match, "invalid_participant_count", now, cancellationToken);
+            return;
+        }
+        var rewardSnapshots = await _context.PvpMatchRewardSnapshots
+            .Include(x => x.Items)
+            .Where(x => x.MatchId == match.MatchId)
+            .ToListAsync(cancellationToken);
+        if (rewardSnapshots.Count != 3 ||
+            !Results.All(result => rewardSnapshots.Any(snapshot => snapshot.ResultCode == result)))
+        {
+            await CancelMatchAsync(match, "reward_snapshot_missing", now, cancellationToken);
+            return;
+        }
         var bot = players.SingleOrDefault(x => x.ParticipantTypeCode == "bot");
         if (bot?.BotProfileId != null)
         {
@@ -360,20 +650,32 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 profile.UpdatedAt = now;
             }
         }
-        foreach (var player in players.Where(x => x.UserId.HasValue)) await CreateEntitlementAsync(match, player, now, cancellationToken);
+        foreach (var player in players.Where(x => x.UserId.HasValue))
+            await CreateEntitlementAsync(match, player, rewardSnapshots, now);
         match.StatusCode = "finished"; match.ResolvedAt = now;
         foreach (var player in players.Where(x => x.UserId.HasValue)) RemoveActivity(player.UserId!.Value);
-        AddMatchOutbox(match, "match.finished");
+        foreach (var session in await _context.PvpStepSessions
+                     .Where(x => x.MatchId == match.MatchId && x.StatusCode == "active")
+                     .ToListAsync(cancellationToken))
+        {
+            session.StatusCode = "closed";
+            session.ClosedReason = "match_finished";
+        }
+        AddMatchOutbox(match, "match.finished", notifyUsers: true);
     }
 
-    private async Task CreateEntitlementAsync(PvpMatch match, PvpMatchPlayer player, DateTime now, CancellationToken cancellationToken)
+    private Task CreateEntitlementAsync(
+        PvpMatch match,
+        PvpMatchPlayer player,
+        IReadOnlyCollection<PvpMatchRewardSnapshot> snapshots,
+        DateTime now)
     {
-        var rule = await _context.PvpRewardRules.Include(x => x.RewardPackage).FirstOrDefaultAsync(x => x.MatchTypeCode == match.MatchTypeCode && x.ResultCode == player.ResultCode && x.IsActive, cancellationToken);
-        if (rule == null) return;
-        var entitlement = new PvpMatchRewardEntitlement { MatchRewardEntitlementId = Guid.NewGuid(), MatchId = match.MatchId, UserId = player.UserId!.Value, ResultCode = player.ResultCode!, WalletAmount = rule.RewardPackage.WalletAmount, CreatedAt = now };
+        var snapshot = snapshots.Single(x => x.ResultCode == player.ResultCode);
+        var entitlement = new PvpMatchRewardEntitlement { MatchRewardEntitlementId = Guid.NewGuid(), MatchId = match.MatchId, UserId = player.UserId!.Value, ResultCode = player.ResultCode!, WalletAmount = snapshot.WalletAmount, CreatedAt = now };
         _context.PvpMatchRewardEntitlements.Add(entitlement);
-        var items = await _context.RewardPackageItems.Where(x => x.RewardPackageId == rule.RewardPackageId).ToListAsync(cancellationToken);
-        foreach (var item in items) entitlement.Items.Add(new PvpMatchRewardItem { MatchRewardEntitlementId = entitlement.MatchRewardEntitlementId, ItemId = item.ItemId, Quantity = item.Quantity });
+        foreach (var item in snapshot.Items)
+            entitlement.Items.Add(new PvpMatchRewardItem { MatchRewardEntitlementId = entitlement.MatchRewardEntitlementId, ItemId = item.ItemId, Quantity = item.Quantity });
+        return Task.CompletedTask;
     }
 
     private async Task<PvpMatch> CreateMatchAsync(Guid firstUserId, Guid? secondUserId, PvpBotProfile? bot, string matchType, string source, DateTime now)
@@ -381,6 +683,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
         var firstProfile = await EnsureProfileAsync(firstUserId, now);
         var match = new PvpMatch { MatchId = Guid.NewGuid(), MatchTypeCode = matchType, SourceCode = source, StatusCode = "countdown", CreatedAt = now, CountdownEndsAt = now.AddSeconds(5), RatingK = RatingK, RatingDivisor = RatingDivisor, SpeedMinBps = 7500, SpeedMaxBps = 12500, ItemSlotLimit = 2, RuleVersion = 1 };
         _context.PvpMatches.Add(match);
+        await SnapshotMatchRewardsAsync(match, now);
         var firstPet = await GetPetSnapshotAsync(firstUserId);
         var firstPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = firstUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = firstPet.Level, PetIdSnapshot = firstPet.PetId, SpiritAffinityCode = firstPet.AffinityCode, Score = 0, MmrBefore = firstProfile.Mmr, IsReady = true, JoinedAt = now };
         _context.PvpMatchPlayers.Add(firstPlayer);
@@ -402,6 +705,37 @@ public sealed partial class PvpSprintService : IPvpSprintService
         AddMatchAssigned(firstUserId, match, now);
         if (secondUserId.HasValue) AddMatchAssigned(secondUserId.Value, match, now);
         return match;
+    }
+
+    private async Task SnapshotMatchRewardsAsync(PvpMatch match, DateTime now)
+    {
+        var rules = await _context.PvpRewardRules.AsNoTracking()
+            .Include(x => x.RewardPackage)
+            .ThenInclude(x => x.RewardPackageItems)
+            .Where(x => x.MatchTypeCode == match.MatchTypeCode && x.IsActive)
+            .ToListAsync();
+        if (rules.Count != 3 || !Results.All(result => rules.Any(rule => rule.ResultCode == result)))
+            throw new ConflictException("Sprint reward configuration is incomplete.");
+
+        foreach (var rule in rules)
+        {
+            var snapshot = new PvpMatchRewardSnapshot
+            {
+                MatchRewardSnapshotId = Guid.NewGuid(),
+                MatchId = match.MatchId,
+                ResultCode = rule.ResultCode,
+                WalletAmount = rule.RewardPackage.WalletAmount,
+                CreatedAt = now
+            };
+            foreach (var item in rule.RewardPackage.RewardPackageItems)
+                snapshot.Items.Add(new PvpMatchRewardSnapshotItem
+                {
+                    MatchRewardSnapshotId = snapshot.MatchRewardSnapshotId,
+                    ItemId = item.ItemId,
+                    Quantity = item.Quantity
+                });
+            _context.PvpMatchRewardSnapshots.Add(snapshot);
+        }
     }
 
     private async Task<PvpMatch> GetMatchForUserAsync(Guid matchId, Guid userId)
@@ -430,13 +764,15 @@ public sealed partial class PvpSprintService : IPvpSprintService
             slot.Quantity = await _context.InventoryItems.AsNoTracking().Where(x => x.UserId == userId && x.ItemId == slot.ItemId).Select(x => (int?)x.Quantity).FirstOrDefaultAsync() ?? 0;
         return new PvpMatchResponse
         {
-            MatchId = match.MatchId, MatchTypeCode = match.MatchTypeCode, StatusCode = match.StatusCode, CreatedAt = match.CreatedAt,
+            MatchId = match.MatchId, MatchTypeCode = match.MatchTypeCode, SourceCode = match.SourceCode,
+            StatusCode = match.StatusCode, CreatedAt = match.CreatedAt,
             CountdownEndsAt = match.CountdownEndsAt, StartedAt = match.StartedAt, EndedAt = match.EndedAt, SettlementEndsAt = match.SettlementEndsAt,
-            ServerTime = now, RuleVersion = match.RuleVersion, ActiveEffects = activeEffects.Select(ToEffectResponse).ToList(), Loadout = loadout,
+            ServerTime = now, RuleVersion = match.RuleVersion, LastEventSequence = match.LastEventSequence,
+            ActiveEffects = activeEffects.Select(ToEffectResponse).ToList(), Loadout = loadout,
             Participants = match.PvpMatchPlayers.Select(x =>
             {
                 var effects = activeEffects.Where(e => e.TargetMatchPlayerId == x.MatchPlayerId && e.EffectKindCode is "buff" or "debuff").Select(e => (e.EffectKindCode, e.MagnitudeBps));
-                return new PvpParticipantResponse { ParticipantTypeCode = x.ParticipantTypeCode, UserId = x.UserId, BotProfileId = x.BotProfileId, DisplayName = x.User?.UserProfile?.Username ?? x.BotProfile?.DisplayName ?? "Player", AvatarUrl = x.User?.UserProfile?.AvatarUrl ?? x.BotProfile?.AvatarUrl, Score = x.Score, ValidatedSteps = x.ValidatedSteps, DistanceUnits = x.DistanceUnits, SpiritAffinityCode = x.SpiritAffinityCode, PassiveSpeedBps = x.PassiveSpeedBps, SpeedMultiplierBps = PvpGameplayCalculator.CalculateSpeedBps(x.PassiveSpeedBps, effects, match.SpeedMinBps, match.SpeedMaxBps), ResultCode = x.ResultCode };
+                return new PvpParticipantResponse { MatchPlayerId = x.MatchPlayerId, ParticipantTypeCode = x.ParticipantTypeCode, UserId = x.UserId, BotProfileId = x.BotProfileId, DisplayName = x.User?.UserProfile?.Username ?? x.BotProfile?.DisplayName ?? "Player", AvatarUrl = x.User?.UserProfile?.AvatarUrl ?? x.BotProfile?.AvatarUrl, Score = x.Score, ValidatedSteps = x.ValidatedSteps, DistanceUnits = x.DistanceUnits, SpiritAffinityCode = x.SpiritAffinityCode, PassiveSpeedBps = x.PassiveSpeedBps, SpeedMultiplierBps = PvpGameplayCalculator.CalculateSpeedBps(x.PassiveSpeedBps, effects, match.SpeedMinBps, match.SpeedMaxBps), ResultCode = x.ResultCode };
             }).ToList()
         };
     }
@@ -467,6 +803,8 @@ public sealed partial class PvpSprintService : IPvpSprintService
     }
     private async Task<PvpPlayerProfile> EnsureProfileAsync(Guid userId, DateTime now)
     {
+        var tracked = _context.PvpPlayerProfiles.Local.FirstOrDefault(x => x.UserId == userId);
+        if (tracked != null) return tracked;
         var profile = await _context.PvpPlayerProfiles.FirstOrDefaultAsync(x => x.UserId == userId);
         if (profile != null) return profile;
         profile = new PvpPlayerProfile { UserId = userId, Mmr = InitialMmr, UpdatedAt = now };
@@ -512,15 +850,19 @@ public sealed partial class PvpSprintService : IPvpSprintService
             sourceCode = match.SourceCode,
             statusCode = match.StatusCode,
             countdownEndsAt = match.CountdownEndsAt,
+            lastEventSequence = match.LastEventSequence,
             serverTime = now
         });
-    private void AddMatchOutbox(PvpMatch match, string eventType)
+    private void AddMatchOutbox(PvpMatch match, string eventType, bool notifyUsers = false)
     {
         var now = DateTime.UtcNow;
         var sequence = ++match.LastEventSequence;
-        var payload = JsonSerializer.Serialize(new { matchId = match.MatchId, status = match.StatusCode, sequence, serverTime = now, details = new { } });
+        var payload = JsonSerializer.Serialize(new { matchId = match.MatchId, statusCode = match.StatusCode, sequence, serverTime = now, details = new { } });
         _context.PvpMatchEvents.Add(new PvpMatchEvent { PvpMatchEventId = Guid.NewGuid(), MatchId = match.MatchId, Sequence = sequence, EventType = eventType, PayloadJson = payload, CreatedAt = now });
         _context.OutboxEvents.Add(new OutboxEvent { EventId = Guid.NewGuid(), AggregateType = "match", AggregateId = match.MatchId, Destination = "signalr", EventType = eventType, PayloadJson = payload, CreatedAt = now });
+        if (!notifyUsers) return;
+        foreach (var userId in match.PvpMatchPlayers.Where(x => x.UserId.HasValue).Select(x => x.UserId!.Value).Distinct())
+            _context.OutboxEvents.Add(new OutboxEvent { EventId = Guid.NewGuid(), AggregateType = "user", AggregateId = userId, Destination = "signalr", EventType = eventType, PayloadJson = payload, CreatedAt = now });
     }
     private static void ValidatePage(ref int page, ref int pageSize) { page = Math.Max(page, 1); pageSize = Math.Clamp(pageSize, 1, 100); }
 }

@@ -28,11 +28,14 @@ public sealed class PvpSprintController : BaseController
     [HttpPost("matchmaking")]
     public async Task<IActionResult> JoinMatchmaking(JoinPvpMatchmakingRequest request) => Ok(Success(await _service.JoinMatchmakingAsync(CurrentUserId, request), "Matchmaking request processed."));
 
+    [HttpGet("matchmaking/status")]
+    public async Task<IActionResult> GetMatchmakingStatus() => Ok(Success(await _service.GetMatchmakingStatusAsync(CurrentUserId), "Matchmaking status retrieved."));
+
     [HttpDelete("matchmaking")]
     public async Task<IActionResult> CancelMatchmaking() { await _service.CancelMatchmakingAsync(CurrentUserId); return Ok(Success<object?>(null, "Matchmaking cancelled.")); }
 
     [HttpGet("matches")]
-    public async Task<IActionResult> GetHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? matchType = null, [FromQuery] string? result = null, [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null) => Ok(Success(await _service.GetHistoryAsync(CurrentUserId, page, pageSize, matchType, result, from, to), "Sprint history retrieved."));
+    public async Task<IActionResult> GetHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? matchType = null, [FromQuery] string? result = null, [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null, [FromQuery] bool includeActive = false) => Ok(Success(await _service.GetHistoryAsync(CurrentUserId, page, pageSize, matchType, result, from, to, includeActive), "Sprint history retrieved."));
 
     [HttpGet("matches/{matchId:guid}")]
     public async Task<IActionResult> GetMatch(Guid matchId) => Ok(Success(await _service.GetMatchAsync(CurrentUserId, matchId), "Sprint match retrieved."));

@@ -303,24 +303,36 @@ public sealed partial class PvpSprintService
         }
     }
 
-    private async Task ProcessEffectExpirationsAsync(DateTime now, CancellationToken cancellationToken)
-    {
-        var effects = await _context.PvpMatchEffects.Include(x => x.Match)
-            .Where(x => x.StatusCode == "active" && x.EndsAt <= now).ToListAsync(cancellationToken);
-        foreach (var effect in effects)
+    private Task ProcessEffectExpirationsForMatchAsync(Guid matchId, CancellationToken cancellationToken) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
         {
-            effect.StatusCode = "expired";
-            AddMatchOutboxDetailed(effect.Match, "match.effect.expired", new { effectId = effect.PvpMatchEffectId, target = effect.TargetMatchPlayerId, effect = effect.EffectCode, occurredAt = now });
-        }
-    }
+            var now = DateTime.UtcNow;
+            var effects = await _context.PvpMatchEffects
+                .Include(x => x.Match)
+                .Where(x => x.MatchId == matchId && x.StatusCode == "active" && x.EndsAt <= now)
+                .ToListAsync(cancellationToken);
+            foreach (var effect in effects)
+            {
+                effect.StatusCode = "expired";
+                AddMatchOutboxDetailed(effect.Match, "match.effect.expired", new { effectId = effect.PvpMatchEffectId, target = effect.TargetMatchPlayerId, effect = effect.EffectCode, occurredAt = now });
+            }
+            await _context.SaveChangesAsync(cancellationToken);
+        });
 
-    private async Task ProcessBotItemActionsAsync(DateTime now, CancellationToken cancellationToken)
-    {
-        var matches = await _context.PvpMatches.Include(x => x.PvpMatchPlayers).Include(x => x.Effects).Include(x => x.LoadoutSlots)
-            .Where(x => x.StatusCode == "running" && x.StartedAt != null && x.EndedAt > now && x.PvpMatchPlayers.Any(p => p.ParticipantTypeCode == "bot"))
-            .ToListAsync(cancellationToken);
-        foreach (var match in matches)
+    private Task ProcessBotItemActionsForMatchAsync(Guid matchId, CancellationToken cancellationToken) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
         {
+            var now = DateTime.UtcNow;
+            var match = await _context.PvpMatches
+                .Include(x => x.PvpMatchPlayers)
+                .Include(x => x.Effects)
+                .Include(x => x.LoadoutSlots)
+                .FirstOrDefaultAsync(x => x.MatchId == matchId && x.StatusCode == "running" &&
+                                          x.StartedAt != null && x.EndedAt > now &&
+                                          x.PvpMatchPlayers.Any(p => p.ParticipantTypeCode == "bot"),
+                    cancellationToken);
+            if (match == null) return;
+
             var bot = match.PvpMatchPlayers.Single(x => x.ParticipantTypeCode == "bot");
             foreach (var slot in match.LoadoutSlots.Where(x => x.MatchPlayerId == bot.MatchPlayerId && x.UsedAt == null).OrderBy(x => x.SlotNo))
             {
@@ -359,8 +371,8 @@ public sealed partial class PvpSprintService
                 AddMatchOutboxDetailed(match, "match.item.used", new { actionId = action.PvpMatchItemActionId, actor = bot.MatchPlayerId, target = target.MatchPlayerId, slot = slot.SlotNo, effect = slot.EffectCode, result = action.ResultCode, occurredAt = now });
                 AddMatchOutboxDetailed(match, action.ResultCode == "blocked" ? "match.effect.blocked" : action.ResultCode == "cleansed" ? "match.effect.cleansed" : "match.effect.applied", new { actionId = action.PvpMatchItemActionId, effectId = effect?.PvpMatchEffectId, actor = bot.MatchPlayerId, target = target.MatchPlayerId, effect = slot.EffectCode, magnitudeBps = slot.MagnitudeBps, endsAt = effect?.EndsAt, occurredAt = now });
             }
-        }
-    }
+            await _context.SaveChangesAsync(cancellationToken);
+        });
 
     private async Task CalculateBotDistanceAsync(PvpMatch match, PvpMatchPlayer bot, CancellationToken cancellationToken)
     {
@@ -393,7 +405,7 @@ public sealed partial class PvpSprintService
     {
         var now = DateTime.UtcNow;
         var sequence = ++match.LastEventSequence;
-        var payload = JsonSerializer.Serialize(new { matchId = match.MatchId, status = match.StatusCode, sequence, serverTime = now, details });
+        var payload = JsonSerializer.Serialize(new { matchId = match.MatchId, statusCode = match.StatusCode, sequence, serverTime = now, details });
         _context.PvpMatchEvents.Add(new PvpMatchEvent { PvpMatchEventId = Guid.NewGuid(), MatchId = match.MatchId, Sequence = sequence, EventType = eventType, PayloadJson = payload, CreatedAt = now });
         _context.OutboxEvents.Add(new OutboxEvent { EventId = Guid.NewGuid(), AggregateType = "match", AggregateId = match.MatchId, Destination = "signalr", EventType = eventType, PayloadJson = payload, CreatedAt = now });
     }

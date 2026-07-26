@@ -11,7 +11,7 @@ CADDY_TEMPLATE=/opt/walkamon/caddy/Caddyfile.template
 CADDY_FILE=/srv/walkamon/gateway/Caddyfile
 CADDY_IMAGE=caddy:2.11.4-alpine
 force_slot_swap=false
-drain_seconds=300
+drain_seconds=0
 
 usage() {
   echo "Usage: $0 [--force-slot-swap] [--drain-seconds 0..300]" >&2

@@ -68,6 +68,7 @@ public sealed class PvpInviteResponse
 }
 public sealed class PvpParticipantResponse
 {
+    public Guid MatchPlayerId { get; set; }
     public string ParticipantTypeCode { get; set; } = null!;
     public Guid? UserId { get; set; }
     public Guid? BotProfileId { get; set; }
@@ -85,6 +86,7 @@ public class PvpMatchResponse
 {
     public Guid MatchId { get; set; }
     public string MatchTypeCode { get; set; } = null!;
+    public string SourceCode { get; set; } = null!;
     public string StatusCode { get; set; } = null!;
     public DateTime CreatedAt { get; set; }
     public DateTime? CountdownEndsAt { get; set; }
@@ -93,9 +95,19 @@ public class PvpMatchResponse
     public DateTime? SettlementEndsAt { get; set; }
     public DateTime ServerTime { get; set; }
     public int RuleVersion { get; set; }
+    public long LastEventSequence { get; set; }
     public List<PvpMatchEffectResponse> ActiveEffects { get; set; } = [];
     public List<PvpMatchLoadoutSlotResponse> Loadout { get; set; } = [];
     public List<PvpParticipantResponse> Participants { get; set; } = [];
+}
+public sealed class PvpMatchmakingStatusResponse
+{
+    public string ActivityType { get; set; } = "idle";
+    public string StatusCode { get; set; } = "idle";
+    public Guid? MatchId { get; set; }
+    public DateTime? QueuedAt { get; set; }
+    public DateTime? BotFallbackAt { get; set; }
+    public DateTime ServerTime { get; set; }
 }
 public sealed class PvpResultResponse : PvpMatchResponse
 {
