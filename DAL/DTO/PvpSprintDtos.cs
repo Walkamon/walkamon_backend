@@ -80,6 +80,7 @@ public sealed class PvpParticipantResponse
     public int SpeedMultiplierBps { get; set; } = 10000;
     public string? SpiritAffinityCode { get; set; }
     public int PassiveSpeedBps { get; set; }
+    public bool IsReady { get; set; }
     public string? ResultCode { get; set; }
 }
 public class PvpMatchResponse
@@ -89,6 +90,7 @@ public class PvpMatchResponse
     public string SourceCode { get; set; } = null!;
     public string StatusCode { get; set; } = null!;
     public DateTime CreatedAt { get; set; }
+    public DateTime? CountdownStartsAt { get; set; }
     public DateTime? CountdownEndsAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
@@ -100,11 +102,23 @@ public class PvpMatchResponse
     public List<PvpMatchLoadoutSlotResponse> Loadout { get; set; } = [];
     public List<PvpParticipantResponse> Participants { get; set; } = [];
 }
+public sealed class PvpMatchReadyResponse
+{
+    public Guid MatchId { get; set; }
+    public string StatusCode { get; set; } = null!;
+    public bool AllReady { get; set; }
+    public DateTime? CountdownStartsAt { get; set; }
+    public DateTime? CountdownEndsAt { get; set; }
+    public long LastEventSequence { get; set; }
+    public DateTime ServerTime { get; set; }
+}
 public sealed class PvpMatchmakingStatusResponse
 {
     public string ActivityType { get; set; } = "idle";
     public string StatusCode { get; set; } = "idle";
     public Guid? MatchId { get; set; }
+    public DateTime? CountdownStartsAt { get; set; }
+    public DateTime? CountdownEndsAt { get; set; }
     public DateTime? QueuedAt { get; set; }
     public DateTime? BotFallbackAt { get; set; }
     public DateTime ServerTime { get; set; }

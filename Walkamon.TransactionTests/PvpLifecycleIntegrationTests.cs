@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using BLL.Exceptions;
 using BLL.Interfaces;
 using BLL.Options;
@@ -56,6 +57,42 @@ public sealed class PvpLifecycleIntegrationTests
             var matchId = Assert.IsType<Guid>(assigned.MatchId);
             Assert.Equal("countdown", assigned.StatusCode);
             Assert.Equal(3, await context.PvpMatchRewardSnapshots.CountAsync(x => x.MatchId == matchId));
+            var waitingForReady = await service.GetMatchAsync(firstUserId, matchId);
+            Assert.Null(waitingForReady.CountdownStartsAt);
+            Assert.Null(waitingForReady.CountdownEndsAt);
+            Assert.All(waitingForReady.Participants, participant => Assert.False(participant.IsReady));
+
+            var firstReady = await service.ReadyMatchAsync(firstUserId, matchId);
+            Assert.False(firstReady.AllReady);
+            Assert.Null(firstReady.CountdownStartsAt);
+            Assert.Null(firstReady.CountdownEndsAt);
+
+            var secondReady = await service.ReadyMatchAsync(secondUserId, matchId);
+            Assert.True(secondReady.AllReady);
+            Assert.NotNull(secondReady.CountdownStartsAt);
+            Assert.NotNull(secondReady.CountdownEndsAt);
+            Assert.Equal(
+                TimeSpan.FromSeconds(5),
+                secondReady.CountdownEndsAt!.Value - secondReady.CountdownStartsAt!.Value);
+            Assert.True(secondReady.CountdownStartsAt.Value >= secondReady.ServerTime.AddSeconds(2));
+
+            var duplicateReady = await service.ReadyMatchAsync(secondUserId, matchId);
+            Assert.True(duplicateReady.AllReady);
+            Assert.Equal(secondReady.CountdownStartsAt, duplicateReady.CountdownStartsAt);
+            Assert.Equal(secondReady.CountdownEndsAt, duplicateReady.CountdownEndsAt);
+            Assert.Single(await context.PvpMatchEvents.AsNoTracking()
+                .Where(x => x.MatchId == matchId && x.EventType == "match.countdown.started")
+                .ToListAsync());
+            var countdownEventJson = await context.PvpMatchEvents.AsNoTracking()
+                .Where(x => x.MatchId == matchId && x.EventType == "match.countdown.started")
+                .Select(x => x.PayloadJson)
+                .SingleAsync();
+            using (var countdownEvent = JsonDocument.Parse(countdownEventJson))
+            {
+                var details = countdownEvent.RootElement.GetProperty("details");
+                Assert.EndsWith("Z", details.GetProperty("countdownStartsAt").GetString());
+                Assert.EndsWith("Z", details.GetProperty("countdownEndsAt").GetString());
+            }
 
             // Admin changes apply only to future matches. This match must settle
             // from the immutable reward snapshot created above.
@@ -115,7 +152,7 @@ public sealed class PvpLifecycleIntegrationTests
                 .Select(x => x.Sequence)
                 .ToListAsync();
             Assert.Equal(eventSequences.Count, eventSequences.Distinct().Count());
-            Assert.Equal(new long[] { 1, 2, 3, 4 }, eventSequences.Order().ToArray());
+            Assert.Equal(new long[] { 1, 2, 3, 4, 5 }, eventSequences.Order().ToArray());
 
             // At 15 seconds the queue falls back only when an active bot exists.
             await service.JoinMatchmakingAsync(botUserId, new JoinPvpMatchmakingRequest());
@@ -139,13 +176,23 @@ public sealed class PvpLifecycleIntegrationTests
             var botStatus = await service.GetMatchmakingStatusAsync(botUserId);
             var botMatchId = Assert.IsType<Guid>(botStatus.MatchId);
             Assert.Equal("countdown", botStatus.StatusCode);
-            var botParticipant = await context.PvpMatchPlayers.AsNoTracking()
-                .SingleAsync(x => x.MatchId == botMatchId && x.ParticipantTypeCode == "bot");
+            var botParticipants = await context.PvpMatchPlayers.AsNoTracking()
+                .Where(x => x.MatchId == botMatchId)
+                .ToListAsync();
+            var botParticipant = Assert.Single(botParticipants, x => x.ParticipantTypeCode == "bot");
             Assert.Null(botParticipant.UserId);
             Assert.NotNull(botParticipant.BotProfileId);
+            Assert.True(botParticipant.IsReady);
+            Assert.False(Assert.Single(botParticipants, x => x.ParticipantTypeCode == "user").IsReady);
+            var botReady = await service.ReadyMatchAsync(botUserId, botMatchId);
+            Assert.True(botReady.AllReady);
+            Assert.Equal(
+                TimeSpan.FromSeconds(5),
+                botReady.CountdownEndsAt!.Value - botReady.CountdownStartsAt!.Value);
 
-            // Accepted friend invite creates a friendly countdown. A stale
-            // countdown is recovered as cancelled and releases both activities.
+            // Accepted friend invite waits for both users. If nobody becomes
+            // ready before the activity deadline, the match is cancelled and
+            // both activity locks are released.
             var low = inviterId.CompareTo(inviteeId) < 0 ? inviterId : inviteeId;
             var high = inviterId.CompareTo(inviteeId) < 0 ? inviteeId : inviterId;
             context.Friendships.Add(new Friendship
@@ -165,11 +212,11 @@ public sealed class PvpLifecycleIntegrationTests
                 new RespondPvpSprintInviteRequest { Accept = true });
             var inviteMatchId = Assert.IsType<Guid>(acceptedInvite.MatchId);
             await context.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE dbo.pvp_matches SET countdown_ends_at=DATEADD(minute,-3,SYSUTCDATETIME()) WHERE match_id={inviteMatchId}");
+                $"UPDATE dbo.pvp_player_activities SET due_at=DATEADD(second,-1,SYSUTCDATETIME()) WHERE activity_id={inviteMatchId}");
             await service.ProcessDueWorkAsync();
             var recovered = await context.PvpMatches.AsNoTracking().SingleAsync(x => x.MatchId == inviteMatchId);
             Assert.Equal("cancelled", recovered.StatusCode);
-            Assert.Equal("lifecycle_timeout", recovered.CancelReason);
+            Assert.Equal("ready_timeout", recovered.CancelReason);
             Assert.False(await context.PvpPlayerActivities.AnyAsync(
                 x => x.UserId == inviterId || x.UserId == inviteeId));
         }

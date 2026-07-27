@@ -12,6 +12,7 @@ public interface IPvpSprintService
     Task<PvpMatchmakingStatusResponse> GetMatchmakingStatusAsync(Guid userId);
     Task CancelMatchmakingAsync(Guid userId);
     Task<PvpMatchResponse> GetMatchAsync(Guid userId, Guid matchId);
+    Task<PvpMatchReadyResponse> ReadyMatchAsync(Guid userId, Guid matchId);
     Task<PvpResultResponse> GetResultAsync(Guid userId, Guid matchId);
     Task<PvpPagedResponse<PvpMatchResponse>> GetHistoryAsync(Guid userId, int page, int pageSize, string? matchType, string? result, DateTime? from, DateTime? to, bool includeActive);
     Task<PvpStepSessionResponse> CreateStepSessionAsync(Guid userId, Guid matchId, CreatePvpStepSessionRequest request);

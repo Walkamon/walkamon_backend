@@ -20,6 +20,9 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private const int InitialMmr = 1000;
     private const int RatingK = 32;
     private const int RatingDivisor = 400;
+    private const int ReadyTimeoutSeconds = 30;
+    private const int CountdownDeliveryLeadSeconds = 3;
+    private const int CountdownDurationSeconds = 5;
     private static readonly string[] MatchTypes = ["ranked", "friendly", "event"];
     private static readonly string[] Results = ["win", "lose", "draw"];
     private readonly WalkamonContext _context;
@@ -238,6 +241,8 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 ActivityType = activity.ActivityType,
                 StatusCode = match.StatusCode,
                 MatchId = match.MatchId,
+                CountdownStartsAt = GetCountdownStartsAt(match.CountdownEndsAt),
+                CountdownEndsAt = AsUtc(match.CountdownEndsAt),
                 ServerTime = now
             };
         }
@@ -264,6 +269,50 @@ public sealed partial class PvpSprintService : IPvpSprintService
 
     public Task<PvpMatchResponse> GetMatchAsync(Guid userId, Guid matchId) => BuildMatchResponseAsync(matchId, userId);
 
+    public Task<PvpMatchReadyResponse> ReadyMatchAsync(Guid userId, Guid matchId) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+        {
+            var now = DateTime.UtcNow;
+            var match = await GetMatchForUpdateAsync(matchId)
+                ?? throw new NotFoundException("Sprint match not found.");
+            var actor = match.PvpMatchPlayers.SingleOrDefault(x => x.UserId == userId)
+                ?? throw new ForbiddenException("You are not a participant in this sprint match.");
+
+            if (match.StatusCode == "cancelled")
+                throw new ConflictException("Sprint match has been cancelled.");
+
+            if (match.StatusCode != "countdown" || match.CountdownEndsAt.HasValue)
+                return ToReadyResponse(match, now);
+
+            actor.IsReady = true;
+            var allReady = match.PvpMatchPlayers.Count == 2 && match.PvpMatchPlayers.All(x => x.IsReady);
+            if (allReady)
+            {
+                var countdownStartsAt = CeilingToSecond(now).AddSeconds(CountdownDeliveryLeadSeconds);
+                match.CountdownEndsAt = countdownStartsAt.AddSeconds(CountdownDurationSeconds);
+                foreach (var activity in await _context.PvpPlayerActivities
+                             .Where(x => x.ActivityId == match.MatchId)
+                             .ToListAsync())
+                {
+                    activity.DueAt = match.CountdownEndsAt;
+                    activity.UpdatedAt = now;
+                }
+
+                AddMatchOutbox(
+                    match,
+                    "match.countdown.started",
+                    notifyUsers: true,
+                    details: new
+                    {
+                        countdownStartsAt = AsUtc(countdownStartsAt),
+                        countdownEndsAt = AsUtc(match.CountdownEndsAt)
+                    });
+            }
+
+            await _context.SaveChangesAsync();
+            return ToReadyResponse(match, now);
+        });
+
     public async Task<PvpResultResponse> GetResultAsync(Guid userId, Guid matchId)
     {
         var match = await GetMatchForUserAsync(matchId, userId);
@@ -278,7 +327,8 @@ public sealed partial class PvpSprintService : IPvpSprintService
         return new PvpResultResponse
         {
             MatchId = response.MatchId, MatchTypeCode = response.MatchTypeCode, SourceCode = response.SourceCode, StatusCode = response.StatusCode,
-            CreatedAt = response.CreatedAt, CountdownEndsAt = response.CountdownEndsAt, StartedAt = response.StartedAt,
+            CreatedAt = response.CreatedAt, CountdownStartsAt = response.CountdownStartsAt,
+            CountdownEndsAt = response.CountdownEndsAt, StartedAt = response.StartedAt,
             EndedAt = response.EndedAt, SettlementEndsAt = response.SettlementEndsAt, Participants = response.Participants,
             ServerTime = response.ServerTime, RuleVersion = response.RuleVersion, LastEventSequence = response.LastEventSequence,
             ActiveEffects = response.ActiveEffects, Loadout = response.Loadout,
@@ -413,8 +463,21 @@ public sealed partial class PvpSprintService : IPvpSprintService
         foreach (var queueUserId in queueUserIds)
             await ProcessLifecycleRecordAsync("queue", queueUserId, () => ProcessDueQueueAsync(queueUserId, cancellationToken));
 
+        var readyTimeoutIds = await _context.PvpPlayerActivities.AsNoTracking()
+            .Where(x => x.ActivityType == "match_countdown" && x.DueAt <= now)
+            .Join(
+                _context.PvpMatches.AsNoTracking().Where(x => x.StatusCode == "countdown" && x.CountdownEndsAt == null),
+                activity => activity.ActivityId,
+                match => match.MatchId,
+                (_, match) => match.MatchId)
+            .Distinct()
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+        foreach (var matchId in readyTimeoutIds)
+            await ProcessLifecycleRecordAsync("ready-timeout", matchId, () => ProcessReadyTimeoutAsync(matchId, cancellationToken));
+
         var countdownIds = await _context.PvpMatches.AsNoTracking()
-            .Where(x => x.StatusCode == "countdown" && x.CountdownEndsAt <= now)
+            .Where(x => x.StatusCode == "countdown" && x.CountdownEndsAt != null && x.CountdownEndsAt <= now)
             .OrderBy(x => x.CountdownEndsAt)
             .Select(x => x.MatchId)
             .Take(batchSize)
@@ -534,11 +597,18 @@ public sealed partial class PvpSprintService : IPvpSprintService
             var now = DateTime.UtcNow;
             var match = await _context.PvpMatches
                 .Include(x => x.PvpMatchPlayers)
-                .FirstOrDefaultAsync(x => x.MatchId == matchId && x.StatusCode == "countdown" && x.CountdownEndsAt <= now, cancellationToken);
+                .FirstOrDefaultAsync(x => x.MatchId == matchId && x.StatusCode == "countdown" &&
+                                          x.CountdownEndsAt != null && x.CountdownEndsAt <= now, cancellationToken);
             if (match == null) return;
-            if (!match.CountdownEndsAt.HasValue || match.CountdownEndsAt.Value < now.AddMinutes(-2))
+            if (match.CountdownEndsAt!.Value < now.AddMinutes(-2))
             {
                 await CancelMatchAsync(match, "lifecycle_timeout", now, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            if (match.PvpMatchPlayers.Count != 2 || match.PvpMatchPlayers.Any(x => !x.IsReady))
+            {
+                await CancelMatchAsync(match, "player_not_ready", now, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -556,6 +626,25 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 activity.UpdatedAt = now;
             }
             AddMatchOutbox(match, "match.started");
+            await _context.SaveChangesAsync(cancellationToken);
+        });
+
+    private Task ProcessReadyTimeoutAsync(Guid matchId, CancellationToken cancellationToken) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+        {
+            var now = DateTime.UtcNow;
+            var match = await _context.PvpMatches
+                .Include(x => x.PvpMatchPlayers)
+                .FirstOrDefaultAsync(x => x.MatchId == matchId &&
+                                          x.StatusCode == "countdown" &&
+                                          x.CountdownEndsAt == null, cancellationToken);
+            if (match == null) return;
+            var dueAt = await _context.PvpPlayerActivities
+                .Where(x => x.ActivityId == matchId && x.ActivityType == "match_countdown")
+                .MinAsync(x => x.DueAt, cancellationToken);
+            if (!dueAt.HasValue || dueAt > now) return;
+
+            await CancelMatchAsync(match, "ready_timeout", now, cancellationToken);
             await _context.SaveChangesAsync(cancellationToken);
         });
 
@@ -681,18 +770,18 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private async Task<PvpMatch> CreateMatchAsync(Guid firstUserId, Guid? secondUserId, PvpBotProfile? bot, string matchType, string source, DateTime now)
     {
         var firstProfile = await EnsureProfileAsync(firstUserId, now);
-        var match = new PvpMatch { MatchId = Guid.NewGuid(), MatchTypeCode = matchType, SourceCode = source, StatusCode = "countdown", CreatedAt = now, CountdownEndsAt = now.AddSeconds(5), RatingK = RatingK, RatingDivisor = RatingDivisor, SpeedMinBps = 7500, SpeedMaxBps = 12500, ItemSlotLimit = 2, RuleVersion = 1 };
+        var match = new PvpMatch { MatchId = Guid.NewGuid(), MatchTypeCode = matchType, SourceCode = source, StatusCode = "countdown", CreatedAt = now, CountdownEndsAt = null, RatingK = RatingK, RatingDivisor = RatingDivisor, SpeedMinBps = 7500, SpeedMaxBps = 12500, ItemSlotLimit = 2, RuleVersion = 1 };
         _context.PvpMatches.Add(match);
         await SnapshotMatchRewardsAsync(match, now);
         var firstPet = await GetPetSnapshotAsync(firstUserId);
-        var firstPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = firstUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = firstPet.Level, PetIdSnapshot = firstPet.PetId, SpiritAffinityCode = firstPet.AffinityCode, Score = 0, MmrBefore = firstProfile.Mmr, IsReady = true, JoinedAt = now };
+        var firstPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = firstUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = firstPet.Level, PetIdSnapshot = firstPet.PetId, SpiritAffinityCode = firstPet.AffinityCode, Score = 0, MmrBefore = firstProfile.Mmr, IsReady = false, JoinedAt = now };
         _context.PvpMatchPlayers.Add(firstPlayer);
         await SnapshotPlayerLoadoutAsync(match, firstPlayer, firstUserId, now);
         if (secondUserId.HasValue)
         {
             var secondProfile = await EnsureProfileAsync(secondUserId.Value, now);
             var secondPet = await GetPetSnapshotAsync(secondUserId.Value);
-            var secondPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = secondUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = secondPet.Level, PetIdSnapshot = secondPet.PetId, SpiritAffinityCode = secondPet.AffinityCode, Score = 0, MmrBefore = secondProfile.Mmr, IsReady = true, JoinedAt = now };
+            var secondPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = secondUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = secondPet.Level, PetIdSnapshot = secondPet.PetId, SpiritAffinityCode = secondPet.AffinityCode, Score = 0, MmrBefore = secondProfile.Mmr, IsReady = false, JoinedAt = now };
             _context.PvpMatchPlayers.Add(secondPlayer);
             await SnapshotPlayerLoadoutAsync(match, secondPlayer, secondUserId.Value, now);
         }
@@ -746,6 +835,16 @@ public sealed partial class PvpSprintService : IPvpSprintService
         return match;
     }
 
+    private Task<PvpMatch?> GetMatchForUpdateAsync(Guid matchId, CancellationToken cancellationToken = default) =>
+        _context.PvpMatches
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM dbo.pvp_matches WITH (UPDLOCK, HOLDLOCK)
+                WHERE match_id = {matchId}
+                """)
+            .Include(x => x.PvpMatchPlayers)
+            .SingleOrDefaultAsync(cancellationToken);
+
     private async Task<PvpMatchResponse> BuildMatchResponseAsync(Guid matchId, Guid userId)
     {
         var match = await GetMatchForUserAsync(matchId, userId);
@@ -769,13 +868,14 @@ public sealed partial class PvpSprintService : IPvpSprintService
         {
             MatchId = match.MatchId, MatchTypeCode = match.MatchTypeCode, SourceCode = match.SourceCode,
             StatusCode = match.StatusCode, CreatedAt = AsUtc(match.CreatedAt),
+            CountdownStartsAt = GetCountdownStartsAt(match.CountdownEndsAt),
             CountdownEndsAt = AsUtc(match.CountdownEndsAt), StartedAt = AsUtc(match.StartedAt), EndedAt = AsUtc(match.EndedAt), SettlementEndsAt = AsUtc(match.SettlementEndsAt),
             ServerTime = now, RuleVersion = match.RuleVersion, LastEventSequence = match.LastEventSequence,
             ActiveEffects = activeEffects.Select(ToEffectResponse).ToList(), Loadout = loadout,
             Participants = match.PvpMatchPlayers.Select(x =>
             {
                 var effects = activeEffects.Where(e => e.TargetMatchPlayerId == x.MatchPlayerId && e.EffectKindCode is "buff" or "debuff").Select(e => (e.EffectKindCode, e.MagnitudeBps));
-                return new PvpParticipantResponse { MatchPlayerId = x.MatchPlayerId, ParticipantTypeCode = x.ParticipantTypeCode, UserId = x.UserId, BotProfileId = x.BotProfileId, DisplayName = x.User?.UserProfile?.Username ?? x.BotProfile?.DisplayName ?? "Player", AvatarUrl = x.User?.UserProfile?.AvatarUrl ?? x.BotProfile?.AvatarUrl, Score = x.Score, ValidatedSteps = x.ValidatedSteps, DistanceUnits = x.DistanceUnits, SpiritAffinityCode = x.SpiritAffinityCode, PassiveSpeedBps = x.PassiveSpeedBps, SpeedMultiplierBps = PvpGameplayCalculator.CalculateSpeedBps(x.PassiveSpeedBps, effects, match.SpeedMinBps, match.SpeedMaxBps), ResultCode = x.ResultCode };
+                return new PvpParticipantResponse { MatchPlayerId = x.MatchPlayerId, ParticipantTypeCode = x.ParticipantTypeCode, UserId = x.UserId, BotProfileId = x.BotProfileId, DisplayName = x.User?.UserProfile?.Username ?? x.BotProfile?.DisplayName ?? "Player", AvatarUrl = x.User?.UserProfile?.AvatarUrl ?? x.BotProfile?.AvatarUrl, Score = x.Score, ValidatedSteps = x.ValidatedSteps, DistanceUnits = x.DistanceUnits, SpiritAffinityCode = x.SpiritAffinityCode, PassiveSpeedBps = x.PassiveSpeedBps, SpeedMultiplierBps = PvpGameplayCalculator.CalculateSpeedBps(x.PassiveSpeedBps, effects, match.SpeedMinBps, match.SpeedMaxBps), IsReady = x.IsReady, ResultCode = x.ResultCode };
             }).ToList()
         };
     }
@@ -818,17 +918,18 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private void AddActivity(Guid userId, string type, Guid activityId, DateTime? dueAt, DateTime now) => _context.PvpPlayerActivities.Add(new PvpPlayerActivity { UserId = userId, ActivityType = type, ActivityId = activityId, DueAt = dueAt, CreatedAt = now, UpdatedAt = now });
     private void AddMatchActivity(Guid userId, PvpMatch match, DateTime now)
     {
+        var dueAt = match.CountdownEndsAt ?? now.AddSeconds(ReadyTimeoutSeconds);
         var existing = _context.PvpPlayerActivities.Local.FirstOrDefault(x => x.UserId == userId);
         if (existing != null)
         {
             existing.ActivityType = "match_countdown";
             existing.ActivityId = match.MatchId;
-            existing.DueAt = match.CountdownEndsAt;
+            existing.DueAt = dueAt;
             existing.UpdatedAt = now;
             if (_context.Entry(existing).State == EntityState.Deleted) _context.Entry(existing).State = EntityState.Modified;
             return;
         }
-        AddActivity(userId, "match_countdown", match.MatchId, match.CountdownEndsAt, now);
+        AddActivity(userId, "match_countdown", match.MatchId, dueAt, now);
     }
     private void RemoveActivity(Guid userId)
     {
@@ -852,15 +953,17 @@ public sealed partial class PvpSprintService : IPvpSprintService
             matchTypeCode = match.MatchTypeCode,
             sourceCode = match.SourceCode,
             statusCode = match.StatusCode,
+            countdownStartsAt = GetCountdownStartsAt(match.CountdownEndsAt),
             countdownEndsAt = AsUtc(match.CountdownEndsAt),
+            readyExpiresAt = AsUtc(now.AddSeconds(ReadyTimeoutSeconds)),
             lastEventSequence = match.LastEventSequence,
             serverTime = now
         });
-    private void AddMatchOutbox(PvpMatch match, string eventType, bool notifyUsers = false)
+    private void AddMatchOutbox(PvpMatch match, string eventType, bool notifyUsers = false, object? details = null)
     {
         var now = DateTime.UtcNow;
         var sequence = ++match.LastEventSequence;
-        var payload = JsonSerializer.Serialize(new { matchId = match.MatchId, statusCode = match.StatusCode, sequence, serverTime = now, details = new { } });
+        var payload = JsonSerializer.Serialize(new { matchId = match.MatchId, statusCode = match.StatusCode, sequence, serverTime = now, details = details ?? new { } });
         _context.PvpMatchEvents.Add(new PvpMatchEvent { PvpMatchEventId = Guid.NewGuid(), MatchId = match.MatchId, Sequence = sequence, EventType = eventType, PayloadJson = payload, CreatedAt = now });
         _context.OutboxEvents.Add(new OutboxEvent { EventId = Guid.NewGuid(), AggregateType = "match", AggregateId = match.MatchId, Destination = "signalr", EventType = eventType, PayloadJson = payload, CreatedAt = now });
         if (!notifyUsers) return;
@@ -874,5 +977,26 @@ public sealed partial class PvpSprintService : IPvpSprintService
         _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
     };
     private static DateTime? AsUtc(DateTime? value) => value.HasValue ? AsUtc(value.Value) : null;
+    private static DateTime CeilingToSecond(DateTime value)
+    {
+        var utc = AsUtc(value);
+        var remainder = utc.Ticks % TimeSpan.TicksPerSecond;
+        return remainder == 0 ? utc : utc.AddTicks(TimeSpan.TicksPerSecond - remainder);
+    }
+    private static DateTime? GetCountdownStartsAt(DateTime? countdownEndsAt) =>
+        countdownEndsAt.HasValue
+            ? AsUtc(countdownEndsAt.Value).AddSeconds(-CountdownDurationSeconds)
+            : null;
+    private static PvpMatchReadyResponse ToReadyResponse(PvpMatch match, DateTime serverTime) =>
+        new()
+        {
+            MatchId = match.MatchId,
+            StatusCode = match.StatusCode,
+            AllReady = match.PvpMatchPlayers.Count == 2 && match.PvpMatchPlayers.All(x => x.IsReady),
+            CountdownStartsAt = GetCountdownStartsAt(match.CountdownEndsAt),
+            CountdownEndsAt = AsUtc(match.CountdownEndsAt),
+            LastEventSequence = match.LastEventSequence,
+            ServerTime = AsUtc(serverTime)
+        };
     private static void ValidatePage(ref int page, ref int pageSize) { page = Math.Max(page, 1); pageSize = Math.Clamp(pageSize, 1, 100); }
 }
