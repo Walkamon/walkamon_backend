@@ -247,7 +247,7 @@ public sealed partial class PvpSprintService
         return new UsePvpItemResponse { ActionId = action.PvpMatchItemActionId, ClientActionId = action.ClientActionId, ResultCode = action.ResultCode, EffectCode = action.EffectCode, RemainingQuantity = remaining, ServerTime = DateTime.UtcNow, Effect = effect == null ? null : ToEffectResponse(effect) };
     }
 
-    private static PvpMatchEffectResponse ToEffectResponse(PvpMatchEffect effect) => new() { EffectId = effect.PvpMatchEffectId, TargetMatchPlayerId = effect.TargetMatchPlayerId, EffectCode = effect.EffectCode, EffectKindCode = effect.EffectKindCode, MagnitudeBps = effect.MagnitudeBps, StartsAt = effect.StartsAt, EndsAt = effect.EndsAt };
+    private static PvpMatchEffectResponse ToEffectResponse(PvpMatchEffect effect) => new() { EffectId = effect.PvpMatchEffectId, TargetMatchPlayerId = effect.TargetMatchPlayerId, EffectCode = effect.EffectCode, EffectKindCode = effect.EffectKindCode, MagnitudeBps = effect.MagnitudeBps, StartsAt = AsUtc(effect.StartsAt), EndsAt = AsUtc(effect.EndsAt) };
     private static PvpRankTierResponse ToTierResponse(PvpRankTier tier) => new() { TierCode = tier.TierCode, DisplayName = tier.DisplayName, MinMmr = tier.MinMmr, AssetKey = tier.AssetKey, ColorHex = tier.ColorHex };
 
     private async Task<(Guid? PetId, byte Level, string AffinityCode)> GetPetSnapshotAsync(Guid userId)

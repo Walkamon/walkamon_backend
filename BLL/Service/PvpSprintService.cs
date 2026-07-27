@@ -221,8 +221,8 @@ public sealed partial class PvpSprintService : IPvpSprintService
             {
                 ActivityType = activity.ActivityType,
                 StatusCode = "waiting",
-                QueuedAt = queue.QueuedAt,
-                BotFallbackAt = queue.QueuedAt.AddSeconds(15),
+                QueuedAt = AsUtc(queue.QueuedAt),
+                BotFallbackAt = AsUtc(queue.QueuedAt.AddSeconds(15)),
                 ServerTime = now
             };
         }
@@ -284,7 +284,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             ActiveEffects = response.ActiveEffects, Loadout = response.Loadout,
             MmrBefore = participant.MmrBefore, MmrDelta = participant.MmrDelta, MmrAfter = participant.MmrBefore + participant.MmrDelta,
             RankBefore = ToTierResponse(rankBefore), RankAfter = ToTierResponse(rankAfter), TierChanged = rankBefore.TierCode != rankAfter.TierCode,
-            CanClaimReward = entitlement is { ClaimedAt: null }, ClaimedAt = entitlement?.ClaimedAt
+            CanClaimReward = entitlement is { ClaimedAt: null }, ClaimedAt = AsUtc(entitlement?.ClaimedAt)
         };
     }
 
@@ -761,12 +761,15 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 ItemName = item.ItemName, EffectCode = slot.EffectCode, AssetKey = slot.AssetKey, UsedAt = slot.UsedAt
             }).OrderBy(x => x.SlotNo).ToListAsync();
         foreach (var slot in loadout)
+        {
+            slot.UsedAt = AsUtc(slot.UsedAt);
             slot.Quantity = await _context.InventoryItems.AsNoTracking().Where(x => x.UserId == userId && x.ItemId == slot.ItemId).Select(x => (int?)x.Quantity).FirstOrDefaultAsync() ?? 0;
+        }
         return new PvpMatchResponse
         {
             MatchId = match.MatchId, MatchTypeCode = match.MatchTypeCode, SourceCode = match.SourceCode,
-            StatusCode = match.StatusCode, CreatedAt = match.CreatedAt,
-            CountdownEndsAt = match.CountdownEndsAt, StartedAt = match.StartedAt, EndedAt = match.EndedAt, SettlementEndsAt = match.SettlementEndsAt,
+            StatusCode = match.StatusCode, CreatedAt = AsUtc(match.CreatedAt),
+            CountdownEndsAt = AsUtc(match.CountdownEndsAt), StartedAt = AsUtc(match.StartedAt), EndedAt = AsUtc(match.EndedAt), SettlementEndsAt = AsUtc(match.SettlementEndsAt),
             ServerTime = now, RuleVersion = match.RuleVersion, LastEventSequence = match.LastEventSequence,
             ActiveEffects = activeEffects.Select(ToEffectResponse).ToList(), Loadout = loadout,
             Participants = match.PvpMatchPlayers.Select(x =>
@@ -849,7 +852,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             matchTypeCode = match.MatchTypeCode,
             sourceCode = match.SourceCode,
             statusCode = match.StatusCode,
-            countdownEndsAt = match.CountdownEndsAt,
+            countdownEndsAt = AsUtc(match.CountdownEndsAt),
             lastEventSequence = match.LastEventSequence,
             serverTime = now
         });
@@ -864,5 +867,12 @@ public sealed partial class PvpSprintService : IPvpSprintService
         foreach (var userId in match.PvpMatchPlayers.Where(x => x.UserId.HasValue).Select(x => x.UserId!.Value).Distinct())
             _context.OutboxEvents.Add(new OutboxEvent { EventId = Guid.NewGuid(), AggregateType = "user", AggregateId = userId, Destination = "signalr", EventType = eventType, PayloadJson = payload, CreatedAt = now });
     }
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+    };
+    private static DateTime? AsUtc(DateTime? value) => value.HasValue ? AsUtc(value.Value) : null;
     private static void ValidatePage(ref int page, ref int pageSize) { page = Math.Max(page, 1); pageSize = Math.Clamp(pageSize, 1, 100); }
 }
