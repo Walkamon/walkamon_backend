@@ -141,6 +141,12 @@ public sealed class PvpLifecycleIntegrationTests
                 WHERE match_id={matchId};
                 """);
             await service.ProcessDueWorkAsync();
+            if (await MatchStatusAsync(context, matchId) == "settling")
+            {
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE dbo.pvp_matches SET settlement_ends_at=DATEADD(second,-1,SYSUTCDATETIME()) WHERE match_id={matchId}");
+                await service.ProcessDueWorkAsync();
+            }
             Assert.Equal("finished", await MatchStatusAsync(context, matchId));
 
             var players = await context.PvpMatchPlayers.AsNoTracking()
