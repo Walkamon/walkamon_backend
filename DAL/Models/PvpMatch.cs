@@ -45,6 +45,16 @@ public partial class PvpMatch
 
     public int RuleVersion { get; set; } = 1;
 
+    public string ScoringModeCode { get; set; } = "daily_power_v1";
+
+    public int DailyStepPowerCap { get; set; } = 10000;
+
+    public int BasePaceMinMilliStepsPerSecond { get; set; } = 1000;
+
+    public int BasePaceMaxMilliStepsPerSecond { get; set; } = 2500;
+
+    public DateTime? LastProgressAt { get; set; }
+
     public long LastEventSequence { get; set; }
 
     public byte[] RowVersion { get; set; } = null!;

@@ -52,6 +52,25 @@ public sealed class PvpLifecycleIntegrationTests
             await using var context = CreateContext(database);
             var service = CreateService(context);
             await service.UpdateRewardRulesAsync(RewardMatrix(10, 20, 30));
+            var vietnamToday = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+            context.DailySteps.AddRange(
+                new DailyStep
+                {
+                    UserId = firstUserId,
+                    StepDate = vietnamToday,
+                    StepCount = 10000,
+                    EligibleStepCount = 10000,
+                    UpdatedAt = DateTime.UtcNow
+                },
+                new DailyStep
+                {
+                    UserId = secondUserId,
+                    StepDate = vietnamToday,
+                    StepCount = 0,
+                    EligibleStepCount = 0,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            await context.SaveChangesAsync();
 
             var waiting = await service.JoinMatchmakingAsync(firstUserId, new JoinPvpMatchmakingRequest());
             Assert.Equal("waiting", waiting.StatusCode);
@@ -106,22 +125,21 @@ public sealed class PvpLifecycleIntegrationTests
                 $"UPDATE dbo.pvp_matches SET countdown_ends_at=DATEADD(second,-1,SYSUTCDATETIME()) WHERE match_id={matchId}");
             await service.ProcessDueWorkAsync();
             Assert.Equal("running", await MatchStatusAsync(context, matchId));
+            var powerSnapshots = await context.PvpMatchPlayers.AsNoTracking()
+                .Where(x => x.MatchId == matchId)
+                .ToDictionaryAsync(x => x.UserId!.Value);
+            Assert.Equal(10000, powerSnapshots[firstUserId].DailyEligibleStepsSnapshot);
+            Assert.Equal(2500, powerSnapshots[firstUserId].BasePaceMilliStepsPerSecond);
+            Assert.Equal(0, powerSnapshots[secondUserId].DailyEligibleStepsSnapshot);
+            Assert.Equal(1000, powerSnapshots[secondUserId].BasePaceMilliStepsPerSecond);
 
             await context.Database.ExecuteSqlInterpolatedAsync($"""
-                UPDATE dbo.pvp_match_players
-                SET distance_units=CASE WHEN user_id={firstUserId} THEN 50000 ELSE 30000 END,
-                    validated_steps=CASE WHEN user_id={firstUserId} THEN 5 ELSE 3 END,
-                    score=CASE WHEN user_id={firstUserId} THEN 5 ELSE 3 END
-                WHERE match_id={matchId};
                 UPDATE dbo.pvp_matches
-                SET started_at=created_at, ended_at=created_at
+                SET created_at=DATEADD(second,-32,SYSUTCDATETIME()),
+                    started_at=DATEADD(second,-31,SYSUTCDATETIME()),
+                    ended_at=DATEADD(second,-1,SYSUTCDATETIME())
                 WHERE match_id={matchId};
                 """);
-            await service.ProcessDueWorkAsync();
-            Assert.Equal("settling", await MatchStatusAsync(context, matchId));
-
-            await context.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE dbo.pvp_matches SET settlement_ends_at=DATEADD(second,-1,SYSUTCDATETIME()) WHERE match_id={matchId}");
             await service.ProcessDueWorkAsync();
             Assert.Equal("finished", await MatchStatusAsync(context, matchId));
 
@@ -156,7 +174,9 @@ public sealed class PvpLifecycleIntegrationTests
                 .Select(x => x.Sequence)
                 .ToListAsync();
             Assert.Equal(eventSequences.Count, eventSequences.Distinct().Count());
-            Assert.Equal(new long[] { 1, 2, 3, 4, 5 }, eventSequences.Order().ToArray());
+            Assert.Equal(
+                new long[] { 1, 2, 3, 4, 5, 6 },
+                eventSequences.Order().ToArray());
 
             // At 15 seconds the queue falls back only when an active bot exists.
             await service.JoinMatchmakingAsync(botUserId, new JoinPvpMatchmakingRequest());
@@ -215,6 +235,13 @@ public sealed class PvpLifecycleIntegrationTests
                 invite.InviteId,
                 new RespondPvpSprintInviteRequest { Accept = true });
             var inviteMatchId = Assert.IsType<Guid>(acceptedInvite.MatchId);
+            var acceptedRetry = await service.RespondInviteAsync(
+                inviteeId,
+                invite.InviteId,
+                new RespondPvpSprintInviteRequest { Accept = true });
+            Assert.Equal(inviteMatchId, acceptedRetry.MatchId);
+            Assert.Equal(1, await context.PvpMatches.CountAsync(
+                x => x.MatchId == inviteMatchId));
             await context.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE dbo.pvp_player_activities SET due_at=DATEADD(second,-1,SYSUTCDATETIME()) WHERE activity_id={inviteMatchId}");
             await service.ProcessDueWorkAsync();

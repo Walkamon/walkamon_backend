@@ -64,6 +64,12 @@ public sealed class PvpSchemaIntegrationTests
                     "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_match_players') AND name IN ('pet_name_snapshot','pet_stage_no_snapshot')"));
                 Assert.Equal(1, await ScalarAsync(connection,
                     "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_bot_profiles') AND name='pet_stage_no'"));
+                Assert.Equal(5, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_matches') AND name IN ('scoring_mode_code','daily_step_power_cap','base_pace_min_milli_steps_per_second','base_pace_max_milli_steps_per_second','last_progress_at')"));
+                Assert.Equal(2, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_match_players') AND name IN ('daily_eligible_steps_snapshot','base_pace_milli_steps_per_second')"));
+                Assert.Equal(0, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.tables WHERE object_id=OBJECT_ID('dbo.pvp_match_step_ledgers')"));
                 Assert.Equal(1, await ScalarAsync(connection,
                     "SELECT COUNT(*) FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID('dbo.pvp_matches') AND name='FK_pvp_matches_forfeited_user'"));
                 Assert.Equal(1, await ScalarAsync(connection,

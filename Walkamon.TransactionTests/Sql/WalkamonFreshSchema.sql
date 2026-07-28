@@ -674,7 +674,12 @@ CREATE TABLE pvp_matches (
     speed_min_bps INT NOT NULL CONSTRAINT DF_pvp_matches_speed_min DEFAULT 7500,
     speed_max_bps INT NOT NULL CONSTRAINT DF_pvp_matches_speed_max DEFAULT 12500,
     item_slot_limit TINYINT NOT NULL CONSTRAINT DF_pvp_matches_item_slots DEFAULT 2,
-    rule_version INT NOT NULL CONSTRAINT DF_pvp_matches_rule_version DEFAULT 1,
+    rule_version INT NOT NULL CONSTRAINT DF_pvp_matches_rule_version DEFAULT 2,
+    scoring_mode_code VARCHAR(30) NOT NULL CONSTRAINT DF_pvp_matches_scoring_mode DEFAULT 'daily_power_v1',
+    daily_step_power_cap INT NOT NULL CONSTRAINT DF_pvp_matches_daily_power_cap DEFAULT 10000,
+    base_pace_min_milli_steps_per_second INT NOT NULL CONSTRAINT DF_pvp_matches_min_pace DEFAULT 1000,
+    base_pace_max_milli_steps_per_second INT NOT NULL CONSTRAINT DF_pvp_matches_max_pace DEFAULT 2500,
+    last_progress_at DATETIME2(3) NULL,
     last_event_sequence BIGINT NOT NULL CONSTRAINT DF_pvp_matches_last_event_sequence DEFAULT 0,
     row_version ROWVERSION NOT NULL,
     CONSTRAINT CK_pvp_matches_match_type_code
@@ -682,6 +687,12 @@ CREATE TABLE pvp_matches (
     CONSTRAINT CK_pvp_matches_status_code
         CHECK (status_code IN ('countdown', 'running', 'settling', 'finished', 'cancelled')),
     CONSTRAINT CK_pvp_matches_source_code CHECK (source_code IN ('invite', 'matchmaking', 'bot')),
+    CONSTRAINT CK_pvp_matches_scoring_mode CHECK (scoring_mode_code IN ('legacy_race_steps', 'daily_power_v1')),
+    CONSTRAINT CK_pvp_matches_daily_power CHECK (
+        daily_step_power_cap > 0
+        AND base_pace_min_milli_steps_per_second > 0
+        AND base_pace_max_milli_steps_per_second >= base_pace_min_milli_steps_per_second
+    ),
     CONSTRAINT CK_pvp_matches_finish_reason CHECK (finish_reason_code IS NULL OR finish_reason_code IN ('normal_completion', 'user_forfeit')),
     CONSTRAINT CK_pvp_matches_dates
         CHECK (
@@ -712,6 +723,8 @@ CREATE TABLE pvp_match_players (
     spirit_affinity_code VARCHAR(30) NULL,
     passive_speed_bps INT NOT NULL CONSTRAINT DF_pvp_match_players_passive DEFAULT 0,
     validated_steps INT NOT NULL CONSTRAINT DF_pvp_match_players_validated_steps DEFAULT 0,
+    daily_eligible_steps_snapshot INT NOT NULL CONSTRAINT DF_pvp_match_players_daily_snapshot DEFAULT 0,
+    base_pace_milli_steps_per_second INT NOT NULL CONSTRAINT DF_pvp_match_players_base_pace DEFAULT 1000,
     distance_units BIGINT NOT NULL CONSTRAINT DF_pvp_match_players_distance DEFAULT 0,
     row_version ROWVERSION NOT NULL,
     is_ready BIT NOT NULL
@@ -724,7 +737,13 @@ CREATE TABLE pvp_match_players (
     CONSTRAINT CK_pvp_match_players_steps_at_match CHECK (steps_at_match >= 0),
     CONSTRAINT CK_pvp_match_players_pet_level_at_match CHECK (pet_level_at_match > 0),
     CONSTRAINT CK_pvp_match_players_score CHECK (score >= 0),
-    CONSTRAINT CK_pvp_match_players_realtime_score CHECK (passive_speed_bps >= 0 AND validated_steps >= 0 AND distance_units >= 0),
+    CONSTRAINT CK_pvp_match_players_realtime_score CHECK (
+        passive_speed_bps >= 0
+        AND validated_steps >= 0
+        AND daily_eligible_steps_snapshot >= 0
+        AND base_pace_milli_steps_per_second > 0
+        AND distance_units >= 0
+    ),
     CONSTRAINT CK_pvp_match_players_result_code
         CHECK (result_code IS NULL OR result_code IN ('win', 'lose', 'draw', 'quit')),
     CONSTRAINT CK_pvp_match_players_finish_time_ms CHECK (finish_time_ms IS NULL OR finish_time_ms > 0),
@@ -874,23 +893,6 @@ CREATE TABLE validated_step_records (
     FOREIGN KEY (user_id) REFERENCES users(user_id),
     FOREIGN KEY (step_session_id) REFERENCES pvp_step_sessions(step_session_id),
     FOREIGN KEY (batch_id) REFERENCES step_sensor_batches(step_sensor_batch_id)
-);
-GO
-
-CREATE TABLE pvp_match_step_ledgers (
-    match_step_ledger_id UNIQUEIDENTIFIER NOT NULL CONSTRAINT DF_pvp_match_step_ledgers_id DEFAULT NEWSEQUENTIALID() PRIMARY KEY,
-    match_id UNIQUEIDENTIFIER NOT NULL,
-    match_player_id UNIQUEIDENTIFIER NOT NULL,
-    validated_step_record_id UNIQUEIDENTIFIER NOT NULL,
-    counted_steps INT NOT NULL,
-    multiplier_bps INT NOT NULL CONSTRAINT DF_pvp_match_step_ledgers_multiplier DEFAULT 10000,
-    distance_units BIGINT NOT NULL CONSTRAINT DF_pvp_match_step_ledgers_distance DEFAULT 0,
-    effect_snapshot_json NVARCHAR(MAX) NOT NULL CONSTRAINT DF_pvp_match_step_ledgers_effects DEFAULT N'[]',
-    created_at DATETIME2(3) NOT NULL CONSTRAINT DF_pvp_match_step_ledgers_created_at DEFAULT SYSUTCDATETIME(),
-    CONSTRAINT CK_pvp_match_step_ledgers_count CHECK (counted_steps > 0),
-    FOREIGN KEY (match_id) REFERENCES pvp_matches(match_id),
-    FOREIGN KEY (match_player_id) REFERENCES pvp_match_players(match_player_id),
-    FOREIGN KEY (validated_step_record_id) REFERENCES validated_step_records(validated_step_record_id)
 );
 GO
 
@@ -1372,9 +1374,6 @@ GO
 CREATE UNIQUE INDEX UX_validated_step_records_batch_event
     ON validated_step_records(batch_id, event_index)
     WHERE batch_id IS NOT NULL;
-GO
-CREATE UNIQUE INDEX UX_pvp_match_step_ledgers_record
-    ON pvp_match_step_ledgers(validated_step_record_id);
 GO
 CREATE UNIQUE INDEX UX_pvp_reward_rules_type_result
     ON pvp_reward_rules(match_type_code, result_code);

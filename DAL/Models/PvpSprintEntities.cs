@@ -154,22 +154,6 @@ public partial class ValidatedStepRecord
     public StepSensorBatch? Batch { get; set; }
 }
 
-public partial class PvpMatchStepLedger
-{
-    public Guid MatchStepLedgerId { get; set; }
-    public Guid MatchId { get; set; }
-    public Guid MatchPlayerId { get; set; }
-    public Guid ValidatedStepRecordId { get; set; }
-    public int CountedSteps { get; set; }
-    public int MultiplierBps { get; set; } = 10000;
-    public long DistanceUnits { get; set; }
-    public string EffectSnapshotJson { get; set; } = "[]";
-    public DateTime CreatedAt { get; set; }
-    public PvpMatch Match { get; set; } = null!;
-    public PvpMatchPlayer MatchPlayer { get; set; } = null!;
-    public ValidatedStepRecord ValidatedStepRecord { get; set; } = null!;
-}
-
 public partial class PvpRewardRule
 {
     public Guid PvpRewardRuleId { get; set; }

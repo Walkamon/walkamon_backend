@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -23,6 +24,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private const int ReadyTimeoutSeconds = 30;
     private const int CountdownDeliveryLeadSeconds = 3;
     private const int CountdownDurationSeconds = 5;
+    private const string DailyPowerScoringMode = "daily_power_v1";
     private static readonly string[] MatchTypes = ["ranked", "friendly", "event"];
     private static readonly string[] Results = ["win", "lose", "draw"];
     private readonly WalkamonContext _context;
@@ -79,12 +81,16 @@ public sealed partial class PvpSprintService : IPvpSprintService
 
     public async Task<PvpInviteResponse> RespondInviteAsync(Guid userId, Guid inviteId, RespondPvpSprintInviteRequest request)
     {
-        var response = await _context.ExecuteInTransactionAsync<PvpInviteResponse?>(IsolationLevel.Serializable, async () =>
+        var stopwatch = Stopwatch.StartNew();
+        var responseUserId = await _context.ExecuteInTransactionAsync<Guid?>(IsolationLevel.Serializable, async () =>
         {
         var now = DateTime.UtcNow;
         var invite = await _context.PvpSprintInvites.FirstOrDefaultAsync(x => x.InviteId == inviteId)
             ?? throw new NotFoundException("Sprint invite not found.");
         if (invite.InviteeUserId != userId) throw new ForbiddenException("Only the invitee can respond.");
+        if ((request.Accept && invite.StatusCode == "accepted") ||
+            (!request.Accept && invite.StatusCode == "declined"))
+            return invite.InviterUserId;
         if (invite.StatusCode != "pending") throw new ConflictException("Sprint invite is no longer pending.");
         if (invite.ExpiresAt <= now)
         {
@@ -100,7 +106,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             RemoveActivities(invite.InviteId);
             AddOutbox("user", invite.InviterUserId, "invite.declined", new { inviteId });
             await _context.SaveChangesAsync();
-            return await ToInviteResponseAsync(invite, invite.InviterUserId);
+            return invite.InviterUserId;
         }
 
         var match = await CreateMatchAsync(invite.InviterUserId, userId, null, "friendly", "invite", now);
@@ -111,9 +117,24 @@ public sealed partial class PvpSprintService : IPvpSprintService
         AddMatchActivity(userId, match, now);
         AddMatchOutbox(match, "match.created");
         await _context.SaveChangesAsync();
-        return await ToInviteResponseAsync(invite, invite.InviterUserId);
+        return invite.InviterUserId;
         });
-        return response ?? throw new ConflictException("Sprint invite has expired.");
+        if (!responseUserId.HasValue)
+            throw new ConflictException("Sprint invite has expired.");
+
+        // Build the presentation response after committing so the Serializable
+        // write transaction does not hold invite/activity locks during a
+        // profile read.
+        var savedInvite = await _context.PvpSprintInvites.AsNoTracking()
+            .SingleAsync(x => x.InviteId == inviteId);
+        var response = await ToInviteResponseAsync(savedInvite, responseUserId.Value);
+        _logger.LogInformation(
+            "PvP invite response completed. InviteId={InviteId} UserId={UserId} Accepted={Accepted} DurationMs={DurationMs}",
+            inviteId,
+            userId,
+            request.Accept,
+            stopwatch.ElapsedMilliseconds);
+        return response;
     }
 
     public async Task CancelInviteAsync(Guid userId, Guid inviteId)
@@ -622,6 +643,19 @@ public sealed partial class PvpSprintService : IPvpSprintService
         }
 
         now = DateTime.UtcNow;
+        var progressIds = await _context.PvpMatches.AsNoTracking()
+            .Where(x => x.StatusCode == "running" &&
+                        x.ScoringModeCode == DailyPowerScoringMode &&
+                        x.StartedAt != null &&
+                        x.EndedAt > now)
+            .OrderBy(x => x.StartedAt)
+            .Select(x => x.MatchId)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+        foreach (var matchId in progressIds)
+            await ProcessLifecycleRecordAsync("progress", matchId, () => ProcessRunningProgressAsync(matchId, cancellationToken));
+
+        now = DateTime.UtcNow;
         var runningIds = await _context.PvpMatches.AsNoTracking()
             .Where(x => x.StatusCode == "running" && x.EndedAt <= now)
             .OrderBy(x => x.EndedAt)
@@ -729,6 +763,8 @@ public sealed partial class PvpSprintService : IPvpSprintService
             match.StatusCode = "running";
             match.StartedAt = now;
             match.EndedAt = now.AddSeconds(30);
+            if (match.ScoringModeCode == DailyPowerScoringMode)
+                await SnapshotDailyPowerAsync(match, now, cancellationToken);
             if (_realtimeEnabled) await ApplySpiritPassivesAsync(match, now, cancellationToken);
             foreach (var activity in await _context.PvpPlayerActivities
                          .Where(x => x.ActivityId == match.MatchId)
@@ -769,8 +805,19 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 .Include(x => x.PvpMatchPlayers)
                 .FirstOrDefaultAsync(x => x.MatchId == matchId && x.StatusCode == "running" && x.EndedAt <= now, cancellationToken);
             if (match == null) return;
+            if (match.ScoringModeCode == DailyPowerScoringMode)
+            {
+                await RecalculateDailyPowerDistancesAsync(
+                    match,
+                    match.EndedAt!.Value,
+                    cancellationToken);
+                AddProgressOutbox(match, match.EndedAt.Value);
+            }
             match.StatusCode = "settling";
-            match.SettlementEndsAt = now.AddSeconds(10);
+            // Daily-power scoring is entirely server-authoritative, so there is
+            // no late sensor batch to wait for. Keep the settling state/event
+            // for client compatibility, then allow settlement immediately.
+            match.SettlementEndsAt = now;
             foreach (var activity in await _context.PvpPlayerActivities
                          .Where(x => x.ActivityId == match.MatchId)
                          .ToListAsync(cancellationToken))
@@ -830,10 +877,13 @@ public sealed partial class PvpSprintService : IPvpSprintService
             await CancelMatchAsync(match, "reward_snapshot_missing", now, cancellationToken);
             return;
         }
-        var bot = players.SingleOrDefault(x => x.ParticipantTypeCode == "bot");
-        if (bot?.BotProfileId != null)
+        if (match.ScoringModeCode == DailyPowerScoringMode && match.EndedAt.HasValue)
+            await RecalculateDailyPowerDistancesAsync(match, match.EndedAt.Value, cancellationToken);
+        else
         {
-            await CalculateBotDistanceAsync(match, bot, cancellationToken);
+            var bot = players.SingleOrDefault(x => x.ParticipantTypeCode == "bot");
+            if (bot?.BotProfileId != null)
+                await CalculateBotDistanceAsync(match, bot, cancellationToken);
         }
         var first = players[0]; var second = players[1];
         if (first.DistanceUnits == second.DistanceUnits) { first.ResultCode = "draw"; second.ResultCode = "draw"; }
@@ -886,25 +936,46 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private async Task<PvpMatch> CreateMatchAsync(Guid firstUserId, Guid? secondUserId, PvpBotProfile? bot, string matchType, string source, DateTime now)
     {
         var firstProfile = await EnsureProfileAsync(firstUserId, now);
-        var match = new PvpMatch { MatchId = Guid.NewGuid(), MatchTypeCode = matchType, SourceCode = source, StatusCode = "countdown", CreatedAt = now, CountdownEndsAt = null, RatingK = RatingK, RatingDivisor = RatingDivisor, SpeedMinBps = 7500, SpeedMaxBps = 12500, ItemSlotLimit = 2, RuleVersion = 1 };
+        var match = new PvpMatch
+        {
+            MatchId = Guid.NewGuid(),
+            MatchTypeCode = matchType,
+            SourceCode = source,
+            StatusCode = "countdown",
+            CreatedAt = now,
+            CountdownEndsAt = null,
+            RatingK = RatingK,
+            RatingDivisor = RatingDivisor,
+            SpeedMinBps = 7500,
+            SpeedMaxBps = 12500,
+            ItemSlotLimit = 2,
+            RuleVersion = 2,
+            ScoringModeCode = DailyPowerScoringMode,
+            DailyStepPowerCap = PvpGameplayCalculator.DefaultDailyStepPowerCap,
+            BasePaceMinMilliStepsPerSecond = PvpGameplayCalculator.DefaultMinimumPaceMilliStepsPerSecond,
+            BasePaceMaxMilliStepsPerSecond = PvpGameplayCalculator.DefaultMaximumPaceMilliStepsPerSecond
+        };
         _context.PvpMatches.Add(match);
         await SnapshotMatchRewardsAsync(match, now);
         var firstPet = await GetPetSnapshotAsync(firstUserId);
-        var firstPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = firstUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = firstPet.Level, PetIdSnapshot = firstPet.PetId, PetNameSnapshot = firstPet.Name, PetStageNoSnapshot = firstPet.StageNo, SpiritAffinityCode = firstPet.AffinityCode, Score = 0, MmrBefore = firstProfile.Mmr, IsReady = false, JoinedAt = now };
+        var firstPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = firstUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = firstPet.Level, PetIdSnapshot = firstPet.PetId, PetNameSnapshot = firstPet.Name, PetStageNoSnapshot = firstPet.StageNo, SpiritAffinityCode = firstPet.AffinityCode, Score = 0, MmrBefore = firstProfile.Mmr, BasePaceMilliStepsPerSecond = match.BasePaceMinMilliStepsPerSecond, IsReady = false, JoinedAt = now };
         _context.PvpMatchPlayers.Add(firstPlayer);
         await SnapshotPlayerLoadoutAsync(match, firstPlayer, firstUserId, now);
         if (secondUserId.HasValue)
         {
             var secondProfile = await EnsureProfileAsync(secondUserId.Value, now);
             var secondPet = await GetPetSnapshotAsync(secondUserId.Value);
-            var secondPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = secondUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = secondPet.Level, PetIdSnapshot = secondPet.PetId, PetNameSnapshot = secondPet.Name, PetStageNoSnapshot = secondPet.StageNo, SpiritAffinityCode = secondPet.AffinityCode, Score = 0, MmrBefore = secondProfile.Mmr, IsReady = false, JoinedAt = now };
+            var secondPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = secondUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = secondPet.Level, PetIdSnapshot = secondPet.PetId, PetNameSnapshot = secondPet.Name, PetStageNoSnapshot = secondPet.StageNo, SpiritAffinityCode = secondPet.AffinityCode, Score = 0, MmrBefore = secondProfile.Mmr, BasePaceMilliStepsPerSecond = match.BasePaceMinMilliStepsPerSecond, IsReady = false, JoinedAt = now };
             _context.PvpMatchPlayers.Add(secondPlayer);
             await SnapshotPlayerLoadoutAsync(match, secondPlayer, secondUserId.Value, now);
         }
         else if (bot != null)
         {
             var botAffinity = NormalizeAffinityCode(bot.SpiritAffinityCode);
-            var botPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, BotProfileId = bot.BotProfileId, ParticipantTypeCode = "bot", SpiritAffinityCode = botAffinity, PetStageNoSnapshot = NormalizePetStageNo(botAffinity, bot.PetStageNo), StepsAtMatch = 0, PetLevelAtMatch = 1, Score = 0, MmrBefore = bot.Mmr, IsReady = true, JoinedAt = now };
+            var botPaceMilli = checked((int)Math.Round(
+                bot.StepsPerSecond * 1000m,
+                MidpointRounding.AwayFromZero));
+            var botPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, BotProfileId = bot.BotProfileId, ParticipantTypeCode = "bot", SpiritAffinityCode = botAffinity, PetStageNoSnapshot = NormalizePetStageNo(botAffinity, bot.PetStageNo), StepsAtMatch = 0, PetLevelAtMatch = 1, Score = 0, MmrBefore = bot.Mmr, BasePaceMilliStepsPerSecond = botPaceMilli, IsReady = true, JoinedAt = now };
             _context.PvpMatchPlayers.Add(botPlayer);
             await SnapshotBotLoadoutAsync(match, botPlayer, bot.BotProfileId, now);
         }
@@ -989,14 +1060,15 @@ public sealed partial class PvpSprintService : IPvpSprintService
             CreatedAt = AsUtc(match.CreatedAt),
             CountdownStartsAt = GetCountdownStartsAt(match.CountdownEndsAt),
             CountdownEndsAt = AsUtc(match.CountdownEndsAt), StartedAt = AsUtc(match.StartedAt), EndedAt = AsUtc(match.EndedAt), SettlementEndsAt = AsUtc(match.SettlementEndsAt), ResolvedAt = AsUtc(match.ResolvedAt),
-            ServerTime = now, RuleVersion = match.RuleVersion, LastEventSequence = match.LastEventSequence,
+            ServerTime = now, RuleVersion = match.RuleVersion, ScoringModeCode = match.ScoringModeCode,
+            DailyStepPowerCap = match.DailyStepPowerCap, LastEventSequence = match.LastEventSequence,
             ActiveEffects = activeEffects.Select(ToEffectResponse).ToList(), Loadout = loadout,
             Participants = match.PvpMatchPlayers.Select(x =>
             {
                 var effects = activeEffects.Where(e => e.TargetMatchPlayerId == x.MatchPlayerId && e.EffectKindCode is "buff" or "debuff").Select(e => (e.EffectKindCode, e.MagnitudeBps));
                 var affinityCode = NormalizeAffinityCode(x.SpiritAffinityCode);
                 var stageNo = NormalizePetStageNo(affinityCode, x.PetStageNoSnapshot);
-                return new PvpParticipantResponse { MatchPlayerId = x.MatchPlayerId, ParticipantTypeCode = x.ParticipantTypeCode, UserId = x.UserId, BotProfileId = x.BotProfileId, DisplayName = x.User?.UserProfile?.Username ?? x.BotProfile?.DisplayName ?? "Player", AvatarUrl = x.User?.UserProfile?.AvatarUrl ?? x.BotProfile?.AvatarUrl, PetId = x.PetIdSnapshot, PetName = x.PetNameSnapshot, PetLevel = x.PetLevelAtMatch, PetStageNo = stageNo, PetVisualCode = $"{affinityCode}_stage{stageNo}", Score = x.Score, ValidatedSteps = x.ValidatedSteps, DistanceUnits = x.DistanceUnits, SpiritAffinityCode = affinityCode, PassiveSpeedBps = x.PassiveSpeedBps, SpeedMultiplierBps = PvpGameplayCalculator.CalculateSpeedBps(x.PassiveSpeedBps, effects, match.SpeedMinBps, match.SpeedMaxBps), IsReady = x.IsReady, ResultCode = x.ResultCode };
+                return new PvpParticipantResponse { MatchPlayerId = x.MatchPlayerId, ParticipantTypeCode = x.ParticipantTypeCode, UserId = x.UserId, BotProfileId = x.BotProfileId, DisplayName = x.User?.UserProfile?.Username ?? x.BotProfile?.DisplayName ?? "Player", AvatarUrl = x.User?.UserProfile?.AvatarUrl ?? x.BotProfile?.AvatarUrl, PetId = x.PetIdSnapshot, PetName = x.PetNameSnapshot, PetLevel = x.PetLevelAtMatch, PetStageNo = stageNo, PetVisualCode = $"{affinityCode}_stage{stageNo}", Score = x.Score, ValidatedSteps = x.ValidatedSteps, DailyEligibleStepsSnapshot = x.DailyEligibleStepsSnapshot, BasePaceMilliStepsPerSecond = x.BasePaceMilliStepsPerSecond, DistanceUnits = x.DistanceUnits, SpiritAffinityCode = affinityCode, PassiveSpeedBps = x.PassiveSpeedBps, SpeedMultiplierBps = PvpGameplayCalculator.CalculateSpeedBps(x.PassiveSpeedBps, effects, match.SpeedMinBps, match.SpeedMaxBps), IsReady = x.IsReady, ResultCode = x.ResultCode };
             }).ToList()
         };
     }

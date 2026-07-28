@@ -81,6 +81,8 @@ public sealed class PvpParticipantResponse
     public string PetVisualCode { get; set; } = "sprout_stage0";
     public int Score { get; set; }
     public int ValidatedSteps { get; set; }
+    public int DailyEligibleStepsSnapshot { get; set; }
+    public int BasePaceMilliStepsPerSecond { get; set; }
     public long DistanceUnits { get; set; }
     public int SpeedMultiplierBps { get; set; } = 10000;
     public string? SpiritAffinityCode { get; set; }
@@ -106,6 +108,8 @@ public class PvpMatchResponse
     public DateTime? ResolvedAt { get; set; }
     public DateTime ServerTime { get; set; }
     public int RuleVersion { get; set; }
+    public string ScoringModeCode { get; set; } = "daily_power_v1";
+    public int DailyStepPowerCap { get; set; }
     public long LastEventSequence { get; set; }
     public List<PvpMatchEffectResponse> ActiveEffects { get; set; } = [];
     public List<PvpMatchLoadoutSlotResponse> Loadout { get; set; } = [];

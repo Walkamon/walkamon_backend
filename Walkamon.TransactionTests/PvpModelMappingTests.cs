@@ -66,6 +66,25 @@ public sealed class PvpModelMappingTests
             bot.FindProperty(nameof(PvpBotProfile.PetStageNo))!.GetColumnName());
     }
 
+    [Fact]
+    public void DailyPowerSnapshot_MapsWithoutLegacyStepLedger()
+    {
+        using var context = CreateContext();
+        var match = context.Model.FindEntityType(typeof(PvpMatch))!;
+        var player = context.Model.FindEntityType(typeof(PvpMatchPlayer))!;
+
+        Assert.Equal(
+            "scoring_mode_code",
+            match.FindProperty(nameof(PvpMatch.ScoringModeCode))!.GetColumnName());
+        Assert.Equal(
+            "daily_eligible_steps_snapshot",
+            player.FindProperty(nameof(PvpMatchPlayer.DailyEligibleStepsSnapshot))!.GetColumnName());
+        Assert.Equal(
+            "base_pace_milli_steps_per_second",
+            player.FindProperty(nameof(PvpMatchPlayer.BasePaceMilliStepsPerSecond))!.GetColumnName());
+        Assert.Null(context.Model.FindEntityType("DAL.Models.PvpMatchStepLedger"));
+    }
+
     private static WalkamonContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<WalkamonContext>()

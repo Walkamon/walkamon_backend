@@ -37,6 +37,10 @@ public partial class PvpMatchPlayer
 
     public int ValidatedSteps { get; set; }
 
+    public int DailyEligibleStepsSnapshot { get; set; }
+
+    public int BasePaceMilliStepsPerSecond { get; set; } = 1000;
+
     public long DistanceUnits { get; set; }
 
     public byte[] RowVersion { get; set; } = null!;
