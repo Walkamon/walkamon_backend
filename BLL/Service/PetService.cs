@@ -200,7 +200,7 @@ namespace BLL.Service
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
-          
+
             await UpdateEnergy(userPet);
             await UpdateBond(userPet);
             await UpdateLifeForce(userPet);
@@ -276,7 +276,7 @@ namespace BLL.Service
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
-           
+
             await UpdateEnergy(userPet);
             await UpdateBond(userPet);
             await UpdateLifeForce(userPet);
@@ -841,8 +841,10 @@ GetEvolutionPreviewAsync()
             await UpdateBond(userPet);
             await UpdateLifeForce(userPet);
 
+
             _repository.Update(userPet);
             await _repository.SaveAsync();
+
 
             var latest = await _PetEvolutionHistory.GetLatestAsync(userId);
 

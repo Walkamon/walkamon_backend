@@ -148,7 +148,7 @@ public sealed class PetOverviewServiceTests
                 EvolutionHistory.Object,
                 PetHistory.Object,
                 Pets.Object,
-                  SystemSettingRepository.Object);
+                 SystemSettingRepository.Object);
         }
 
         public PetService Service { get; }
