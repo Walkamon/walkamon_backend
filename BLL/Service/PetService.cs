@@ -86,11 +86,11 @@ namespace BLL.Service
             if (pet == null)
                 throw new NotFoundException("Pet not found.");
 
-            UpdateEnergy(pet);
+            await UpdateEnergy(pet);
 
-            UpdateBond(pet);
+            await UpdateBond(pet);
 
-            UpdateLifeForce(pet);
+            await UpdateLifeForce(pet);
 
             _repository.Update(pet);
 
@@ -116,9 +116,9 @@ namespace BLL.Service
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
-            UpdateEnergy(userPet);
-            UpdateBond(userPet);
-            UpdateLifeForce(userPet);
+            await UpdateEnergy(userPet);
+            await UpdateBond(userPet);
+            await UpdateLifeForce(userPet);
 
             _repository.Update(userPet);
             await _repository.SaveAsync();
@@ -200,10 +200,10 @@ namespace BLL.Service
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
-          
-            UpdateEnergy(userPet);
-            UpdateBond(userPet);
-            UpdateLifeForce(userPet);
+
+            await UpdateEnergy(userPet);
+            await UpdateBond(userPet);
+            await UpdateLifeForce(userPet);
 
           
             if (userPet.CurrentPetBond >= userPet.PetBond)
@@ -276,10 +276,10 @@ namespace BLL.Service
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
-           
-            UpdateEnergy(userPet);
-            UpdateBond(userPet);
-            UpdateLifeForce(userPet);
+
+            await UpdateEnergy(userPet);
+            await UpdateBond(userPet);
+            await UpdateLifeForce(userPet);
 
           
             if (userPet.CurrentPetLifeForce >= userPet.PetLifeForce)
@@ -837,9 +837,9 @@ GetEvolutionPreviewAsync()
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
-            UpdateEnergy(userPet);
-            UpdateBond(userPet);
-            UpdateLifeForce(userPet);
+            await UpdateEnergy(userPet);
+            await UpdateBond(userPet);
+            await UpdateLifeForce(userPet);
 
             var latest = await _PetEvolutionHistory.GetLatestAsync(userId);
 
