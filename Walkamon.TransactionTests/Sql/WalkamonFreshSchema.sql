@@ -277,7 +277,11 @@ CREATE TABLE user_pets(
  current_pet_exp INT NOT NULL DEFAULT 0,
  current_pet_energy INT NOT NULL DEFAULT 0,
  current_pet_bond INT NOT NULL DEFAULT 0,
- current_pet_life_force INT NOT NULL DEFAULT 0
+ current_pet_life_force INT NOT NULL DEFAULT 0,
+ energy_updated_at DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+ bond_updated_at DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+ life_force_updated_at DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+ exp_updated_at DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME()
 );
 GO
 CREATE TABLE PetInteraction
@@ -734,7 +738,14 @@ CREATE TABLE pvp_sprint_invites (
     responded_at DATETIME2(0) NULL,
     match_id UNIQUEIDENTIFIER NULL,
     created_at DATETIME2(0) NOT NULL CONSTRAINT DF_pvp_sprint_invites_created_at DEFAULT SYSUTCDATETIME(),
-    CONSTRAINT CK_pvp_sprint_invites_users CHECK (inviter_user_id <> invitee_user_id AND user_low_id < user_high_id),
+    CONSTRAINT CK_pvp_sprint_invites_users CHECK (
+        inviter_user_id <> invitee_user_id
+        AND user_low_id <> user_high_id
+        AND (
+            (user_low_id = inviter_user_id AND user_high_id = invitee_user_id)
+            OR (user_low_id = invitee_user_id AND user_high_id = inviter_user_id)
+        )
+    ),
     CONSTRAINT CK_pvp_sprint_invites_status CHECK (status_code IN ('pending', 'accepted', 'declined', 'expired', 'cancelled')),
     FOREIGN KEY (inviter_user_id) REFERENCES users(user_id),
     FOREIGN KEY (invitee_user_id) REFERENCES users(user_id),
@@ -886,6 +897,29 @@ CREATE TABLE pvp_reward_rules (
     CONSTRAINT CK_pvp_reward_rules_type CHECK (match_type_code IN ('ranked', 'friendly', 'event')),
     CONSTRAINT CK_pvp_reward_rules_result CHECK (result_code IN ('win', 'lose', 'draw')),
     FOREIGN KEY (reward_package_id) REFERENCES reward_packages(reward_package_id)
+);
+GO
+
+CREATE TABLE pvp_match_reward_snapshots (
+    match_reward_snapshot_id UNIQUEIDENTIFIER NOT NULL CONSTRAINT DF_pvp_match_reward_snapshots_id DEFAULT NEWSEQUENTIALID() PRIMARY KEY,
+    match_id UNIQUEIDENTIFIER NOT NULL,
+    result_code VARCHAR(20) NOT NULL,
+    wallet_amount INT NOT NULL,
+    created_at DATETIME2(0) NOT NULL CONSTRAINT DF_pvp_match_reward_snapshots_created_at DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT CK_pvp_match_reward_snapshots_result CHECK (result_code IN ('win', 'lose', 'draw')),
+    CONSTRAINT CK_pvp_match_reward_snapshots_amount CHECK (wallet_amount >= 0),
+    FOREIGN KEY (match_id) REFERENCES pvp_matches(match_id) ON DELETE CASCADE
+);
+GO
+
+CREATE TABLE pvp_match_reward_snapshot_items (
+    match_reward_snapshot_id UNIQUEIDENTIFIER NOT NULL,
+    item_id UNIQUEIDENTIFIER NOT NULL,
+    quantity INT NOT NULL,
+    PRIMARY KEY (match_reward_snapshot_id, item_id),
+    CONSTRAINT CK_pvp_match_reward_snapshot_items_quantity CHECK (quantity > 0),
+    FOREIGN KEY (match_reward_snapshot_id) REFERENCES pvp_match_reward_snapshots(match_reward_snapshot_id) ON DELETE CASCADE,
+    FOREIGN KEY (item_id) REFERENCES items(item_id)
 );
 GO
 
@@ -1337,6 +1371,9 @@ CREATE UNIQUE INDEX UX_pvp_match_step_ledgers_record
 GO
 CREATE UNIQUE INDEX UX_pvp_reward_rules_type_result
     ON pvp_reward_rules(match_type_code, result_code);
+GO
+CREATE UNIQUE INDEX UX_pvp_match_reward_snapshots_match_result
+    ON pvp_match_reward_snapshots(match_id, result_code);
 GO
 CREATE UNIQUE INDEX UX_pvp_match_reward_entitlements_match_user
     ON pvp_match_reward_entitlements(match_id, user_id);

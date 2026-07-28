@@ -11,16 +11,54 @@ public sealed class PvpOutboxDispatcherService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IHubContext<SprintHub> _hub;
     private readonly ILogger<PvpOutboxDispatcherService> _logger;
+    private readonly string? _deploymentSlot;
+    private readonly string? _activeSlotFile;
     private readonly string _workerId = $"pvp-outbox-{Environment.MachineName}-{Guid.NewGuid():N}";
-    public PvpOutboxDispatcherService(IServiceScopeFactory scopeFactory, IHubContext<SprintHub> hub, ILogger<PvpOutboxDispatcherService> logger) { _scopeFactory = scopeFactory; _hub = hub; _logger = logger; }
+    public PvpOutboxDispatcherService(
+        IServiceScopeFactory scopeFactory,
+        IHubContext<SprintHub> hub,
+        ILogger<PvpOutboxDispatcherService> logger,
+        IConfiguration configuration)
+    {
+        _scopeFactory = scopeFactory;
+        _hub = hub;
+        _logger = logger;
+        _deploymentSlot = configuration["Deployment:Slot"];
+        _activeSlotFile = configuration["Deployment:ActiveSlotFile"];
+    }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            try { await DispatchAsync(stoppingToken); }
+            try
+            {
+                if (!IsActivePublisher()) continue;
+                await DispatchAsync(stoppingToken);
+            }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception ex) { _logger.LogError(ex, "PvP outbox dispatch failed."); }
+        }
+    }
+
+    private bool IsActivePublisher()
+    {
+        if (string.IsNullOrWhiteSpace(_deploymentSlot) && string.IsNullOrWhiteSpace(_activeSlotFile))
+            return true;
+        if (string.IsNullOrWhiteSpace(_deploymentSlot) || string.IsNullOrWhiteSpace(_activeSlotFile))
+        {
+            _logger.LogError("PvP outbox publisher is disabled because Deployment:Slot and Deployment:ActiveSlotFile must be configured together.");
+            return false;
+        }
+        try
+        {
+            var activeSlot = File.ReadAllText(_activeSlotFile).Trim();
+            return string.Equals(activeSlot, _deploymentSlot, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "PvP outbox publisher cannot read active slot file {ActiveSlotFile}; failing closed.", _activeSlotFile);
+            return false;
         }
     }
     private async Task DispatchAsync(CancellationToken cancellationToken)

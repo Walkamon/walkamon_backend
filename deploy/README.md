@@ -204,18 +204,27 @@ sudo systemctl start walkamon-update.timer
 
 The update timer checks every five minutes. It pulls `main`, starts the inactive
 API slot, waits for `/health/ready`, gracefully reloads Caddy, verifies local and
-public health, updates the single background worker, then drains the previous
-slot for five minutes before stopping it. A failed slot or gateway check leaves
-the previous slot active. Re-running with the same digest for acceptance testing
-is supported without a fake commit:
+public health, updates the active-slot marker, updates the single background
+worker, and then stops the previous API slot. The default WebSocket drain is zero
+seconds so clients reconnect immediately to the new in-process SignalR publisher.
+A failed slot or gateway check leaves the previous slot active. Re-running with
+the same digest for acceptance testing is supported without a fake commit:
 
 ```bash
 sudo /opt/walkamon/scripts/deploy.sh --force-slot-swap
 ```
 
-`api-blue` and `api-green` always set `BackgroundServices__Enabled=false`.
-Only the separate `worker` container runs notification, PVP lifecycle, and
-outbox hosted services, so a deployment never runs those schedulers twice.
+`api-blue` and `api-green` keep the general background-service switch disabled
+but explicitly enable the PVP outbox dispatcher. Both API containers mount
+`/srv/walkamon/deploy/active-slot`; only the slot named by that file publishes
+SignalR events. The dispatcher fails closed if the marker is missing or invalid.
+
+The separate `worker` runs the notification scheduler and PVP lifecycle, with
+`BackgroundServices__PvpOutboxDispatcherEnabled=false`. This keeps lifecycle
+work single-instance while ensuring SignalR is published by the same active API
+process that owns client connections. This deployment intentionally uses no
+Redis backplane or Azure SignalR, so do not route traffic to more than one active
+API slot at a time.
 
 ## 5. Cloudflare
 

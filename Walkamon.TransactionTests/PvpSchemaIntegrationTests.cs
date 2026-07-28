@@ -44,10 +44,18 @@ public sealed class PvpSchemaIntegrationTests
                     "SELECT COUNT(*) FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.pvp_step_sessions') AND name='UX_pvp_step_sessions_active_user' AND is_unique=1 AND has_filter=1"));
                 Assert.Equal(1, await ScalarAsync(connection,
                     "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_step_sessions') AND name='match_id' AND is_nullable=1"));
+                Assert.Equal(4, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.user_pets') AND name IN ('energy_updated_at','bond_updated_at','life_force_updated_at','exp_updated_at')"));
                 Assert.Equal(1, await ScalarAsync(connection,
                     "SELECT COUNT(*) FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.pets') AND name='IX_pets_pvp_affinity_code' AND is_unique=0"));
                 Assert.Equal(0, await ScalarAsync(connection,
                     "SELECT COUNT(*) FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.pets') AND name='UX_pets_pvp_affinity_code'"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.tables WHERE object_id=OBJECT_ID('dbo.pvp_match_reward_snapshots')"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.tables WHERE object_id=OBJECT_ID('dbo.pvp_match_reward_snapshot_items')"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.pvp_match_reward_snapshots') AND name='UX_pvp_match_reward_snapshots_match_result' AND is_unique=1"));
 
                 await using var duplicateAffinityCommand = connection.CreateCommand();
                 duplicateAffinityCommand.CommandText = """

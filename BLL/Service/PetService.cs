@@ -841,6 +841,11 @@ GetEvolutionPreviewAsync()
             await UpdateBond(userPet);
             await UpdateLifeForce(userPet);
 
+
+            _repository.Update(userPet);
+            await _repository.SaveAsync();
+
+
             var latest = await _PetEvolutionHistory.GetLatestAsync(userId);
 
             PetStage stage;

@@ -203,6 +203,26 @@ public partial class PvpMatchRewardItem
     public Item Item { get; set; } = null!;
 }
 
+public partial class PvpMatchRewardSnapshot
+{
+    public Guid MatchRewardSnapshotId { get; set; }
+    public Guid MatchId { get; set; }
+    public string ResultCode { get; set; } = null!;
+    public int WalletAmount { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public PvpMatch Match { get; set; } = null!;
+    public ICollection<PvpMatchRewardSnapshotItem> Items { get; set; } = new List<PvpMatchRewardSnapshotItem>();
+}
+
+public partial class PvpMatchRewardSnapshotItem
+{
+    public Guid MatchRewardSnapshotId { get; set; }
+    public Guid ItemId { get; set; }
+    public int Quantity { get; set; }
+    public PvpMatchRewardSnapshot Snapshot { get; set; } = null!;
+    public Item Item { get; set; } = null!;
+}
+
 public partial class PvpMatchEvent
 {
     public Guid PvpMatchEventId { get; set; }

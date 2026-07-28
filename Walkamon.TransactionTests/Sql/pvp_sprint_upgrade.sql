@@ -354,7 +354,11 @@ CREATE TABLE dbo.pvp_sprint_invites (
     created_at DATETIME2 (0) NOT NULL CONSTRAINT DF_pvp_sprint_invites_created_at DEFAULT SYSUTCDATETIME (),
     CONSTRAINT CK_pvp_sprint_invites_users CHECK (
         inviter_user_id <> invitee_user_id
-        AND user_low_id < user_high_id
+        AND user_low_id <> user_high_id
+        AND (
+            (user_low_id = inviter_user_id AND user_high_id = invitee_user_id)
+            OR (user_low_id = invitee_user_id AND user_high_id = inviter_user_id)
+        )
     ),
     CONSTRAINT CK_pvp_sprint_invites_status CHECK (
         status_code IN (
@@ -369,6 +373,24 @@ CREATE TABLE dbo.pvp_sprint_invites (
     FOREIGN KEY (invitee_user_id) REFERENCES dbo.users (user_id),
     FOREIGN KEY (match_id) REFERENCES dbo.pvp_matches (match_id)
 );
+
+IF EXISTS (
+    SELECT 1
+    FROM sys.check_constraints
+    WHERE parent_object_id = OBJECT_ID('dbo.pvp_sprint_invites')
+      AND name = 'CK_pvp_sprint_invites_users'
+)
+    EXEC(N'ALTER TABLE dbo.pvp_sprint_invites DROP CONSTRAINT CK_pvp_sprint_invites_users;');
+EXEC(N'
+ALTER TABLE dbo.pvp_sprint_invites WITH CHECK
+ADD CONSTRAINT CK_pvp_sprint_invites_users CHECK (
+    inviter_user_id <> invitee_user_id
+    AND user_low_id <> user_high_id
+    AND (
+        (user_low_id = inviter_user_id AND user_high_id = invitee_user_id)
+        OR (user_low_id = invitee_user_id AND user_high_id = inviter_user_id)
+    )
+);');
 
 IF NOT EXISTS (
     SELECT 1
@@ -483,6 +505,58 @@ CREATE TABLE dbo.pvp_reward_rules (
     FOREIGN KEY (reward_package_id) REFERENCES dbo.reward_packages (reward_package_id),
     CONSTRAINT UX_pvp_reward_rules_type_result UNIQUE (match_type_code, result_code)
 );
+
+IF COL_LENGTH('dbo.user_pets', 'energy_updated_at') IS NULL
+    EXEC(N'ALTER TABLE dbo.user_pets ADD energy_updated_at DATETIME2(0) NOT NULL CONSTRAINT DF_user_pets_energy_updated_at DEFAULT SYSUTCDATETIME();');
+IF COL_LENGTH('dbo.user_pets', 'bond_updated_at') IS NULL
+    EXEC(N'ALTER TABLE dbo.user_pets ADD bond_updated_at DATETIME2(0) NOT NULL CONSTRAINT DF_user_pets_bond_updated_at DEFAULT SYSUTCDATETIME();');
+IF COL_LENGTH('dbo.user_pets', 'life_force_updated_at') IS NULL
+    EXEC(N'ALTER TABLE dbo.user_pets ADD life_force_updated_at DATETIME2(0) NOT NULL CONSTRAINT DF_user_pets_life_force_updated_at DEFAULT SYSUTCDATETIME();');
+IF COL_LENGTH('dbo.user_pets', 'exp_updated_at') IS NULL
+    EXEC(N'ALTER TABLE dbo.user_pets ADD exp_updated_at DATETIME2(0) NOT NULL CONSTRAINT DF_user_pets_exp_updated_at DEFAULT SYSUTCDATETIME();');
+
+IF OBJECT_ID ('dbo.pvp_match_reward_snapshots', 'U') IS NULL
+EXEC (N'
+CREATE TABLE dbo.pvp_match_reward_snapshots (
+    match_reward_snapshot_id UNIQUEIDENTIFIER NOT NULL
+        CONSTRAINT DF_pvp_match_reward_snapshots_id DEFAULT NEWSEQUENTIALID() PRIMARY KEY,
+    match_id UNIQUEIDENTIFIER NOT NULL,
+    result_code VARCHAR(20) NOT NULL,
+    wallet_amount INT NOT NULL,
+    created_at DATETIME2(0) NOT NULL
+        CONSTRAINT DF_pvp_match_reward_snapshots_created_at DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT CK_pvp_match_reward_snapshots_result
+        CHECK (result_code IN (''win'', ''lose'', ''draw'')),
+    CONSTRAINT CK_pvp_match_reward_snapshots_amount CHECK (wallet_amount >= 0),
+    CONSTRAINT FK_pvp_match_reward_snapshots_match
+        FOREIGN KEY (match_id) REFERENCES dbo.pvp_matches(match_id) ON DELETE CASCADE
+);');
+
+IF OBJECT_ID ('dbo.pvp_match_reward_snapshot_items', 'U') IS NULL
+EXEC (N'
+CREATE TABLE dbo.pvp_match_reward_snapshot_items (
+    match_reward_snapshot_id UNIQUEIDENTIFIER NOT NULL,
+    item_id UNIQUEIDENTIFIER NOT NULL,
+    quantity INT NOT NULL,
+    CONSTRAINT PK_pvp_match_reward_snapshot_items
+        PRIMARY KEY (match_reward_snapshot_id, item_id),
+    CONSTRAINT CK_pvp_match_reward_snapshot_items_quantity CHECK (quantity > 0),
+    CONSTRAINT FK_pvp_match_reward_snapshot_items_snapshot
+        FOREIGN KEY (match_reward_snapshot_id)
+        REFERENCES dbo.pvp_match_reward_snapshots(match_reward_snapshot_id) ON DELETE CASCADE,
+    CONSTRAINT FK_pvp_match_reward_snapshot_items_item
+        FOREIGN KEY (item_id) REFERENCES dbo.items(item_id)
+);');
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID ('dbo.pvp_match_reward_snapshots')
+      AND name = 'UX_pvp_match_reward_snapshots_match_result'
+)
+EXEC (N'
+CREATE UNIQUE INDEX UX_pvp_match_reward_snapshots_match_result
+ON dbo.pvp_match_reward_snapshots(match_id, result_code);');
 
 IF OBJECT_ID (
     'dbo.pvp_match_reward_entitlements',
