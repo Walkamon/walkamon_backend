@@ -27,6 +27,10 @@ public partial class PvpMatchPlayer
 
     public Guid? PetIdSnapshot { get; set; }
 
+    public string? PetNameSnapshot { get; set; }
+
+    public byte? PetStageNoSnapshot { get; set; }
+
     public string? SpiritAffinityCode { get; set; }
 
     public int PassiveSpeedBps { get; set; }

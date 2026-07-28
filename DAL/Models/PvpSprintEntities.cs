@@ -28,6 +28,7 @@ public partial class PvpBotProfile
     public int Mmr { get; set; }
     public decimal StepsPerSecond { get; set; }
     public string? SpiritAffinityCode { get; set; }
+    public byte PetStageNo { get; set; } = 1;
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

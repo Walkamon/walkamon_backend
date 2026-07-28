@@ -38,6 +38,8 @@ public partial class WalkamonContext
         modelBuilder.Entity<PvpMatch>(entity =>
         {
             entity.Property(x => x.SourceCode).HasColumnName("source_code").HasMaxLength(20).IsUnicode(false);
+            entity.Property(x => x.FinishReasonCode).HasColumnName("finish_reason_code").HasMaxLength(30).IsUnicode(false);
+            entity.Property(x => x.ForfeitedByUserId).HasColumnName("forfeited_by_user_id");
             entity.Property(x => x.CountdownEndsAt).HasColumnName("countdown_ends_at").HasPrecision(0);
             entity.Property(x => x.SettlementEndsAt).HasColumnName("settlement_ends_at").HasPrecision(0);
             entity.Property(x => x.ResolvedAt).HasColumnName("resolved_at").HasPrecision(0);
@@ -49,6 +51,7 @@ public partial class WalkamonContext
             entity.Property(x => x.RuleVersion).HasColumnName("rule_version").HasDefaultValue(1);
             entity.Property(x => x.LastEventSequence).HasColumnName("last_event_sequence").HasDefaultValue(0L);
             entity.Property(x => x.RowVersion).HasColumnName("row_version").IsRowVersion();
+            entity.HasOne(x => x.ForfeitedByUser).WithMany().HasForeignKey(x => x.ForfeitedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<PvpMatchPlayer>(entity =>
@@ -66,6 +69,8 @@ public partial class WalkamonContext
             entity.Property(x => x.MmrBefore).HasColumnName("mmr_before");
             entity.Property(x => x.MmrDelta).HasColumnName("mmr_delta");
             entity.Property(x => x.PetIdSnapshot).HasColumnName("pet_id_snapshot");
+            entity.Property(x => x.PetNameSnapshot).HasColumnName("pet_name_snapshot").HasMaxLength(100);
+            entity.Property(x => x.PetStageNoSnapshot).HasColumnName("pet_stage_no_snapshot");
             entity.Property(x => x.SpiritAffinityCode).HasColumnName("spirit_affinity_code").HasMaxLength(30).IsUnicode(false);
             entity.Property(x => x.PassiveSpeedBps).HasColumnName("passive_speed_bps");
             entity.Property(x => x.ValidatedSteps).HasColumnName("validated_steps");
@@ -113,6 +118,7 @@ public partial class WalkamonContext
             entity.Property(x => x.Mmr).HasColumnName("mmr");
             entity.Property(x => x.StepsPerSecond).HasColumnName("steps_per_second").HasPrecision(5, 2);
             entity.Property(x => x.SpiritAffinityCode).HasColumnName("spirit_affinity_code").HasMaxLength(30).IsUnicode(false);
+            entity.Property(x => x.PetStageNo).HasColumnName("pet_stage_no").HasDefaultValue((byte)1);
             entity.Property(x => x.IsActive).HasColumnName("is_active");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasPrecision(0);
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasPrecision(0);

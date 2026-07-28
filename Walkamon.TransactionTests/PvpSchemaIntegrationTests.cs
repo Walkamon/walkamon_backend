@@ -4,6 +4,8 @@ using Xunit;
 
 namespace Walkamon.TransactionTests;
 
+[Trait("UC", "UC-67")]
+[Trait("UC", "UC-74")]
 public sealed class PvpSchemaIntegrationTests
 {
     [Fact]
@@ -56,6 +58,16 @@ public sealed class PvpSchemaIntegrationTests
                     "SELECT COUNT(*) FROM sys.tables WHERE object_id=OBJECT_ID('dbo.pvp_match_reward_snapshot_items')"));
                 Assert.Equal(1, await ScalarAsync(connection,
                     "SELECT COUNT(*) FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.pvp_match_reward_snapshots') AND name='UX_pvp_match_reward_snapshots_match_result' AND is_unique=1"));
+                Assert.Equal(2, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_matches') AND name IN ('finish_reason_code','forfeited_by_user_id')"));
+                Assert.Equal(2, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_match_players') AND name IN ('pet_name_snapshot','pet_stage_no_snapshot')"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_bot_profiles') AND name='pet_stage_no'"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID('dbo.pvp_matches') AND name='FK_pvp_matches_forfeited_user'"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM dbo.system_settings WHERE setting_key='utc_pet_timestamp_backfill_v1'"));
 
                 await using var duplicateAffinityCommand = connection.CreateCommand();
                 duplicateAffinityCommand.CommandText = """

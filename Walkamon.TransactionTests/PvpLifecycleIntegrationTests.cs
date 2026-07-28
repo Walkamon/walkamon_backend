@@ -17,6 +17,10 @@ using Xunit;
 
 namespace Walkamon.TransactionTests;
 
+[Trait("UC", "UC-67")]
+[Trait("UC", "UC-68")]
+[Trait("UC", "UC-69")]
+[Trait("UC", "UC-71")]
 public sealed class PvpLifecycleIntegrationTests
 {
     [Fact]
@@ -90,8 +94,8 @@ public sealed class PvpLifecycleIntegrationTests
             using (var countdownEvent = JsonDocument.Parse(countdownEventJson))
             {
                 var details = countdownEvent.RootElement.GetProperty("details");
-                Assert.EndsWith("Z", details.GetProperty("countdownStartsAt").GetString());
-                Assert.EndsWith("Z", details.GetProperty("countdownEndsAt").GetString());
+                Assert.EndsWith("+07:00", details.GetProperty("countdownStartsAt").GetString());
+                Assert.EndsWith("+07:00", details.GetProperty("countdownEndsAt").GetString());
             }
 
             // Admin changes apply only to future matches. This match must settle

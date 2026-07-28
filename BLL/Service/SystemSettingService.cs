@@ -98,24 +98,19 @@ namespace BLL.Service
                 throw new NotFoundException("Pet status settings not found.");
 
             energy.SettingValue = request.EnergyRecoverPerMinute.ToString();
-            energy.UpdatedAt = GetVietnamNow();
+            energy.UpdatedAt = DateTime.UtcNow;
 
             bond.SettingValue = request.BondDecreasePerMinute.ToString();
-            bond.UpdatedAt = GetVietnamNow();
+            bond.UpdatedAt = DateTime.UtcNow;
 
             lifeForce.SettingValue = request.LifeForceDecreasePerMinute.ToString();
-            lifeForce.UpdatedAt = GetVietnamNow();
+            lifeForce.UpdatedAt = DateTime.UtcNow;
 
             _repository.Update(energy);
             _repository.Update(bond);
             _repository.Update(lifeForce);
 
             await _repository.SaveAsync();
-        }
-        private DateTime GetVietnamNow()
-        {
-            var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
         }
     }
 }

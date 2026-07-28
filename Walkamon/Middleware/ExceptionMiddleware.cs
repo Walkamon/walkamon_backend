@@ -3,20 +3,22 @@ using DAL.DTO;
 using BLL.Exceptions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Mvc;
 public class ExceptionMiddleware
 {
-    private static readonly JsonSerializerOptions SerializerOptions =
-        new(JsonSerializerDefaults.Web);
-
     private readonly RequestDelegate _next;
     private readonly ILogger<ExceptionMiddleware> _logger;
+    private readonly JsonSerializerOptions _serializerOptions;
 
     public ExceptionMiddleware(
         RequestDelegate next,
-        ILogger<ExceptionMiddleware> logger)
+        ILogger<ExceptionMiddleware> logger,
+        IOptions<JsonOptions> jsonOptions)
     {
         _next = next;
         _logger = logger;
+        _serializerOptions = jsonOptions.Value.JsonSerializerOptions;
     }
 
    
@@ -33,7 +35,7 @@ public class ExceptionMiddleware
         }
     }
 
-    private static Task HandleExceptionAsync(HttpContext context, Exception ex)
+    private Task HandleExceptionAsync(HttpContext context, Exception ex)
     {
         int statusCode;
         string message;
@@ -83,7 +85,7 @@ public class ExceptionMiddleware
         };
 
         return context.Response.WriteAsync(
-            JsonSerializer.Serialize(response, SerializerOptions)
+            JsonSerializer.Serialize(response, _serializerOptions)
         );
     }
 }

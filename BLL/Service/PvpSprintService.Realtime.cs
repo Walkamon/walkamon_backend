@@ -250,12 +250,33 @@ public sealed partial class PvpSprintService
     private static PvpMatchEffectResponse ToEffectResponse(PvpMatchEffect effect) => new() { EffectId = effect.PvpMatchEffectId, TargetMatchPlayerId = effect.TargetMatchPlayerId, EffectCode = effect.EffectCode, EffectKindCode = effect.EffectKindCode, MagnitudeBps = effect.MagnitudeBps, StartsAt = AsUtc(effect.StartsAt), EndsAt = AsUtc(effect.EndsAt) };
     private static PvpRankTierResponse ToTierResponse(PvpRankTier tier) => new() { TierCode = tier.TierCode, DisplayName = tier.DisplayName, MinMmr = tier.MinMmr, AssetKey = tier.AssetKey, ColorHex = tier.ColorHex };
 
-    private async Task<(Guid? PetId, byte Level, string AffinityCode)> GetPetSnapshotAsync(Guid userId)
+    private async Task<(Guid? PetId, string? Name, byte Level, byte StageNo, string AffinityCode)> GetPetSnapshotAsync(Guid userId)
     {
         var userPet = await _context.UserPets.AsNoTracking().Include(x => x.Pet).FirstOrDefaultAsync(x => x.UserId == userId);
-        if (userPet == null) return (null, 1, "sprout");
-        return (userPet.PetId, (byte)Math.Clamp(userPet.Level, 1, byte.MaxValue), userPet.Pet.PvpAffinityCode ?? "sprout");
+        if (userPet == null) return (null, null, 1, 0, "sprout");
+
+        var affinityCode = NormalizeAffinityCode(userPet.Pet.PvpAffinityCode);
+        var stageNo = affinityCode == "sprout"
+            ? 0
+            : await _context.PetEvolutionHistories.AsNoTracking()
+                .Where(x => x.UserId == userId && x.Stage.PetId == userPet.PetId)
+                .OrderByDescending(x => x.EvolvedAt)
+                .Select(x => (int?)x.Stage.StageNo)
+                .FirstOrDefaultAsync() ?? 1;
+
+        return (
+            userPet.PetId,
+            userPet.PetName,
+            (byte)Math.Clamp(userPet.Level, 1, byte.MaxValue),
+            NormalizePetStageNo(affinityCode, stageNo),
+            affinityCode);
     }
+
+    private static string NormalizeAffinityCode(string? affinityCode) =>
+        affinityCode is "dawn" or "warm_sun" or "moonlight" ? affinityCode : "sprout";
+
+    private static byte NormalizePetStageNo(string affinityCode, int? stageNo) =>
+        affinityCode == "sprout" ? (byte)0 : (byte)Math.Clamp(stageNo ?? 1, 1, byte.MaxValue);
 
     private async Task SnapshotPlayerLoadoutAsync(PvpMatch match, PvpMatchPlayer player, Guid userId, DateTime now)
     {
@@ -405,7 +426,7 @@ public sealed partial class PvpSprintService
     {
         var now = DateTime.UtcNow;
         var sequence = ++match.LastEventSequence;
-        var payload = JsonSerializer.Serialize(new { matchId = match.MatchId, statusCode = match.StatusCode, sequence, serverTime = now, details });
+        var payload = _timePresentationSerializer.Serialize(new { matchId = match.MatchId, statusCode = match.StatusCode, sequence, serverTime = now, details });
         _context.PvpMatchEvents.Add(new PvpMatchEvent { PvpMatchEventId = Guid.NewGuid(), MatchId = match.MatchId, Sequence = sequence, EventType = eventType, PayloadJson = payload, CreatedAt = now });
         _context.OutboxEvents.Add(new OutboxEvent { EventId = Guid.NewGuid(), AggregateType = "match", AggregateId = match.MatchId, Destination = "signalr", EventType = eventType, PayloadJson = payload, CreatedAt = now });
     }

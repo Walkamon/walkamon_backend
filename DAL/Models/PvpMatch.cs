@@ -17,6 +17,10 @@ public partial class PvpMatch
 
     public string? CancelReason { get; set; }
 
+    public string? FinishReasonCode { get; set; }
+
+    public Guid? ForfeitedByUserId { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? StartedAt { get; set; }
@@ -58,4 +62,6 @@ public partial class PvpMatch
     public virtual ICollection<PvpMatchLoadoutSlot> LoadoutSlots { get; set; } = new List<PvpMatchLoadoutSlot>();
 
     public virtual User? WinnerUser { get; set; }
+
+    public virtual User? ForfeitedByUser { get; set; }
 }

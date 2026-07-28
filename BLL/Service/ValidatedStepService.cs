@@ -24,6 +24,7 @@ public sealed class ValidatedStepService : IValidatedStepService
     private readonly IMissionProgressService _missionProgressService;
     private readonly StepValidationOptions _options;
     private readonly MotionValidationOptions _motionOptions;
+    private readonly TimePresentationSerializer _timePresentationSerializer;
 
     public ValidatedStepService(
         WalkamonContext context,
@@ -31,7 +32,8 @@ public sealed class ValidatedStepService : IValidatedStepService
         IAchievementProgressService achievementProgressService,
         IMissionProgressService missionProgressService,
         IOptions<StepValidationOptions> options,
-        IOptions<MotionValidationOptions> motionOptions)
+        IOptions<MotionValidationOptions> motionOptions,
+        TimePresentationSerializer? timePresentationSerializer = null)
     {
         _context = context;
         _attestationVerifier = attestationVerifier;
@@ -39,6 +41,9 @@ public sealed class ValidatedStepService : IValidatedStepService
         _missionProgressService = missionProgressService;
         _options = options.Value;
         _motionOptions = motionOptions.Value;
+        _timePresentationSerializer = timePresentationSerializer
+            ?? new TimePresentationSerializer(
+                Microsoft.Extensions.Options.Options.Create(new TimePresentationOptions()));
     }
 
     public Task<PvpStepSessionResponse> CreateDailySessionAsync(
@@ -605,9 +610,8 @@ public sealed class ValidatedStepService : IValidatedStepService
         if (userPet == null)
             return null;
 
-        var vietnamNow = TimeZoneInfo.ConvertTimeFromUtc(now, VietnamTimeZone);
         var previousLevel = userPet.Level;
-        StepExperienceReward.ApplyExperience(userPet, userPet.Pet, expToAdd, vietnamNow);
+        StepExperienceReward.ApplyExperience(userPet, userPet.Pet, expToAdd, AsUtc(now));
         return userPet.Level > previousLevel ? userPet.Level : null;
     }
 
@@ -655,7 +659,7 @@ public sealed class ValidatedStepService : IValidatedStepService
         DateTime now)
     {
         var sequence = ++match.LastEventSequence;
-        var payload = JsonSerializer.Serialize(new
+        var payload = _timePresentationSerializer.Serialize(new
         {
             matchId = match.MatchId,
             statusCode = match.StatusCode,

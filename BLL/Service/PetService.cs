@@ -66,10 +66,10 @@ namespace BLL.Service
                 CurrentPetBond = 50,
                 CurrentPetLifeForce = 50,
 
-                EnergyUpdatedAt = GetVietnamNow(),
-                BondUpdatedAt = GetVietnamNow(),
-                LifeForceUpdatedAt = GetVietnamNow(),
-                ExpUpdatedAt = GetVietnamNow()
+                EnergyUpdatedAt = DateTime.UtcNow,
+                BondUpdatedAt = DateTime.UtcNow,
+                LifeForceUpdatedAt = DateTime.UtcNow,
+                ExpUpdatedAt = DateTime.UtcNow
 
             };
             var existed = await _repository.AnyAsync(x => x.UserId == userId);
@@ -426,10 +426,10 @@ namespace BLL.Service
             userPet.CurrentPetLifeForce = pet.LifeForce;
             userPet.CurrentPetExp = 0;
 
-            userPet.EnergyUpdatedAt = GetVietnamNow();
-            userPet.BondUpdatedAt = GetVietnamNow();
-            userPet.LifeForceUpdatedAt = GetVietnamNow();
-            userPet.ExpUpdatedAt = GetVietnamNow();
+            userPet.EnergyUpdatedAt = DateTime.UtcNow;
+            userPet.BondUpdatedAt = DateTime.UtcNow;
+            userPet.LifeForceUpdatedAt = DateTime.UtcNow;
+            userPet.ExpUpdatedAt = DateTime.UtcNow;
 
             _repository.Update(userPet);
 
@@ -439,7 +439,7 @@ namespace BLL.Service
                 UserId = userId,
                 StageId = firstStage.StageId,
                 Level = userPet.Level,
-                EvolvedAt = GetVietnamNow()
+                EvolvedAt = DateTime.UtcNow
             });
 
             await _repository.SaveAsync();
@@ -451,7 +451,7 @@ namespace BLL.Service
 
             int amount = int.Parse(setting!.SettingValue);
 
-            var now = GetVietnamNow();
+            var now = DateTime.UtcNow;
 
             int elapsedMinutes =
                 (int)(now - pet.EnergyUpdatedAt).TotalMinutes;
@@ -559,7 +559,7 @@ namespace BLL.Service
                 UserId = userId,
                 StageId = nextStage.StageId,
                 Level = userPet.Level,
-                EvolvedAt = GetVietnamNow()
+                EvolvedAt = DateTime.UtcNow
             };
 
             await _PetHistory.AddAsync(history);
@@ -645,7 +645,7 @@ namespace BLL.Service
 
             int amount = int.Parse(setting!.SettingValue);
 
-            var now = GetVietnamNow();
+            var now = DateTime.UtcNow;
 
             int elapsedMinutes =
                 (int)(now - pet.BondUpdatedAt).TotalMinutes;
@@ -668,7 +668,7 @@ namespace BLL.Service
 
             int amount = int.Parse(setting!.SettingValue);
 
-            var now = GetVietnamNow();
+            var now = DateTime.UtcNow;
 
             int elapsedMinutes =
                 (int)(now - pet.LifeForceUpdatedAt).TotalMinutes;
@@ -972,7 +972,7 @@ GetEvolutionPreviewAsync()
             pet.BondRate = request.BondRate;
             pet.ExpRate = request.ExpRate;
 
-            pet.UpdatedAt = GetVietnamNow();
+            pet.UpdatedAt = DateTime.UtcNow;
 
             _Pet.Update(pet);
 

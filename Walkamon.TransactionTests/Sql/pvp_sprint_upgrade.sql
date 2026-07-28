@@ -950,5 +950,46 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_step_motion_windows_ba
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_step_motion_windows_classification_started' AND object_id = OBJECT_ID('dbo.step_motion_evidence_windows'))
     EXEC(N'CREATE INDEX IX_step_motion_windows_classification_started ON dbo.step_motion_evidence_windows(classification, window_started_at);');
 
+/* Forfeit metadata and immutable pet presentation snapshots. */
+IF COL_LENGTH('dbo.pvp_matches', 'finish_reason_code') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD finish_reason_code VARCHAR(30) NULL;');
+IF COL_LENGTH('dbo.pvp_matches', 'forfeited_by_user_id') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD forfeited_by_user_id UNIQUEIDENTIFIER NULL;');
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_pvp_matches_finish_reason')
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD CONSTRAINT CK_pvp_matches_finish_reason CHECK (finish_reason_code IS NULL OR finish_reason_code IN (''normal_completion'', ''user_forfeit''));');
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_pvp_matches_forfeited_user')
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD CONSTRAINT FK_pvp_matches_forfeited_user FOREIGN KEY(forfeited_by_user_id) REFERENCES dbo.users(user_id);');
+
+IF COL_LENGTH('dbo.pvp_match_players', 'pet_name_snapshot') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_match_players ADD pet_name_snapshot NVARCHAR(100) NULL;');
+IF COL_LENGTH('dbo.pvp_match_players', 'pet_stage_no_snapshot') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_match_players ADD pet_stage_no_snapshot TINYINT NULL;');
+EXEC(N'UPDATE mp
+    SET pet_name_snapshot = up.pet_name
+    FROM dbo.pvp_match_players mp
+    INNER JOIN dbo.user_pets up ON up.user_id = mp.user_id
+    WHERE mp.pet_name_snapshot IS NULL;');
+EXEC(N'UPDATE dbo.pvp_match_players
+    SET pet_stage_no_snapshot = CASE WHEN ISNULL(spirit_affinity_code, ''sprout'') = ''sprout'' THEN 0 ELSE 1 END
+    WHERE pet_stage_no_snapshot IS NULL;');
+
+IF COL_LENGTH('dbo.pvp_bot_profiles', 'pet_stage_no') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_bot_profiles ADD pet_stage_no TINYINT NOT NULL CONSTRAINT DF_pvp_bot_profiles_pet_stage DEFAULT 1;');
+EXEC(N'UPDATE dbo.pvp_bot_profiles
+    SET pet_stage_no = CASE WHEN ISNULL(spirit_affinity_code, ''sprout'') = ''sprout'' THEN 0 ELSE IIF(pet_stage_no = 0, 1, pet_stage_no) END;');
+
+/* Older pet writers stored wall-clock UTC+7 without an offset. Shift once to UTC. */
+IF NOT EXISTS (SELECT 1 FROM dbo.system_settings WHERE setting_key = 'utc_pet_timestamp_backfill_v1')
+BEGIN
+    EXEC(N'UPDATE dbo.user_pets SET
+        energy_updated_at = DATEADD(HOUR, -7, energy_updated_at),
+        bond_updated_at = DATEADD(HOUR, -7, bond_updated_at),
+        life_force_updated_at = DATEADD(HOUR, -7, life_force_updated_at),
+        exp_updated_at = DATEADD(HOUR, -7, exp_updated_at);');
+    EXEC(N'UPDATE dbo.pet_evolution_history SET evolved_at = DATEADD(HOUR, -7, evolved_at);');
+    INSERT INTO dbo.system_settings(setting_key, setting_value)
+    VALUES ('utc_pet_timestamp_backfill_v1', 'completed');
+END;
+
 COMMIT TRANSACTION;
 GO

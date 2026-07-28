@@ -9,6 +9,7 @@ using DAL.Repository;
 using Walkamon.BackgroundServices;
 using Walkamon.Health;
 using Walkamon.Hubs;
+using Walkamon.ModelBinding;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -22,11 +23,25 @@ using System.Text;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+var timePresentationOptions = builder.Configuration
+    .GetSection(TimePresentationOptions.SectionName)
+    .Get<TimePresentationOptions>() ?? new TimePresentationOptions();
 
 #region Controllers
 
-builder.Services.AddControllers();
-builder.Services.AddSignalR();
+builder.Services
+    .AddControllers(options =>
+        options.ModelBinderProviders.Insert(
+            0,
+            new VietnamDateTimeModelBinderProvider(timePresentationOptions)))
+    .AddJsonOptions(options =>
+        TimePresentationJson.Configure(options.JsonSerializerOptions, timePresentationOptions));
+builder.Services.ConfigureHttpJsonOptions(options =>
+    TimePresentationJson.Configure(options.SerializerOptions, timePresentationOptions));
+builder.Services
+    .AddSignalR()
+    .AddJsonProtocol(options =>
+        TimePresentationJson.Configure(options.PayloadSerializerOptions, timePresentationOptions));
 
 builder.Services.AddFluentValidationAutoValidation();
 
@@ -149,6 +164,9 @@ builder.Services.Configure<StepValidationOptions>(
     builder.Configuration.GetSection(StepValidationOptions.SectionName));
 builder.Services.Configure<MotionValidationOptions>(
     builder.Configuration.GetSection(MotionValidationOptions.SectionName));
+builder.Services.Configure<TimePresentationOptions>(
+    builder.Configuration.GetSection(TimePresentationOptions.SectionName));
+builder.Services.AddSingleton<TimePresentationSerializer>();
 
 builder.Services.Configure<FirebaseOptions>(
     builder.Configuration.GetSection(FirebaseOptions.SectionName));

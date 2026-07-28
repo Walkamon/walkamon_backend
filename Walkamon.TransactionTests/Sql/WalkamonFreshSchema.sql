@@ -641,6 +641,7 @@ CREATE TABLE pvp_bot_profiles (
     mmr INT NOT NULL,
     steps_per_second DECIMAL(5,2) NOT NULL,
     spirit_affinity_code VARCHAR(30) NULL,
+    pet_stage_no TINYINT NOT NULL CONSTRAINT DF_pvp_bot_profiles_pet_stage DEFAULT 1,
     is_active BIT NOT NULL CONSTRAINT DF_pvp_bot_profiles_active DEFAULT 1,
     created_at DATETIME2(0) NOT NULL CONSTRAINT DF_pvp_bot_profiles_created_at DEFAULT SYSUTCDATETIME(),
     updated_at DATETIME2(0) NOT NULL CONSTRAINT DF_pvp_bot_profiles_updated_at DEFAULT SYSUTCDATETIME(),
@@ -659,6 +660,8 @@ CREATE TABLE pvp_matches (
         CONSTRAINT DF_pvp_matches_status_code DEFAULT 'countdown',
     winner_user_id UNIQUEIDENTIFIER NULL,
     cancel_reason NVARCHAR(200) NULL,
+    finish_reason_code VARCHAR(30) NULL,
+    forfeited_by_user_id UNIQUEIDENTIFIER NULL,
     created_at DATETIME2(0) NOT NULL
         CONSTRAINT DF_pvp_matches_created_at DEFAULT SYSUTCDATETIME(),
     started_at DATETIME2(0) NULL,
@@ -679,13 +682,15 @@ CREATE TABLE pvp_matches (
     CONSTRAINT CK_pvp_matches_status_code
         CHECK (status_code IN ('countdown', 'running', 'settling', 'finished', 'cancelled')),
     CONSTRAINT CK_pvp_matches_source_code CHECK (source_code IN ('invite', 'matchmaking', 'bot')),
+    CONSTRAINT CK_pvp_matches_finish_reason CHECK (finish_reason_code IS NULL OR finish_reason_code IN ('normal_completion', 'user_forfeit')),
     CONSTRAINT CK_pvp_matches_dates
         CHECK (
             (started_at IS NULL OR started_at >= created_at)
             AND
             (ended_at IS NULL OR started_at IS NULL OR ended_at >= started_at)
         ),
-    FOREIGN KEY (winner_user_id) REFERENCES users(user_id)
+    FOREIGN KEY (winner_user_id) REFERENCES users(user_id),
+    CONSTRAINT FK_pvp_matches_forfeited_user FOREIGN KEY (forfeited_by_user_id) REFERENCES users(user_id)
 );
 GO
 
@@ -702,6 +707,8 @@ CREATE TABLE pvp_match_players (
     mmr_before INT NOT NULL,
     mmr_delta INT NOT NULL CONSTRAINT DF_pvp_match_players_mmr_delta DEFAULT 0,
     pet_id_snapshot UNIQUEIDENTIFIER NULL,
+    pet_name_snapshot NVARCHAR(100) NULL,
+    pet_stage_no_snapshot TINYINT NULL,
     spirit_affinity_code VARCHAR(30) NULL,
     passive_speed_bps INT NOT NULL CONSTRAINT DF_pvp_match_players_passive DEFAULT 0,
     validated_steps INT NOT NULL CONSTRAINT DF_pvp_match_players_validated_steps DEFAULT 0,
@@ -1397,6 +1404,8 @@ GO
 
 IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'pvp_daily_step_limit')
     INSERT INTO system_settings (setting_key, setting_value) VALUES ('pvp_daily_step_limit', '100000');
+IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'utc_pet_timestamp_backfill_v1')
+    INSERT INTO system_settings (setting_key, setting_value) VALUES ('utc_pet_timestamp_backfill_v1', 'fresh_schema_utc');
 GO
 
 UPDATE pets SET pvp_affinity_code = 'sprout' WHERE pvp_affinity_code IS NULL AND LOWER(pet_name) IN ('stater', 'starter', N'mầm non');

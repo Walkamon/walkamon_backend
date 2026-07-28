@@ -74,6 +74,11 @@ public sealed class PvpParticipantResponse
     public Guid? BotProfileId { get; set; }
     public string DisplayName { get; set; } = null!;
     public string? AvatarUrl { get; set; }
+    public Guid? PetId { get; set; }
+    public string? PetName { get; set; }
+    public int PetLevel { get; set; }
+    public int PetStageNo { get; set; }
+    public string PetVisualCode { get; set; } = "sprout_stage0";
     public int Score { get; set; }
     public int ValidatedSteps { get; set; }
     public long DistanceUnits { get; set; }
@@ -89,12 +94,16 @@ public class PvpMatchResponse
     public string MatchTypeCode { get; set; } = null!;
     public string SourceCode { get; set; } = null!;
     public string StatusCode { get; set; } = null!;
+    public string? FinishReasonCode { get; set; }
+    public Guid? ForfeitedByUserId { get; set; }
+    public Guid? WinnerUserId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CountdownStartsAt { get; set; }
     public DateTime? CountdownEndsAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
     public DateTime? SettlementEndsAt { get; set; }
+    public DateTime? ResolvedAt { get; set; }
     public DateTime ServerTime { get; set; }
     public int RuleVersion { get; set; }
     public long LastEventSequence { get; set; }
