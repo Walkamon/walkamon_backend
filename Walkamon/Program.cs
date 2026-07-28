@@ -229,6 +229,7 @@ builder.Services.AddScoped<  IPetEvolutionHistoryRepository, PetEvolutionHistory
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddSingleton<IFcmPushService, FcmPushService>();
+builder.Services.AddSingleton<IPvpPresenceTracker, PvpPresenceTracker>();
 builder.Services.AddScoped<IPvpSprintService, PvpSprintService>();
 builder.Services.AddScoped<IValidatedStepService, ValidatedStepService>();
 if (builder.Environment.IsDevelopment())

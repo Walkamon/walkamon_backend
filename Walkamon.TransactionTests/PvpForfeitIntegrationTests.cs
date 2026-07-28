@@ -31,7 +31,10 @@ public sealed class PvpForfeitIntegrationTests
             await scope.SeedPetAsync(users[0]);
 
             await using var context = scope.CreateContext();
-            var service = CreateService(context);
+            var presenceTracker = new PvpPresenceTracker();
+            foreach (var userId in users)
+                presenceTracker.RegisterConnection(userId, $"connection-{userId}");
+            var service = CreateService(context, presenceTracker);
             await service.UpdateRewardRulesAsync(RewardMatrix());
 
             // Ranked human/human: forfeit during countdown settles immediately.
@@ -233,7 +236,7 @@ public sealed class PvpForfeitIntegrationTests
                 try
                 {
                     await using var concurrentContext = scope.CreateContext();
-                    await CreateService(concurrentContext)
+                    await CreateService(concurrentContext, presenceTracker)
                         .ForfeitMatchAsync(userId, concurrentMatchId);
                     return null;
                 }
@@ -276,12 +279,15 @@ public sealed class PvpForfeitIntegrationTests
         }
     }
 
-    private static PvpSprintService CreateService(WalkamonContext context) =>
+    private static PvpSprintService CreateService(
+        WalkamonContext context,
+        IPvpPresenceTracker presenceTracker) =>
         new(
             context,
             Options.Create(new PvpRealtimeOptions { Enabled = false }),
             Mock.Of<IValidatedStepService>(),
-            NullLogger<PvpSprintService>.Instance);
+            NullLogger<PvpSprintService>.Instance,
+            presenceTracker: presenceTracker);
 
     private static UpdatePvpRewardRulesRequest RewardMatrix() =>
         new()

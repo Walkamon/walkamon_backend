@@ -50,7 +50,8 @@ public sealed class PvpLifecycleIntegrationTests
 
             await SeedUsersAsync(database, firstUserId, secondUserId, botUserId, inviterId, inviteeId);
             await using var context = CreateContext(database);
-            var service = CreateService(context);
+            var presenceTracker = new PvpPresenceTracker();
+            var service = CreateService(context, presenceTracker);
             await service.UpdateRewardRulesAsync(RewardMatrix(10, 20, 30));
             var vietnamToday = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
             context.DailySteps.AddRange(
@@ -232,6 +233,50 @@ public sealed class PvpLifecycleIntegrationTests
                 CreatedAt = DateTime.UtcNow
             });
             await context.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<ConflictException>(() =>
+                service.CreateInviteAsync(inviterId, new CreatePvpSprintInviteRequest
+                {
+                    TargetUserId = inviteeId
+                }));
+            presenceTracker.RegisterConnection(inviterId, "inviter-connection");
+            await Assert.ThrowsAsync<ConflictException>(() =>
+                service.CreateInviteAsync(inviterId, new CreatePvpSprintInviteRequest
+                {
+                    TargetUserId = inviteeId
+                }));
+            presenceTracker.RegisterConnection(inviteeId, "invitee-connection");
+
+            var declinedInvite = await service.CreateInviteAsync(inviterId, new CreatePvpSprintInviteRequest
+            {
+                TargetUserId = inviteeId
+            });
+            Assert.True(declinedInvite.OtherUserIsOnline);
+            Assert.Equal("available", declinedInvite.OtherUserPvpAvailabilityCode);
+            var incoming = await service.GetInvitesAsync(inviteeId, "incoming", "pending", 1, 20);
+            var incomingInvite = Assert.Single(incoming.Items);
+            Assert.True(incomingInvite.OtherUserIsOnline);
+            Assert.Equal("available", incomingInvite.OtherUserPvpAvailabilityCode);
+
+            Assert.True(presenceTracker.UnregisterConnection(inviterId, "inviter-connection"));
+            incoming = await service.GetInvitesAsync(inviteeId, "incoming", "pending", 1, 20);
+            incomingInvite = Assert.Single(incoming.Items);
+            Assert.False(incomingInvite.OtherUserIsOnline);
+            Assert.Equal("offline", incomingInvite.OtherUserPvpAvailabilityCode);
+            await Assert.ThrowsAsync<ConflictException>(() =>
+                service.RespondInviteAsync(
+                    inviteeId,
+                    declinedInvite.InviteId,
+                    new RespondPvpSprintInviteRequest { Accept = true }));
+            var declined = await service.RespondInviteAsync(
+                inviteeId,
+                declinedInvite.InviteId,
+                new RespondPvpSprintInviteRequest { Accept = false });
+            Assert.Equal("declined", declined.StatusCode);
+            Assert.False(await context.PvpPlayerActivities.AnyAsync(
+                x => x.UserId == inviterId || x.UserId == inviteeId));
+
+            presenceTracker.RegisterConnection(inviterId, "inviter-reconnected");
             var invite = await service.CreateInviteAsync(inviterId, new CreatePvpSprintInviteRequest
             {
                 TargetUserId = inviteeId
@@ -248,6 +293,10 @@ public sealed class PvpLifecycleIntegrationTests
             Assert.Equal(inviteMatchId, acceptedRetry.MatchId);
             Assert.Equal(1, await context.PvpMatches.CountAsync(
                 x => x.MatchId == inviteMatchId));
+            Assert.True(await context.OutboxEvents.AnyAsync(
+                x => x.AggregateType == "presence" &&
+                     (x.AggregateId == inviterId || x.AggregateId == inviteeId) &&
+                     x.EventType == "presence.changed"));
             await context.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE dbo.pvp_player_activities SET due_at=DATEADD(second,-1,SYSUTCDATETIME()) WHERE activity_id={inviteMatchId}");
             await service.ProcessDueWorkAsync();
@@ -274,12 +323,15 @@ public sealed class PvpLifecycleIntegrationTests
         }
     }
 
-    private static PvpSprintService CreateService(WalkamonContext context) =>
+    private static PvpSprintService CreateService(
+        WalkamonContext context,
+        IPvpPresenceTracker presenceTracker) =>
         new(
             context,
             Options.Create(new PvpRealtimeOptions { Enabled = false }),
             Mock.Of<IValidatedStepService>(),
-            NullLogger<PvpSprintService>.Instance);
+            NullLogger<PvpSprintService>.Instance,
+            presenceTracker: presenceTracker);
 
     private static WalkamonContext CreateContext(string connectionString)
     {

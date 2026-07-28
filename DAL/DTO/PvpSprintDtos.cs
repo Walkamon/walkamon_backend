@@ -61,6 +61,8 @@ public sealed class PvpInviteResponse
 {
     public Guid InviteId { get; set; }
     public PvpUserSummaryResponse User { get; set; } = null!;
+    public bool OtherUserIsOnline { get; set; }
+    public string OtherUserPvpAvailabilityCode { get; set; } = "offline";
     public string StatusCode { get; set; } = null!;
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
