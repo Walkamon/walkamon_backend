@@ -63,7 +63,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
         await EnsureActiveUserAsync(userId);
         await EnsureActiveUserAsync(request.TargetUserId);
         await EnsureFriendshipAsync(userId, request.TargetUserId);
-        EnsureOnline(userId, "Connect to the PvP Sprint hub before sending an invite.");
+        EnsureOnline(userId, "Connect to the realtime presence hub before sending an invite.");
         EnsureOnline(request.TargetUserId, "This friend is offline and cannot receive a Sprint invite.");
         await EnsureNoActivityAsync(userId);
         await EnsureNoActivityAsync(request.TargetUserId);
@@ -1136,7 +1136,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private async Task EnsureInviteCanBeAcceptedAsync(PvpSprintInvite invite)
     {
         EnsureOnline(invite.InviterUserId, "The inviter is offline. This Sprint invite cannot be accepted.");
-        EnsureOnline(invite.InviteeUserId, "Connect to the PvP Sprint hub before accepting this invite.");
+        EnsureOnline(invite.InviteeUserId, "Connect to the realtime presence hub before accepting this invite.");
         var activities = await _context.PvpPlayerActivities
             .Where(x => x.UserId == invite.InviterUserId || x.UserId == invite.InviteeUserId)
             .ToListAsync();

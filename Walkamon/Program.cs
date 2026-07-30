@@ -321,7 +321,8 @@ builder.Services
             {
                 var accessToken = context.Request.Query["access_token"];
                 if (!string.IsNullOrEmpty(accessToken) &&
-                    context.HttpContext.Request.Path.StartsWithSegments("/hubs/pvp-sprint"))
+                    (context.HttpContext.Request.Path.StartsWithSegments("/hubs/pvp-sprint") ||
+                     context.HttpContext.Request.Path.StartsWithSegments("/hubs/presence")))
                     context.Token = accessToken;
                 return Task.CompletedTask;
             },
@@ -462,6 +463,7 @@ app.UseAuthorization();
 #endregion
 
 app.MapControllers();
+app.MapHub<PresenceHub>("/hubs/presence");
 app.MapHub<SprintHub>("/hubs/pvp-sprint");
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
