@@ -313,6 +313,8 @@ public class AuthController : BaseController
 
         return Ok(new
         {
+         Success = true,
+ Status = StatusCodes.Status200OK,
             Message = "Logout successfully"
         });
     }
