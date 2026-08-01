@@ -17,6 +17,10 @@ using Xunit;
 
 namespace Walkamon.TransactionTests;
 
+[Trait("UC", "UC-67")]
+[Trait("UC", "UC-68")]
+[Trait("UC", "UC-69")]
+[Trait("UC", "UC-71")]
 public sealed class PvpLifecycleIntegrationTests
 {
     [Fact]
@@ -46,8 +50,28 @@ public sealed class PvpLifecycleIntegrationTests
 
             await SeedUsersAsync(database, firstUserId, secondUserId, botUserId, inviterId, inviteeId);
             await using var context = CreateContext(database);
-            var service = CreateService(context);
+            var presenceTracker = new PvpPresenceTracker();
+            var service = CreateService(context, presenceTracker);
             await service.UpdateRewardRulesAsync(RewardMatrix(10, 20, 30));
+            var vietnamToday = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+            context.DailySteps.AddRange(
+                new DailyStep
+                {
+                    UserId = firstUserId,
+                    StepDate = vietnamToday,
+                    StepCount = 10000,
+                    EligibleStepCount = 10000,
+                    UpdatedAt = DateTime.UtcNow
+                },
+                new DailyStep
+                {
+                    UserId = secondUserId,
+                    StepDate = vietnamToday,
+                    StepCount = 0,
+                    EligibleStepCount = 0,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            await context.SaveChangesAsync();
 
             var waiting = await service.JoinMatchmakingAsync(firstUserId, new JoinPvpMatchmakingRequest());
             Assert.Equal("waiting", waiting.StatusCode);
@@ -90,8 +114,8 @@ public sealed class PvpLifecycleIntegrationTests
             using (var countdownEvent = JsonDocument.Parse(countdownEventJson))
             {
                 var details = countdownEvent.RootElement.GetProperty("details");
-                Assert.EndsWith("Z", details.GetProperty("countdownStartsAt").GetString());
-                Assert.EndsWith("Z", details.GetProperty("countdownEndsAt").GetString());
+                Assert.EndsWith("+07:00", details.GetProperty("countdownStartsAt").GetString());
+                Assert.EndsWith("+07:00", details.GetProperty("countdownEndsAt").GetString());
             }
 
             // Admin changes apply only to future matches. This match must settle
@@ -102,23 +126,28 @@ public sealed class PvpLifecycleIntegrationTests
                 $"UPDATE dbo.pvp_matches SET countdown_ends_at=DATEADD(second,-1,SYSUTCDATETIME()) WHERE match_id={matchId}");
             await service.ProcessDueWorkAsync();
             Assert.Equal("running", await MatchStatusAsync(context, matchId));
+            var powerSnapshots = await context.PvpMatchPlayers.AsNoTracking()
+                .Where(x => x.MatchId == matchId)
+                .ToDictionaryAsync(x => x.UserId!.Value);
+            Assert.Equal(10000, powerSnapshots[firstUserId].DailyEligibleStepsSnapshot);
+            Assert.Equal(2500, powerSnapshots[firstUserId].BasePaceMilliStepsPerSecond);
+            Assert.Equal(0, powerSnapshots[secondUserId].DailyEligibleStepsSnapshot);
+            Assert.Equal(1000, powerSnapshots[secondUserId].BasePaceMilliStepsPerSecond);
 
             await context.Database.ExecuteSqlInterpolatedAsync($"""
-                UPDATE dbo.pvp_match_players
-                SET distance_units=CASE WHEN user_id={firstUserId} THEN 50000 ELSE 30000 END,
-                    validated_steps=CASE WHEN user_id={firstUserId} THEN 5 ELSE 3 END,
-                    score=CASE WHEN user_id={firstUserId} THEN 5 ELSE 3 END
-                WHERE match_id={matchId};
                 UPDATE dbo.pvp_matches
-                SET started_at=created_at, ended_at=created_at
+                SET created_at=DATEADD(second,-32,SYSUTCDATETIME()),
+                    started_at=DATEADD(second,-31,SYSUTCDATETIME()),
+                    ended_at=DATEADD(second,-1,SYSUTCDATETIME())
                 WHERE match_id={matchId};
                 """);
             await service.ProcessDueWorkAsync();
-            Assert.Equal("settling", await MatchStatusAsync(context, matchId));
-
-            await context.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE dbo.pvp_matches SET settlement_ends_at=DATEADD(second,-1,SYSUTCDATETIME()) WHERE match_id={matchId}");
-            await service.ProcessDueWorkAsync();
+            if (await MatchStatusAsync(context, matchId) == "settling")
+            {
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE dbo.pvp_matches SET settlement_ends_at=DATEADD(second,-1,SYSUTCDATETIME()) WHERE match_id={matchId}");
+                await service.ProcessDueWorkAsync();
+            }
             Assert.Equal("finished", await MatchStatusAsync(context, matchId));
 
             var players = await context.PvpMatchPlayers.AsNoTracking()
@@ -152,7 +181,9 @@ public sealed class PvpLifecycleIntegrationTests
                 .Select(x => x.Sequence)
                 .ToListAsync();
             Assert.Equal(eventSequences.Count, eventSequences.Distinct().Count());
-            Assert.Equal(new long[] { 1, 2, 3, 4, 5 }, eventSequences.Order().ToArray());
+            Assert.Equal(
+                new long[] { 1, 2, 3, 4, 5, 6 },
+                eventSequences.Order().ToArray());
 
             // At 15 seconds the queue falls back only when an active bot exists.
             await service.JoinMatchmakingAsync(botUserId, new JoinPvpMatchmakingRequest());
@@ -202,6 +233,50 @@ public sealed class PvpLifecycleIntegrationTests
                 CreatedAt = DateTime.UtcNow
             });
             await context.SaveChangesAsync();
+
+            await Assert.ThrowsAsync<ConflictException>(() =>
+                service.CreateInviteAsync(inviterId, new CreatePvpSprintInviteRequest
+                {
+                    TargetUserId = inviteeId
+                }));
+            presenceTracker.RegisterConnection(inviterId, "inviter-connection");
+            await Assert.ThrowsAsync<ConflictException>(() =>
+                service.CreateInviteAsync(inviterId, new CreatePvpSprintInviteRequest
+                {
+                    TargetUserId = inviteeId
+                }));
+            presenceTracker.RegisterConnection(inviteeId, "invitee-connection");
+
+            var declinedInvite = await service.CreateInviteAsync(inviterId, new CreatePvpSprintInviteRequest
+            {
+                TargetUserId = inviteeId
+            });
+            Assert.True(declinedInvite.OtherUserIsOnline);
+            Assert.Equal("available", declinedInvite.OtherUserPvpAvailabilityCode);
+            var incoming = await service.GetInvitesAsync(inviteeId, "incoming", "pending", 1, 20);
+            var incomingInvite = Assert.Single(incoming.Items);
+            Assert.True(incomingInvite.OtherUserIsOnline);
+            Assert.Equal("available", incomingInvite.OtherUserPvpAvailabilityCode);
+
+            Assert.True(presenceTracker.UnregisterConnection(inviterId, "inviter-connection"));
+            incoming = await service.GetInvitesAsync(inviteeId, "incoming", "pending", 1, 20);
+            incomingInvite = Assert.Single(incoming.Items);
+            Assert.False(incomingInvite.OtherUserIsOnline);
+            Assert.Equal("offline", incomingInvite.OtherUserPvpAvailabilityCode);
+            await Assert.ThrowsAsync<ConflictException>(() =>
+                service.RespondInviteAsync(
+                    inviteeId,
+                    declinedInvite.InviteId,
+                    new RespondPvpSprintInviteRequest { Accept = true }));
+            var declined = await service.RespondInviteAsync(
+                inviteeId,
+                declinedInvite.InviteId,
+                new RespondPvpSprintInviteRequest { Accept = false });
+            Assert.Equal("declined", declined.StatusCode);
+            Assert.False(await context.PvpPlayerActivities.AnyAsync(
+                x => x.UserId == inviterId || x.UserId == inviteeId));
+
+            presenceTracker.RegisterConnection(inviterId, "inviter-reconnected");
             var invite = await service.CreateInviteAsync(inviterId, new CreatePvpSprintInviteRequest
             {
                 TargetUserId = inviteeId
@@ -211,6 +286,17 @@ public sealed class PvpLifecycleIntegrationTests
                 invite.InviteId,
                 new RespondPvpSprintInviteRequest { Accept = true });
             var inviteMatchId = Assert.IsType<Guid>(acceptedInvite.MatchId);
+            var acceptedRetry = await service.RespondInviteAsync(
+                inviteeId,
+                invite.InviteId,
+                new RespondPvpSprintInviteRequest { Accept = true });
+            Assert.Equal(inviteMatchId, acceptedRetry.MatchId);
+            Assert.Equal(1, await context.PvpMatches.CountAsync(
+                x => x.MatchId == inviteMatchId));
+            Assert.True(await context.OutboxEvents.AnyAsync(
+                x => x.AggregateType == "presence" &&
+                     (x.AggregateId == inviterId || x.AggregateId == inviteeId) &&
+                     x.EventType == "presence.changed"));
             await context.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE dbo.pvp_player_activities SET due_at=DATEADD(second,-1,SYSUTCDATETIME()) WHERE activity_id={inviteMatchId}");
             await service.ProcessDueWorkAsync();
@@ -237,12 +323,15 @@ public sealed class PvpLifecycleIntegrationTests
         }
     }
 
-    private static PvpSprintService CreateService(WalkamonContext context) =>
+    private static PvpSprintService CreateService(
+        WalkamonContext context,
+        IPvpPresenceTracker presenceTracker) =>
         new(
             context,
             Options.Create(new PvpRealtimeOptions { Enabled = false }),
             Mock.Of<IValidatedStepService>(),
-            NullLogger<PvpSprintService>.Instance);
+            NullLogger<PvpSprintService>.Instance,
+            presenceTracker: presenceTracker);
 
     private static WalkamonContext CreateContext(string connectionString)
     {

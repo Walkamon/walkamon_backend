@@ -43,6 +43,9 @@ public sealed class PvpSprintController : BaseController
     [HttpGet("matches/{matchId:guid}/result")]
     public async Task<IActionResult> GetResult(Guid matchId) => Ok(Success(await _service.GetResultAsync(CurrentUserId, matchId), "Sprint result retrieved."));
 
+    [HttpPost("matches/{matchId:guid}/forfeit")]
+    public async Task<IActionResult> ForfeitMatch(Guid matchId) => Ok(Success(await _service.ForfeitMatchAsync(CurrentUserId, matchId), "Sprint match forfeited."));
+
     [HttpPost("matches/{matchId:guid}/step-session")]
     public async Task<IActionResult> CreateStepSession(Guid matchId, CreatePvpStepSessionRequest request) => Ok(Success(await _service.CreateStepSessionAsync(CurrentUserId, matchId, request), "Sprint step session created."));
 

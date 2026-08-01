@@ -28,6 +28,7 @@ public partial class PvpBotProfile
     public int Mmr { get; set; }
     public decimal StepsPerSecond { get; set; }
     public string? SpiritAffinityCode { get; set; }
+    public byte PetStageNo { get; set; } = 1;
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -151,22 +152,6 @@ public partial class ValidatedStepRecord
     public User User { get; set; } = null!;
     public PvpStepSession? StepSession { get; set; }
     public StepSensorBatch? Batch { get; set; }
-}
-
-public partial class PvpMatchStepLedger
-{
-    public Guid MatchStepLedgerId { get; set; }
-    public Guid MatchId { get; set; }
-    public Guid MatchPlayerId { get; set; }
-    public Guid ValidatedStepRecordId { get; set; }
-    public int CountedSteps { get; set; }
-    public int MultiplierBps { get; set; } = 10000;
-    public long DistanceUnits { get; set; }
-    public string EffectSnapshotJson { get; set; } = "[]";
-    public DateTime CreatedAt { get; set; }
-    public PvpMatch Match { get; set; } = null!;
-    public PvpMatchPlayer MatchPlayer { get; set; } = null!;
-    public ValidatedStepRecord ValidatedStepRecord { get; set; } = null!;
 }
 
 public partial class PvpRewardRule

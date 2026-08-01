@@ -4,6 +4,8 @@ using Xunit;
 
 namespace Walkamon.TransactionTests;
 
+[Trait("UC", "UC-68")]
+[Trait("UC", "UC-72")]
 public sealed class PvpGameplayCalculatorTests
 {
     [Theory]
@@ -26,6 +28,31 @@ public sealed class PvpGameplayCalculatorTests
     public void CalculateDistanceUnits_UsesFixedPointMultiplier()
     {
         Assert.Equal(33000, PvpGameplayCalculator.CalculateDistanceUnits(3, 11000));
+    }
+
+    [Theory]
+    [InlineData(0, 1000)]
+    [InlineData(5000, 1750)]
+    [InlineData(10000, 2500)]
+    [InlineData(25000, 2500)]
+    public void CalculateDailyPowerPaceMilli_UsesConfiguredCap(
+        int dailySteps,
+        int expectedPace)
+    {
+        Assert.Equal(
+            expectedPace,
+            PvpGameplayCalculator.CalculateDailyPowerPaceMilli(dailySteps));
+    }
+
+    [Fact]
+    public void CalculatePacedDistanceUnits_UsesPaceDurationAndSpeedMultiplier()
+    {
+        Assert.Equal(
+            825000,
+            PvpGameplayCalculator.CalculatePacedDistanceUnits(
+                TimeSpan.FromSeconds(30),
+                2500,
+                11000));
     }
 
     [Theory]

@@ -13,7 +13,6 @@ public partial class WalkamonContext
     public DbSet<StepSensorBatch> StepSensorBatches => Set<StepSensorBatch>();
     public DbSet<StepMotionEvidenceWindow> StepMotionEvidenceWindows => Set<StepMotionEvidenceWindow>();
     public DbSet<ValidatedStepRecord> ValidatedStepRecords => Set<ValidatedStepRecord>();
-    public DbSet<PvpMatchStepLedger> PvpMatchStepLedgers => Set<PvpMatchStepLedger>();
     public DbSet<PvpRewardRule> PvpRewardRules => Set<PvpRewardRule>();
     public DbSet<PvpMatchRewardEntitlement> PvpMatchRewardEntitlements => Set<PvpMatchRewardEntitlement>();
     public DbSet<PvpMatchRewardItem> PvpMatchRewardItems => Set<PvpMatchRewardItem>();
@@ -38,6 +37,8 @@ public partial class WalkamonContext
         modelBuilder.Entity<PvpMatch>(entity =>
         {
             entity.Property(x => x.SourceCode).HasColumnName("source_code").HasMaxLength(20).IsUnicode(false);
+            entity.Property(x => x.FinishReasonCode).HasColumnName("finish_reason_code").HasMaxLength(30).IsUnicode(false);
+            entity.Property(x => x.ForfeitedByUserId).HasColumnName("forfeited_by_user_id");
             entity.Property(x => x.CountdownEndsAt).HasColumnName("countdown_ends_at").HasPrecision(0);
             entity.Property(x => x.SettlementEndsAt).HasColumnName("settlement_ends_at").HasPrecision(0);
             entity.Property(x => x.ResolvedAt).HasColumnName("resolved_at").HasPrecision(0);
@@ -47,8 +48,14 @@ public partial class WalkamonContext
             entity.Property(x => x.SpeedMaxBps).HasColumnName("speed_max_bps").HasDefaultValue(12500);
             entity.Property(x => x.ItemSlotLimit).HasColumnName("item_slot_limit").HasDefaultValue((byte)2);
             entity.Property(x => x.RuleVersion).HasColumnName("rule_version").HasDefaultValue(1);
+            entity.Property(x => x.ScoringModeCode).HasColumnName("scoring_mode_code").HasMaxLength(30).IsUnicode(false).HasDefaultValue("daily_power_v1");
+            entity.Property(x => x.DailyStepPowerCap).HasColumnName("daily_step_power_cap").HasDefaultValue(10000);
+            entity.Property(x => x.BasePaceMinMilliStepsPerSecond).HasColumnName("base_pace_min_milli_steps_per_second").HasDefaultValue(1000);
+            entity.Property(x => x.BasePaceMaxMilliStepsPerSecond).HasColumnName("base_pace_max_milli_steps_per_second").HasDefaultValue(2500);
+            entity.Property(x => x.LastProgressAt).HasColumnName("last_progress_at").HasPrecision(3);
             entity.Property(x => x.LastEventSequence).HasColumnName("last_event_sequence").HasDefaultValue(0L);
             entity.Property(x => x.RowVersion).HasColumnName("row_version").IsRowVersion();
+            entity.HasOne(x => x.ForfeitedByUser).WithMany().HasForeignKey(x => x.ForfeitedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<PvpMatchPlayer>(entity =>
@@ -66,9 +73,13 @@ public partial class WalkamonContext
             entity.Property(x => x.MmrBefore).HasColumnName("mmr_before");
             entity.Property(x => x.MmrDelta).HasColumnName("mmr_delta");
             entity.Property(x => x.PetIdSnapshot).HasColumnName("pet_id_snapshot");
+            entity.Property(x => x.PetNameSnapshot).HasColumnName("pet_name_snapshot").HasMaxLength(100);
+            entity.Property(x => x.PetStageNoSnapshot).HasColumnName("pet_stage_no_snapshot");
             entity.Property(x => x.SpiritAffinityCode).HasColumnName("spirit_affinity_code").HasMaxLength(30).IsUnicode(false);
             entity.Property(x => x.PassiveSpeedBps).HasColumnName("passive_speed_bps");
             entity.Property(x => x.ValidatedSteps).HasColumnName("validated_steps");
+            entity.Property(x => x.DailyEligibleStepsSnapshot).HasColumnName("daily_eligible_steps_snapshot");
+            entity.Property(x => x.BasePaceMilliStepsPerSecond).HasColumnName("base_pace_milli_steps_per_second").HasDefaultValue(1000);
             entity.Property(x => x.DistanceUnits).HasColumnName("distance_units");
             entity.Property(x => x.RowVersion).HasColumnName("row_version").IsRowVersion();
             entity.HasIndex(x => new { x.MatchId, x.UserId }, "UX_pvp_match_players_match_user").IsUnique().HasFilter("[user_id] IS NOT NULL");
@@ -113,6 +124,7 @@ public partial class WalkamonContext
             entity.Property(x => x.Mmr).HasColumnName("mmr");
             entity.Property(x => x.StepsPerSecond).HasColumnName("steps_per_second").HasPrecision(5, 2);
             entity.Property(x => x.SpiritAffinityCode).HasColumnName("spirit_affinity_code").HasMaxLength(30).IsUnicode(false);
+            entity.Property(x => x.PetStageNo).HasColumnName("pet_stage_no").HasDefaultValue((byte)1);
             entity.Property(x => x.IsActive).HasColumnName("is_active");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasPrecision(0);
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasPrecision(0);
@@ -252,25 +264,6 @@ public partial class WalkamonContext
             entity.HasOne(x => x.User).WithMany(x => x.ValidatedStepRecords).HasForeignKey(x => x.UserId);
             entity.HasOne(x => x.StepSession).WithMany().HasForeignKey(x => x.StepSessionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.Batch).WithMany(x => x.Records).HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
-        });
-
-        modelBuilder.Entity<PvpMatchStepLedger>(entity =>
-        {
-            entity.ToTable("pvp_match_step_ledgers");
-            entity.HasKey(x => x.MatchStepLedgerId);
-            entity.Property(x => x.MatchStepLedgerId).HasColumnName("match_step_ledger_id");
-            entity.Property(x => x.MatchId).HasColumnName("match_id");
-            entity.Property(x => x.MatchPlayerId).HasColumnName("match_player_id");
-            entity.Property(x => x.ValidatedStepRecordId).HasColumnName("validated_step_record_id");
-            entity.Property(x => x.CountedSteps).HasColumnName("counted_steps");
-            entity.Property(x => x.MultiplierBps).HasColumnName("multiplier_bps").HasDefaultValue(10000);
-            entity.Property(x => x.DistanceUnits).HasColumnName("distance_units");
-            entity.Property(x => x.EffectSnapshotJson).HasColumnName("effect_snapshot_json");
-            entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasPrecision(3);
-            entity.HasIndex(x => x.ValidatedStepRecordId, "UX_pvp_match_step_ledgers_record").IsUnique();
-            entity.HasOne(x => x.Match).WithMany().HasForeignKey(x => x.MatchId);
-            entity.HasOne(x => x.MatchPlayer).WithMany().HasForeignKey(x => x.MatchPlayerId);
-            entity.HasOne(x => x.ValidatedStepRecord).WithMany().HasForeignKey(x => x.ValidatedStepRecordId);
         });
 
         modelBuilder.Entity<PvpRewardRule>(entity =>

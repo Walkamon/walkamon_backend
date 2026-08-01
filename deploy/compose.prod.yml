@@ -9,6 +9,10 @@ x-default-logging: &default-logging
 x-api-environment: &api-environment
   ASPNETCORE_ENVIRONMENT: Production
   ASPNETCORE_HTTP_PORTS: "8080"
+  TZ: Asia/Ho_Chi_Minh
+  TimePresentation__TimeZoneId: Asia/Ho_Chi_Minh
+  TimePresentation__OffsetMinutes: "420"
+  TimePresentation__UseVietnamOffset: "true"
   AllowedHosts: api.walkamon.xyz;localhost;127.0.0.1;api;api-blue;api-green;worker
   ConnectionStrings__DefaultConnection: Server=db,1433;Database=Walkamon;User Id=walkamon_app;Password=${WALKAMON_DB_PASSWORD:?WALKAMON_DB_PASSWORD is required};Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True
   Jwt__Key: ${JWT_KEY:?JWT_KEY is required}

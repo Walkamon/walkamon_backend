@@ -24,6 +24,7 @@ public sealed class ValidatedStepService : IValidatedStepService
     private readonly IMissionProgressService _missionProgressService;
     private readonly StepValidationOptions _options;
     private readonly MotionValidationOptions _motionOptions;
+    private readonly TimePresentationSerializer _timePresentationSerializer;
 
     public ValidatedStepService(
         WalkamonContext context,
@@ -31,7 +32,8 @@ public sealed class ValidatedStepService : IValidatedStepService
         IAchievementProgressService achievementProgressService,
         IMissionProgressService missionProgressService,
         IOptions<StepValidationOptions> options,
-        IOptions<MotionValidationOptions> motionOptions)
+        IOptions<MotionValidationOptions> motionOptions,
+        TimePresentationSerializer? timePresentationSerializer = null)
     {
         _context = context;
         _attestationVerifier = attestationVerifier;
@@ -39,6 +41,9 @@ public sealed class ValidatedStepService : IValidatedStepService
         _missionProgressService = missionProgressService;
         _options = options.Value;
         _motionOptions = motionOptions.Value;
+        _timePresentationSerializer = timePresentationSerializer
+            ?? new TimePresentationSerializer(
+                Microsoft.Extensions.Options.Options.Create(new TimePresentationOptions()));
     }
 
     public Task<PvpStepSessionResponse> CreateDailySessionAsync(
@@ -417,7 +422,9 @@ public sealed class ValidatedStepService : IValidatedStepService
             else if (rule.Status == "suspicious") batch.SuspiciousSteps += rawCount;
             else batch.RejectedSteps += rawCount;
 
-            if (eligible > 0 && player != null)
+            if (eligible > 0 &&
+                player != null &&
+                match!.ScoringModeCode == "legacy_race_steps")
             {
                 lastMultiplier = session.SensorModeCode == "counter"
                     ? StepSensorRules.MinimumPvpMultiplier(
@@ -427,20 +434,6 @@ public sealed class ValidatedStepService : IValidatedStepService
                 var distance = PvpGameplayCalculator.CalculateDistanceUnits(eligible, lastMultiplier);
                 accepted += eligible;
                 distanceAdded = checked(distanceAdded + distance);
-                _context.PvpMatchStepLedgers.Add(new PvpMatchStepLedger
-                {
-                    MatchStepLedgerId = Guid.NewGuid(),
-                    MatchId = match!.MatchId,
-                    MatchPlayerId = player.MatchPlayerId,
-                    ValidatedStepRecordId = record.ValidatedStepRecordId,
-                    CountedSteps = eligible,
-                    MultiplierBps = lastMultiplier,
-                    DistanceUnits = distance,
-                    EffectSnapshotJson = JsonSerializer.Serialize(effects
-                        .Where(x => x.StartsAt <= item.RecordedAt && (x.ConsumedAt ?? x.EndsAt) > item.IntervalStartedAt)
-                        .Select(x => new { x.EffectCode, x.EffectKindCode, x.MagnitudeBps, x.StartsAt, x.EndsAt })),
-                    CreatedAt = now
-                });
             }
             if (rule.IsEligible && item.SensorEndTotal.HasValue)
                 rollingSensorTotal = item.SensorEndTotal;
@@ -448,7 +441,8 @@ public sealed class ValidatedStepService : IValidatedStepService
                 session.LastRecordedAt = item.RecordedAt;
         }
 
-        if (player != null)
+        if (player != null &&
+            match!.ScoringModeCode == "legacy_race_steps")
         {
             player.ValidatedSteps = checked(player.ValidatedSteps + accepted);
             player.DistanceUnits = checked(player.DistanceUnits + distanceAdded);
@@ -605,9 +599,8 @@ public sealed class ValidatedStepService : IValidatedStepService
         if (userPet == null)
             return null;
 
-        var vietnamNow = TimeZoneInfo.ConvertTimeFromUtc(now, VietnamTimeZone);
         var previousLevel = userPet.Level;
-        StepExperienceReward.ApplyExperience(userPet, userPet.Pet, expToAdd, vietnamNow);
+        StepExperienceReward.ApplyExperience(userPet, userPet.Pet, expToAdd, AsUtc(now));
         return userPet.Level > previousLevel ? userPet.Level : null;
     }
 
@@ -655,7 +648,7 @@ public sealed class ValidatedStepService : IValidatedStepService
         DateTime now)
     {
         var sequence = ++match.LastEventSequence;
-        var payload = JsonSerializer.Serialize(new
+        var payload = _timePresentationSerializer.Serialize(new
         {
             matchId = match.MatchId,
             statusCode = match.StatusCode,

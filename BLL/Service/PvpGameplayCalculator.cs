@@ -6,6 +6,42 @@ public static class PvpGameplayCalculator
 {
     public const int BaseSpeedBps = 10000;
     public const int DistanceUnitsPerStep = 10000;
+    public const int DefaultDailyStepPowerCap = 10000;
+    public const int DefaultMinimumPaceMilliStepsPerSecond = 1000;
+    public const int DefaultMaximumPaceMilliStepsPerSecond = 2500;
+
+    public static int CalculateDailyPowerPaceMilli(
+        int eligibleDailySteps,
+        int dailyStepPowerCap = DefaultDailyStepPowerCap,
+        int minimumPaceMilli = DefaultMinimumPaceMilliStepsPerSecond,
+        int maximumPaceMilli = DefaultMaximumPaceMilliStepsPerSecond)
+    {
+        if (dailyStepPowerCap <= 0)
+            throw new ArgumentOutOfRangeException(nameof(dailyStepPowerCap));
+        if (minimumPaceMilli <= 0 || maximumPaceMilli < minimumPaceMilli)
+            throw new ArgumentOutOfRangeException(nameof(maximumPaceMilli));
+
+        var cappedSteps = Math.Clamp(eligibleDailySteps, 0, dailyStepPowerCap);
+        var paceRange = maximumPaceMilli - minimumPaceMilli;
+        var scaled = (decimal)cappedSteps * paceRange / dailyStepPowerCap;
+        return checked(minimumPaceMilli +
+                       (int)Math.Round(scaled, MidpointRounding.AwayFromZero));
+    }
+
+    public static long CalculatePacedDistanceUnits(
+        TimeSpan duration,
+        int paceMilliStepsPerSecond,
+        int multiplierBps)
+    {
+        if (duration <= TimeSpan.Zero || paceMilliStepsPerSecond <= 0)
+            return 0;
+
+        var distance = (decimal)duration.TotalSeconds *
+                       paceMilliStepsPerSecond *
+                       multiplierBps /
+                       1000m;
+        return checked((long)Math.Round(distance, MidpointRounding.AwayFromZero));
+    }
 
     public static int CalculateSpeedBps(
         int passiveBonusBps,

@@ -27,11 +27,19 @@ public partial class PvpMatchPlayer
 
     public Guid? PetIdSnapshot { get; set; }
 
+    public string? PetNameSnapshot { get; set; }
+
+    public byte? PetStageNoSnapshot { get; set; }
+
     public string? SpiritAffinityCode { get; set; }
 
     public int PassiveSpeedBps { get; set; }
 
     public int ValidatedSteps { get; set; }
+
+    public int DailyEligibleStepsSnapshot { get; set; }
+
+    public int BasePaceMilliStepsPerSecond { get; set; } = 1000;
 
     public long DistanceUnits { get; set; }
 

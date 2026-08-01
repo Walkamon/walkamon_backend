@@ -17,5 +17,9 @@ namespace DAL.DTO
         public string? AvatarUrl { get; set; }
 
         public string? Bio { get; set; }
+
+        public bool IsOnline { get; set; }
+
+        public string PvpAvailabilityCode { get; set; } = "offline";
     }
 }

@@ -15,14 +15,17 @@ namespace BLL.Service
         private readonly IGenericRepository<FriendRequest> _friendRequestRepository;
         private readonly IGenericRepository<Friendship> _friendshipRepository;
         private readonly IFriendRepository _friendRepository;
+        private readonly IPvpPresenceTracker _presenceTracker;
         public FriendService(
      IGenericRepository<FriendRequest> friendRequestRepository,
      IGenericRepository<Friendship> friendshipRepository,
-     IFriendRepository friendRepository)
+     IFriendRepository friendRepository,
+     IPvpPresenceTracker? presenceTracker = null)
         {
             _friendRequestRepository = friendRequestRepository;
             _friendshipRepository = friendshipRepository;
             _friendRepository = friendRepository;
+            _presenceTracker = presenceTracker ?? new PvpPresenceTracker();
         }
 
         public async Task SendFriendRequestAsync(
@@ -203,7 +206,15 @@ GetAvailableUsersAsync(Guid currentUserId)
         public async Task<IEnumerable<FriendDto>>
    GetFriendListAsync(Guid currentUserId)
         {
-            return await _friendRepository.GetFriendListAsync(currentUserId);
+            var friends = await _friendRepository.GetFriendListAsync(currentUserId);
+            foreach (var friend in friends)
+            {
+                friend.IsOnline = _presenceTracker.IsOnline(friend.UserId);
+                if (!friend.IsOnline)
+                    friend.PvpAvailabilityCode = "offline";
+            }
+
+            return friends;
         }
 
         public async Task RemoveFriendAsync(

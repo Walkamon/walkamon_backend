@@ -470,24 +470,6 @@ CREATE TABLE dbo.validated_step_records (
     CONSTRAINT UX_validated_step_records_user_hash UNIQUE (user_id, payload_hash)
 );
 
-IF OBJECT_ID (
-    'dbo.pvp_match_step_ledgers',
-    'U'
-) IS NULL
-CREATE TABLE dbo.pvp_match_step_ledgers (
-    match_step_ledger_id UNIQUEIDENTIFIER NOT NULL CONSTRAINT DF_pvp_match_step_ledgers_id DEFAULT NEWSEQUENTIALID () PRIMARY KEY,
-    match_id UNIQUEIDENTIFIER NOT NULL,
-    match_player_id UNIQUEIDENTIFIER NOT NULL,
-    validated_step_record_id UNIQUEIDENTIFIER NOT NULL,
-    counted_steps INT NOT NULL,
-    created_at DATETIME2 (3) NOT NULL CONSTRAINT DF_pvp_match_step_ledgers_created_at DEFAULT SYSUTCDATETIME (),
-    CONSTRAINT CK_pvp_match_step_ledgers_count CHECK (counted_steps > 0),
-    FOREIGN KEY (match_id) REFERENCES dbo.pvp_matches (match_id),
-    FOREIGN KEY (match_player_id) REFERENCES dbo.pvp_match_players (match_player_id),
-    FOREIGN KEY (validated_step_record_id) REFERENCES dbo.validated_step_records (validated_step_record_id),
-    CONSTRAINT UX_pvp_match_step_ledgers_record UNIQUE (validated_step_record_id)
-);
-
 IF OBJECT_ID ('dbo.pvp_reward_rules', 'U') IS NULL
 CREATE TABLE dbo.pvp_reward_rules (
     pvp_reward_rule_id UNIQUEIDENTIFIER NOT NULL CONSTRAINT DF_pvp_reward_rules_id DEFAULT NEWSEQUENTIALID () PRIMARY KEY,
@@ -669,14 +651,6 @@ IF COL_LENGTH('dbo.pvp_match_players', 'row_version') IS NULL
     EXEC(N'ALTER TABLE dbo.pvp_match_players ADD row_version ROWVERSION NOT NULL;');
 IF COL_LENGTH('dbo.pvp_step_sessions', 'row_version') IS NULL
     EXEC(N'ALTER TABLE dbo.pvp_step_sessions ADD row_version ROWVERSION NOT NULL;');
-IF COL_LENGTH('dbo.pvp_match_step_ledgers', 'multiplier_bps') IS NULL
-    EXEC(N'ALTER TABLE dbo.pvp_match_step_ledgers ADD multiplier_bps INT NOT NULL CONSTRAINT DF_pvp_match_step_ledgers_multiplier DEFAULT 10000;');
-IF COL_LENGTH('dbo.pvp_match_step_ledgers', 'distance_units') IS NULL
-    EXEC(N'ALTER TABLE dbo.pvp_match_step_ledgers ADD distance_units BIGINT NOT NULL CONSTRAINT DF_pvp_match_step_ledgers_distance DEFAULT 0;');
-IF COL_LENGTH('dbo.pvp_match_step_ledgers', 'effect_snapshot_json') IS NULL
-    EXEC(N'ALTER TABLE dbo.pvp_match_step_ledgers ADD effect_snapshot_json NVARCHAR(MAX) NOT NULL CONSTRAINT DF_pvp_match_step_ledgers_effects DEFAULT N''[]'';');
-EXEC(N'UPDATE dbo.pvp_match_step_ledgers SET distance_units = CONVERT(BIGINT, counted_steps) * multiplier_bps WHERE distance_units = 0 AND counted_steps > 0;');
-
 IF OBJECT_ID('dbo.pvp_item_effect_definitions', 'U') IS NULL
 EXEC(N'CREATE TABLE dbo.pvp_item_effect_definitions (
     pvp_item_effect_definition_id UNIQUEIDENTIFIER NOT NULL CONSTRAINT DF_pvp_item_effect_definitions_id DEFAULT NEWSEQUENTIALID() PRIMARY KEY,
@@ -949,6 +923,88 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_step_motion_windows_ba
     EXEC(N'CREATE UNIQUE INDEX UX_step_motion_windows_batch_index ON dbo.step_motion_evidence_windows(batch_id, window_index);');
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_step_motion_windows_classification_started' AND object_id = OBJECT_ID('dbo.step_motion_evidence_windows'))
     EXEC(N'CREATE INDEX IX_step_motion_windows_classification_started ON dbo.step_motion_evidence_windows(classification, window_started_at);');
+
+/* Forfeit metadata and immutable pet presentation snapshots. */
+IF COL_LENGTH('dbo.pvp_matches', 'finish_reason_code') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD finish_reason_code VARCHAR(30) NULL;');
+IF COL_LENGTH('dbo.pvp_matches', 'forfeited_by_user_id') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD forfeited_by_user_id UNIQUEIDENTIFIER NULL;');
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_pvp_matches_finish_reason')
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD CONSTRAINT CK_pvp_matches_finish_reason CHECK (finish_reason_code IS NULL OR finish_reason_code IN (''normal_completion'', ''user_forfeit''));');
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_pvp_matches_forfeited_user')
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD CONSTRAINT FK_pvp_matches_forfeited_user FOREIGN KEY(forfeited_by_user_id) REFERENCES dbo.users(user_id);');
+
+IF COL_LENGTH('dbo.pvp_match_players', 'pet_name_snapshot') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_match_players ADD pet_name_snapshot NVARCHAR(100) NULL;');
+IF COL_LENGTH('dbo.pvp_match_players', 'pet_stage_no_snapshot') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_match_players ADD pet_stage_no_snapshot TINYINT NULL;');
+EXEC(N'UPDATE mp
+    SET pet_name_snapshot = up.pet_name
+    FROM dbo.pvp_match_players mp
+    INNER JOIN dbo.user_pets up ON up.user_id = mp.user_id
+    WHERE mp.pet_name_snapshot IS NULL;');
+EXEC(N'UPDATE dbo.pvp_match_players
+    SET pet_stage_no_snapshot = CASE WHEN ISNULL(spirit_affinity_code, ''sprout'') = ''sprout'' THEN 0 ELSE 1 END
+    WHERE pet_stage_no_snapshot IS NULL;');
+
+IF COL_LENGTH('dbo.pvp_bot_profiles', 'pet_stage_no') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_bot_profiles ADD pet_stage_no TINYINT NOT NULL CONSTRAINT DF_pvp_bot_profiles_pet_stage DEFAULT 1;');
+EXEC(N'UPDATE dbo.pvp_bot_profiles
+    SET pet_stage_no = CASE WHEN ISNULL(spirit_affinity_code, ''sprout'') = ''sprout'' THEN 0 ELSE IIF(pet_stage_no = 0, 1, pet_stage_no) END;');
+
+/* Daily-power PvP scoring. Existing matches retain their legacy result semantics. */
+IF COL_LENGTH('dbo.pvp_matches', 'scoring_mode_code') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD scoring_mode_code VARCHAR(30) NOT NULL CONSTRAINT DF_pvp_matches_scoring_mode DEFAULT ''legacy_race_steps'';');
+IF COL_LENGTH('dbo.pvp_matches', 'daily_step_power_cap') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD daily_step_power_cap INT NOT NULL CONSTRAINT DF_pvp_matches_daily_power_cap DEFAULT 10000;');
+IF COL_LENGTH('dbo.pvp_matches', 'base_pace_min_milli_steps_per_second') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD base_pace_min_milli_steps_per_second INT NOT NULL CONSTRAINT DF_pvp_matches_min_pace DEFAULT 1000;');
+IF COL_LENGTH('dbo.pvp_matches', 'base_pace_max_milli_steps_per_second') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD base_pace_max_milli_steps_per_second INT NOT NULL CONSTRAINT DF_pvp_matches_max_pace DEFAULT 2500;');
+IF COL_LENGTH('dbo.pvp_matches', 'last_progress_at') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD last_progress_at DATETIME2(3) NULL;');
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_pvp_matches_scoring_mode')
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD CONSTRAINT CK_pvp_matches_scoring_mode CHECK (scoring_mode_code IN (''legacy_race_steps'', ''daily_power_v1''));');
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_pvp_matches_daily_power')
+    EXEC(N'ALTER TABLE dbo.pvp_matches ADD CONSTRAINT CK_pvp_matches_daily_power CHECK (
+        daily_step_power_cap > 0
+        AND base_pace_min_milli_steps_per_second > 0
+        AND base_pace_max_milli_steps_per_second >= base_pace_min_milli_steps_per_second
+    );');
+
+IF COL_LENGTH('dbo.pvp_match_players', 'daily_eligible_steps_snapshot') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_match_players ADD daily_eligible_steps_snapshot INT NOT NULL CONSTRAINT DF_pvp_match_players_daily_snapshot DEFAULT 0;');
+IF COL_LENGTH('dbo.pvp_match_players', 'base_pace_milli_steps_per_second') IS NULL
+    EXEC(N'ALTER TABLE dbo.pvp_match_players ADD base_pace_milli_steps_per_second INT NOT NULL CONSTRAINT DF_pvp_match_players_base_pace DEFAULT 1000;');
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_pvp_match_players_daily_power')
+    EXEC(N'ALTER TABLE dbo.pvp_match_players ADD CONSTRAINT CK_pvp_match_players_daily_power CHECK (
+        daily_eligible_steps_snapshot >= 0
+        AND base_pace_milli_steps_per_second > 0
+    );');
+EXEC(N'UPDATE mp
+    SET base_pace_milli_steps_per_second =
+        CONVERT(INT, ROUND(bp.steps_per_second * 1000, 0))
+    FROM dbo.pvp_match_players mp
+    INNER JOIN dbo.pvp_bot_profiles bp ON bp.bot_profile_id = mp.bot_profile_id
+    WHERE mp.participant_type_code = ''bot''
+      AND mp.base_pace_milli_steps_per_second = 1000;');
+
+/* Obsolete: new matches derive distance from an immutable daily-power snapshot. */
+IF OBJECT_ID('dbo.pvp_match_step_ledgers', 'U') IS NOT NULL
+    EXEC(N'DROP TABLE dbo.pvp_match_step_ledgers;');
+
+/* Older pet writers stored wall-clock UTC+7 without an offset. Shift once to UTC. */
+IF NOT EXISTS (SELECT 1 FROM dbo.system_settings WHERE setting_key = 'utc_pet_timestamp_backfill_v1')
+BEGIN
+    EXEC(N'UPDATE dbo.user_pets SET
+        energy_updated_at = DATEADD(HOUR, -7, energy_updated_at),
+        bond_updated_at = DATEADD(HOUR, -7, bond_updated_at),
+        life_force_updated_at = DATEADD(HOUR, -7, life_force_updated_at),
+        exp_updated_at = DATEADD(HOUR, -7, exp_updated_at);');
+    EXEC(N'UPDATE dbo.pet_evolution_history SET evolved_at = DATEADD(HOUR, -7, evolved_at);');
+    INSERT INTO dbo.system_settings(setting_key, setting_value)
+    VALUES ('utc_pet_timestamp_backfill_v1', 'completed');
+END;
 
 COMMIT TRANSACTION;
 GO

@@ -21,7 +21,7 @@ namespace DAL.Repository
 
         public async Task<List<FriendDto>> GetFriendListAsync(Guid currentUserId)
         {
-            return await _context.Friendships
+            var friends = await _context.Friendships
                 .Where(x =>
                     x.UserLowId == currentUserId ||
                     x.UserHighId == currentUserId)
@@ -39,6 +39,21 @@ namespace DAL.Repository
                     Email = profile.User.Email
                 })
                 .ToListAsync();
+
+            var friendIds = friends.Select(x => x.UserId).ToList();
+            var busyUserIds = (await _context.PvpPlayerActivities
+                .Where(x => friendIds.Contains(x.UserId))
+                .Select(x => x.UserId)
+                .ToListAsync())
+                .ToHashSet();
+            foreach (var friend in friends)
+            {
+                friend.PvpAvailabilityCode = busyUserIds.Contains(friend.UserId)
+                    ? "busy"
+                    : "available";
+            }
+
+            return friends;
         }
 
         public async Task<List<FriendRequest>> GetReceivedRequestsAsync(Guid userId)

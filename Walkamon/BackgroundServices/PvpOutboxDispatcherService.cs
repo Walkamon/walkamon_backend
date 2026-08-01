@@ -1,3 +1,4 @@
+using BLL.Interfaces;
 using DAL.Data;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,8 @@ public sealed class PvpOutboxDispatcherService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IHubContext<SprintHub> _hub;
+    private readonly IHubContext<PresenceHub> _presenceHub;
+    private readonly IPvpPresenceTracker _presenceTracker;
     private readonly ILogger<PvpOutboxDispatcherService> _logger;
     private readonly string? _deploymentSlot;
     private readonly string? _activeSlotFile;
@@ -17,11 +20,15 @@ public sealed class PvpOutboxDispatcherService : BackgroundService
     public PvpOutboxDispatcherService(
         IServiceScopeFactory scopeFactory,
         IHubContext<SprintHub> hub,
+        IHubContext<PresenceHub> presenceHub,
+        IPvpPresenceTracker presenceTracker,
         ILogger<PvpOutboxDispatcherService> logger,
         IConfiguration configuration)
     {
         _scopeFactory = scopeFactory;
         _hub = hub;
+        _presenceHub = presenceHub;
+        _presenceTracker = presenceTracker;
         _logger = logger;
         _deploymentSlot = configuration["Deployment:Slot"];
         _activeSlotFile = configuration["Deployment:ActiveSlotFile"];
@@ -91,16 +98,60 @@ SET lease_owner = {_workerId},
         {
             try
             {
-                var payload = JsonSerializer.Deserialize<JsonElement>(item.PayloadJson);
-                var envelope = new
+                if (item.AggregateType == "presence")
                 {
-                    eventId = item.EventId,
-                    eventType = item.EventType,
-                    aggregateId = item.AggregateId,
-                    payload
-                };
-                if (item.AggregateType == "match") await _hub.Clients.Group($"match:{item.AggregateId}").SendAsync(item.EventType, envelope, cancellationToken);
-                else if (item.AggregateType == "user") await _hub.Clients.Group($"user:{item.AggregateId}").SendAsync(item.EventType, envelope, cancellationToken);
+                    var friendIds = await context.Friendships.AsNoTracking()
+                        .Where(x => x.UserLowId == item.AggregateId || x.UserHighId == item.AggregateId)
+                        .Select(x => x.UserLowId == item.AggregateId ? x.UserHighId : x.UserLowId)
+                        .ToListAsync(cancellationToken);
+                    var isOnline = _presenceTracker.IsOnline(item.AggregateId);
+                    var isBusy = isOnline && await context.PvpPlayerActivities.AsNoTracking()
+                        .AnyAsync(x => x.UserId == item.AggregateId, cancellationToken);
+                    var presencePayload = new
+                    {
+                        userId = item.AggregateId,
+                        isOnline,
+                        pvpAvailabilityCode = !isOnline ? "offline" : isBusy ? "busy" : "available",
+                        serverTime = DateTime.UtcNow
+                    };
+                    var presenceEnvelope = new
+                    {
+                        eventId = item.EventId,
+                        eventType = item.EventType,
+                        aggregateId = item.AggregateId,
+                        payload = presencePayload
+                    };
+                    if (friendIds.Count > 0)
+                    {
+                        var groups = friendIds.Select(x => $"user:{x}").ToList();
+                        await Task.WhenAll(
+                            _hub.Clients.Groups(groups)
+                                .SendAsync(item.EventType, presenceEnvelope, cancellationToken),
+                            _presenceHub.Clients.Groups(groups)
+                                .SendAsync(item.EventType, presenceEnvelope, cancellationToken));
+                    }
+                }
+                else
+                {
+                    var payload = JsonSerializer.Deserialize<JsonElement>(item.PayloadJson);
+                    var envelope = new
+                    {
+                        eventId = item.EventId,
+                        eventType = item.EventType,
+                        aggregateId = item.AggregateId,
+                        payload
+                    };
+                    if (item.AggregateType == "match") await _hub.Clients.Group($"match:{item.AggregateId}").SendAsync(item.EventType, envelope, cancellationToken);
+                    else if (item.AggregateType == "user")
+                    {
+                        var group = $"user:{item.AggregateId}";
+                        await Task.WhenAll(
+                            _hub.Clients.Group(group)
+                                .SendAsync(item.EventType, envelope, cancellationToken),
+                            _presenceHub.Clients.Group(group)
+                                .SendAsync(item.EventType, envelope, cancellationToken));
+                    }
+                }
                 item.PublishedAt = DateTime.UtcNow; item.LeaseUntil = null; item.LeaseOwner = null;
             }
             catch { item.LeaseUntil = DateTime.UtcNow.AddSeconds(10); item.LeaseOwner = null; }

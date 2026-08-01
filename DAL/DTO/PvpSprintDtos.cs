@@ -61,6 +61,8 @@ public sealed class PvpInviteResponse
 {
     public Guid InviteId { get; set; }
     public PvpUserSummaryResponse User { get; set; } = null!;
+    public bool OtherUserIsOnline { get; set; }
+    public string OtherUserPvpAvailabilityCode { get; set; } = "offline";
     public string StatusCode { get; set; } = null!;
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -74,8 +76,15 @@ public sealed class PvpParticipantResponse
     public Guid? BotProfileId { get; set; }
     public string DisplayName { get; set; } = null!;
     public string? AvatarUrl { get; set; }
+    public Guid? PetId { get; set; }
+    public string? PetName { get; set; }
+    public int PetLevel { get; set; }
+    public int PetStageNo { get; set; }
+    public string PetVisualCode { get; set; } = "sprout_stage0";
     public int Score { get; set; }
     public int ValidatedSteps { get; set; }
+    public int DailyEligibleStepsSnapshot { get; set; }
+    public int BasePaceMilliStepsPerSecond { get; set; }
     public long DistanceUnits { get; set; }
     public int SpeedMultiplierBps { get; set; } = 10000;
     public string? SpiritAffinityCode { get; set; }
@@ -89,14 +98,20 @@ public class PvpMatchResponse
     public string MatchTypeCode { get; set; } = null!;
     public string SourceCode { get; set; } = null!;
     public string StatusCode { get; set; } = null!;
+    public string? FinishReasonCode { get; set; }
+    public Guid? ForfeitedByUserId { get; set; }
+    public Guid? WinnerUserId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CountdownStartsAt { get; set; }
     public DateTime? CountdownEndsAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
     public DateTime? SettlementEndsAt { get; set; }
+    public DateTime? ResolvedAt { get; set; }
     public DateTime ServerTime { get; set; }
     public int RuleVersion { get; set; }
+    public string ScoringModeCode { get; set; } = "daily_power_v1";
+    public int DailyStepPowerCap { get; set; }
     public long LastEventSequence { get; set; }
     public List<PvpMatchEffectResponse> ActiveEffects { get; set; } = [];
     public List<PvpMatchLoadoutSlotResponse> Loadout { get; set; } = [];

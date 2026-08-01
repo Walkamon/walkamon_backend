@@ -6,6 +6,8 @@ using Xunit;
 
 namespace Walkamon.TransactionTests;
 
+[Trait("UC", "UC-67")]
+[Trait("UC", "UC-72")]
 public sealed class PvpModelMappingTests
 {
     [Fact]
@@ -36,6 +38,51 @@ public sealed class PvpModelMappingTests
 
         Assert.True(index.IsUnique);
         Assert.NotNull(snapshot.FindNavigation(nameof(PvpMatchRewardSnapshot.Items)));
+    }
+
+    [Fact]
+    public void ForfeitAndPetSnapshotProperties_MapToExpectedColumns()
+    {
+        using var context = CreateContext();
+        var match = context.Model.FindEntityType(typeof(PvpMatch))!;
+        var player = context.Model.FindEntityType(typeof(PvpMatchPlayer))!;
+        var bot = context.Model.FindEntityType(typeof(PvpBotProfile))!;
+
+        Assert.Equal(
+            "finish_reason_code",
+            match.FindProperty(nameof(PvpMatch.FinishReasonCode))!.GetColumnName());
+        Assert.Equal(
+            "forfeited_by_user_id",
+            match.FindProperty(nameof(PvpMatch.ForfeitedByUserId))!.GetColumnName());
+        Assert.NotNull(match.FindNavigation(nameof(PvpMatch.ForfeitedByUser)));
+        Assert.Equal(
+            "pet_name_snapshot",
+            player.FindProperty(nameof(PvpMatchPlayer.PetNameSnapshot))!.GetColumnName());
+        Assert.Equal(
+            "pet_stage_no_snapshot",
+            player.FindProperty(nameof(PvpMatchPlayer.PetStageNoSnapshot))!.GetColumnName());
+        Assert.Equal(
+            "pet_stage_no",
+            bot.FindProperty(nameof(PvpBotProfile.PetStageNo))!.GetColumnName());
+    }
+
+    [Fact]
+    public void DailyPowerSnapshot_MapsWithoutLegacyStepLedger()
+    {
+        using var context = CreateContext();
+        var match = context.Model.FindEntityType(typeof(PvpMatch))!;
+        var player = context.Model.FindEntityType(typeof(PvpMatchPlayer))!;
+
+        Assert.Equal(
+            "scoring_mode_code",
+            match.FindProperty(nameof(PvpMatch.ScoringModeCode))!.GetColumnName());
+        Assert.Equal(
+            "daily_eligible_steps_snapshot",
+            player.FindProperty(nameof(PvpMatchPlayer.DailyEligibleStepsSnapshot))!.GetColumnName());
+        Assert.Equal(
+            "base_pace_milli_steps_per_second",
+            player.FindProperty(nameof(PvpMatchPlayer.BasePaceMilliStepsPerSecond))!.GetColumnName());
+        Assert.Null(context.Model.FindEntityType("DAL.Models.PvpMatchStepLedger"));
     }
 
     private static WalkamonContext CreateContext()

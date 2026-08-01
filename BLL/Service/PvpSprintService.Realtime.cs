@@ -250,12 +250,33 @@ public sealed partial class PvpSprintService
     private static PvpMatchEffectResponse ToEffectResponse(PvpMatchEffect effect) => new() { EffectId = effect.PvpMatchEffectId, TargetMatchPlayerId = effect.TargetMatchPlayerId, EffectCode = effect.EffectCode, EffectKindCode = effect.EffectKindCode, MagnitudeBps = effect.MagnitudeBps, StartsAt = AsUtc(effect.StartsAt), EndsAt = AsUtc(effect.EndsAt) };
     private static PvpRankTierResponse ToTierResponse(PvpRankTier tier) => new() { TierCode = tier.TierCode, DisplayName = tier.DisplayName, MinMmr = tier.MinMmr, AssetKey = tier.AssetKey, ColorHex = tier.ColorHex };
 
-    private async Task<(Guid? PetId, byte Level, string AffinityCode)> GetPetSnapshotAsync(Guid userId)
+    private async Task<(Guid? PetId, string? Name, byte Level, byte StageNo, string AffinityCode)> GetPetSnapshotAsync(Guid userId)
     {
         var userPet = await _context.UserPets.AsNoTracking().Include(x => x.Pet).FirstOrDefaultAsync(x => x.UserId == userId);
-        if (userPet == null) return (null, 1, "sprout");
-        return (userPet.PetId, (byte)Math.Clamp(userPet.Level, 1, byte.MaxValue), userPet.Pet.PvpAffinityCode ?? "sprout");
+        if (userPet == null) return (null, null, 1, 0, "sprout");
+
+        var affinityCode = NormalizeAffinityCode(userPet.Pet.PvpAffinityCode);
+        var stageNo = affinityCode == "sprout"
+            ? 0
+            : await _context.PetEvolutionHistories.AsNoTracking()
+                .Where(x => x.UserId == userId && x.Stage.PetId == userPet.PetId)
+                .OrderByDescending(x => x.EvolvedAt)
+                .Select(x => (int?)x.Stage.StageNo)
+                .FirstOrDefaultAsync() ?? 1;
+
+        return (
+            userPet.PetId,
+            userPet.PetName,
+            (byte)Math.Clamp(userPet.Level, 1, byte.MaxValue),
+            NormalizePetStageNo(affinityCode, stageNo),
+            affinityCode);
     }
+
+    private static string NormalizeAffinityCode(string? affinityCode) =>
+        affinityCode is "dawn" or "warm_sun" or "moonlight" ? affinityCode : "sprout";
+
+    private static byte NormalizePetStageNo(string affinityCode, int? stageNo) =>
+        affinityCode == "sprout" ? (byte)0 : (byte)Math.Clamp(stageNo ?? 1, 1, byte.MaxValue);
 
     private async Task SnapshotPlayerLoadoutAsync(PvpMatch match, PvpMatchPlayer player, Guid userId, DateTime now)
     {
@@ -301,6 +322,182 @@ public sealed partial class PvpSprintService
                 StatusCode = "active", StartsAt = now, EndsAt = match.EndedAt.Value, CreatedAt = now
             });
         }
+    }
+
+    private Task ProcessRunningProgressAsync(Guid matchId, CancellationToken cancellationToken) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+        {
+            var now = DateTime.UtcNow;
+            var progressAt = new DateTime(
+                now.Ticks - now.Ticks % TimeSpan.TicksPerSecond,
+                DateTimeKind.Utc);
+            var match = await _context.PvpMatches
+                .Include(x => x.PvpMatchPlayers)
+                .FirstOrDefaultAsync(
+                    x => x.MatchId == matchId &&
+                         x.StatusCode == "running" &&
+                         x.ScoringModeCode == DailyPowerScoringMode &&
+                         x.StartedAt != null &&
+                         x.EndedAt > now,
+                    cancellationToken);
+            if (match == null ||
+                progressAt <= match.StartedAt!.Value ||
+                match.LastProgressAt >= progressAt)
+                return;
+
+            await RecalculateDailyPowerDistancesAsync(match, progressAt, cancellationToken);
+            AddProgressOutbox(match, progressAt);
+            await _context.SaveChangesAsync(cancellationToken);
+        });
+
+    private async Task SnapshotDailyPowerAsync(
+        PvpMatch match,
+        DateTime startedAt,
+        CancellationToken cancellationToken)
+    {
+        var vietnamDate = DateOnly.FromDateTime(AsUtc(startedAt).AddHours(7));
+        var userIds = match.PvpMatchPlayers
+            .Where(x => x.UserId.HasValue)
+            .Select(x => x.UserId!.Value)
+            .ToList();
+        var dailySteps = await _context.DailySteps.AsNoTracking()
+            .Where(x => userIds.Contains(x.UserId) && x.StepDate == vietnamDate)
+            .ToDictionaryAsync(x => x.UserId, x => x.EligibleStepCount, cancellationToken);
+
+        foreach (var player in match.PvpMatchPlayers)
+        {
+            player.DistanceUnits = 0;
+            player.Score = 0;
+
+            if (player.UserId.HasValue)
+            {
+                var snapshot = dailySteps.GetValueOrDefault(player.UserId.Value);
+                player.StepsAtMatch = snapshot;
+                player.DailyEligibleStepsSnapshot = snapshot;
+                // Keep the established response field useful for clients that
+                // have not yet adopted DailyEligibleStepsSnapshot.
+                player.ValidatedSteps = snapshot;
+                player.BasePaceMilliStepsPerSecond =
+                    PvpGameplayCalculator.CalculateDailyPowerPaceMilli(
+                        snapshot,
+                        match.DailyStepPowerCap,
+                        match.BasePaceMinMilliStepsPerSecond,
+                        match.BasePaceMaxMilliStepsPerSecond);
+            }
+            else
+            {
+                player.DailyEligibleStepsSnapshot = 0;
+                player.ValidatedSteps = 0;
+                if (player.BasePaceMilliStepsPerSecond <= 0)
+                    player.BasePaceMilliStepsPerSecond =
+                        match.BasePaceMinMilliStepsPerSecond;
+            }
+        }
+    }
+
+    private async Task RecalculateDailyPowerDistancesAsync(
+        PvpMatch match,
+        DateTime requestedEnd,
+        CancellationToken cancellationToken)
+    {
+        if (!match.StartedAt.HasValue || !match.EndedAt.HasValue)
+            return;
+
+        var raceStart = AsUtc(match.StartedAt.Value);
+        var raceEnd = AsUtc(match.EndedAt.Value);
+        var effectiveEnd = AsUtc(requestedEnd);
+        if (effectiveEnd > raceEnd) effectiveEnd = raceEnd;
+        if (effectiveEnd < raceStart) effectiveEnd = raceStart;
+
+        var effects = await _context.PvpMatchEffects.AsNoTracking()
+            .Where(x =>
+                x.MatchId == match.MatchId &&
+                (x.EffectKindCode == "buff" || x.EffectKindCode == "debuff") &&
+                x.StartsAt < effectiveEnd &&
+                (x.ConsumedAt ?? x.EndsAt) > raceStart)
+            .ToListAsync(cancellationToken);
+
+        foreach (var player in match.PvpMatchPlayers)
+        {
+            var playerEffects = effects
+                .Where(x => x.TargetMatchPlayerId == player.MatchPlayerId)
+                .ToList();
+            var points = new List<DateTime> { raceStart, effectiveEnd };
+            foreach (var effect in playerEffects)
+            {
+                points.Add(effect.StartsAt < raceStart ? raceStart : AsUtc(effect.StartsAt));
+                var effectEnd = effect.ConsumedAt.HasValue &&
+                                effect.ConsumedAt.Value < effect.EndsAt
+                    ? effect.ConsumedAt.Value
+                    : effect.EndsAt;
+                points.Add(effectEnd > effectiveEnd ? effectiveEnd : AsUtc(effectEnd));
+            }
+
+            points = points
+                .Where(x => x >= raceStart && x <= effectiveEnd)
+                .Distinct()
+                .Order()
+                .ToList();
+
+            long distance = 0;
+            for (var index = 0; index < points.Count - 1; index++)
+            {
+                var intervalStart = points[index];
+                var intervalEnd = points[index + 1];
+                if (intervalEnd <= intervalStart) continue;
+                var midpoint = intervalStart.AddTicks((intervalEnd - intervalStart).Ticks / 2);
+                var active = playerEffects
+                    .Where(x =>
+                        AsUtc(x.StartsAt) <= midpoint &&
+                        AsUtc(x.ConsumedAt ?? x.EndsAt) > midpoint)
+                    .Select(x => (x.EffectKindCode, x.MagnitudeBps));
+                var multiplier = PvpGameplayCalculator.CalculateSpeedBps(
+                    player.PassiveSpeedBps,
+                    active,
+                    match.SpeedMinBps,
+                    match.SpeedMaxBps);
+                distance = checked(distance +
+                    PvpGameplayCalculator.CalculatePacedDistanceUnits(
+                        intervalEnd - intervalStart,
+                        player.BasePaceMilliStepsPerSecond,
+                        multiplier));
+            }
+
+            player.DistanceUnits = distance;
+            player.Score = (int)Math.Min(
+                int.MaxValue,
+                distance / PvpGameplayCalculator.DistanceUnitsPerStep);
+            if (player.ParticipantTypeCode == "bot")
+            {
+                player.ValidatedSteps = (int)Math.Min(
+                    int.MaxValue,
+                    Math.Floor(
+                        (decimal)(effectiveEnd - raceStart).TotalSeconds *
+                        player.BasePaceMilliStepsPerSecond /
+                        1000m));
+            }
+        }
+    }
+
+    private void AddProgressOutbox(PvpMatch match, DateTime progressAt)
+    {
+        match.LastProgressAt = progressAt;
+        AddMatchOutbox(
+            match,
+            "match.progress",
+            details: new
+            {
+                progressAt,
+                participants = match.PvpMatchPlayers.Select(x => new
+                {
+                    matchPlayerId = x.MatchPlayerId,
+                    validatedSteps = x.ValidatedSteps,
+                    dailyEligibleStepsSnapshot = x.DailyEligibleStepsSnapshot,
+                    basePaceMilliStepsPerSecond = x.BasePaceMilliStepsPerSecond,
+                    distanceUnits = x.DistanceUnits,
+                    score = x.Score
+                })
+            });
     }
 
     private Task ProcessEffectExpirationsForMatchAsync(Guid matchId, CancellationToken cancellationToken) =>
@@ -405,7 +602,7 @@ public sealed partial class PvpSprintService
     {
         var now = DateTime.UtcNow;
         var sequence = ++match.LastEventSequence;
-        var payload = JsonSerializer.Serialize(new { matchId = match.MatchId, statusCode = match.StatusCode, sequence, serverTime = now, details });
+        var payload = _timePresentationSerializer.Serialize(new { matchId = match.MatchId, statusCode = match.StatusCode, sequence, serverTime = now, details });
         _context.PvpMatchEvents.Add(new PvpMatchEvent { PvpMatchEventId = Guid.NewGuid(), MatchId = match.MatchId, Sequence = sequence, EventType = eventType, PayloadJson = payload, CreatedAt = now });
         _context.OutboxEvents.Add(new OutboxEvent { EventId = Guid.NewGuid(), AggregateType = "match", AggregateId = match.MatchId, Destination = "signalr", EventType = eventType, PayloadJson = payload, CreatedAt = now });
     }
