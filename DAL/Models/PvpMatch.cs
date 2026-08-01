@@ -51,6 +51,8 @@ public partial class PvpMatch
 
     public virtual ICollection<PvpMatchRewardEntitlement> RewardEntitlements { get; set; } = new List<PvpMatchRewardEntitlement>();
 
+    public virtual ICollection<PvpMatchRewardSnapshot> RewardSnapshots { get; set; } = new List<PvpMatchRewardSnapshot>();
+
     public virtual ICollection<PvpMatchEffect> Effects { get; set; } = new List<PvpMatchEffect>();
 
     public virtual ICollection<PvpMatchLoadoutSlot> LoadoutSlots { get; set; } = new List<PvpMatchLoadoutSlot>();

@@ -658,7 +658,7 @@ public sealed class ValidatedStepService : IValidatedStepService
         var payload = JsonSerializer.Serialize(new
         {
             matchId = match.MatchId,
-            status = match.StatusCode,
+            statusCode = match.StatusCode,
             sequence,
             serverTime = now,
             details = new

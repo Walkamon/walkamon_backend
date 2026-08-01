@@ -133,6 +133,13 @@ public sealed class PetOverviewServiceTests
             EvolutionHistory
                 .Setup(x => x.GetLatestAsync(It.IsAny<Guid>()))
                 .ReturnsAsync((PetEvolutionHistory?)null);
+            SystemSettingRepository
+                .Setup(x => x.GetByKeyAsync(It.IsAny<string>()))
+                .ReturnsAsync((string key) => new SystemSetting
+                {
+                    SettingKey = key,
+                    SettingValue = "1"
+                });
             Service = new PetService(
                 PetRepository.Object,
                 UserPets.Object,
