@@ -784,21 +784,33 @@ public class AuthService : IAuthService
 
     private LoginResponse CreateLoginResponse(User user, string roleName)
     {
+        var vietnamNow = GetVietnamNow();
+
         var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.UserId.ToString()),
-            new(ClaimTypes.Email, user.Email),
-            new(ClaimTypes.Role, roleName)
-        };
+    {
+        new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
+        new Claim(ClaimTypes.Email, user.Email),
+        new Claim(ClaimTypes.Role, roleName),
+
+        new Claim(
+            JwtRegisteredClaimNames.Iat,
+            new DateTimeOffset(vietnamNow).ToUnixTimeSeconds().ToString(),
+            ClaimValueTypes.Integer64)
+    };
 
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var credentials = new SigningCredentials(
+            key,
+            SecurityAlgorithms.HmacSha256);
+
         var token = new JwtSecurityToken(
             issuer: _configuration["Jwt:Issuer"],
             audience: _configuration["Jwt:Audience"],
             claims: claims,
-            expires: DateTime.UtcNow.AddDays(7),
+            notBefore: vietnamNow,
+            expires: vietnamNow.AddDays(7),
             signingCredentials: credentials);
 
         return new LoginResponse
@@ -808,6 +820,15 @@ public class AuthService : IAuthService
             Role = roleName,
             Jwt = new JwtSecurityTokenHandler().WriteToken(token)
         };
+    }
+    private static DateTime GetVietnamNow()
+    {
+        var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById(
+            OperatingSystem.IsWindows()
+                ? "SE Asia Standard Time"
+                : "Asia/Ho_Chi_Minh");
+
+        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
     }
 
     // Đăng ký: tạo user pending trước khi xác thực OTP.
@@ -1021,8 +1042,7 @@ public class AuthService : IAuthService
 
         if (user == null)
             throw new NotFoundException("User not found");
-
-        user.LastLogoutAt = DateTime.UtcNow;
+        user.LastLogoutAt = GetVietnamNow();
 
         _userRepository.Update(user);
         await _userRepository.SaveAsync();

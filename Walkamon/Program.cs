@@ -1,4 +1,4 @@
-using BLL.Interfaces;
+﻿using BLL.Interfaces;
 using BLL.Options;
 using BLL.Service;
 using BLL.Validations;
@@ -19,9 +19,14 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Net;
+using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
-
+using Walkamon.BackgroundServices;
+using Walkamon.Health;
+using Walkamon.Hubs;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 var builder = WebApplication.CreateBuilder(args);
 var timePresentationOptions = builder.Configuration
     .GetSection(TimePresentationOptions.SectionName)
@@ -320,12 +325,61 @@ builder.Services
             OnMessageReceived = context =>
             {
                 var accessToken = context.Request.Query["access_token"];
-                if (!string.IsNullOrEmpty(accessToken) &&
-                    (context.HttpContext.Request.Path.StartsWithSegments("/hubs/pvp-sprint") ||
-                     context.HttpContext.Request.Path.StartsWithSegments("/hubs/presence")))
-                    context.Token = accessToken;
+
+              if (!string.IsNullOrEmpty(accessToken) &&
+    (context.HttpContext.Request.Path.StartsWithSegments("/hubs/pvp-sprint") ||
+     context.HttpContext.Request.Path.StartsWithSegments("/hubs/presence")))
+{
+    context.Token = accessToken;
+}
+
                 return Task.CompletedTask;
             },
+
+            OnTokenValidated = async context =>
+            {
+                var userRepository = context.HttpContext.RequestServices
+                    .GetRequiredService<IUserRepository>();
+
+                var userId = Guid.Parse(
+                    context.Principal!.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+
+                var user = await userRepository.GetByIdAsync(userId);
+
+                if (user == null)
+                {
+                    context.Fail("User not found");
+                    return;
+                }
+
+                var iatClaim = context.Principal.FindFirst(JwtRegisteredClaimNames.Iat);
+
+                if (iatClaim == null)
+                {
+                    context.Fail("Invalid token");
+                    return;
+                }
+
+                
+                var issuedAt = DateTimeOffset
+                    .FromUnixTimeSeconds(long.Parse(iatClaim.Value))
+                    .DateTime;
+
+              
+                var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById(
+                    OperatingSystem.IsWindows()
+                        ? "SE Asia Standard Time"
+                        : "Asia/Ho_Chi_Minh");
+
+                issuedAt = TimeZoneInfo.ConvertTimeFromUtc(issuedAt, vietnamTimeZone);
+
+                if (user.LastLogoutAt.HasValue &&
+                    issuedAt <= user.LastLogoutAt.Value)
+                {
+                    context.Fail("Token has been revoked");
+                }
+            },
+
             OnChallenge = async context =>
             {
                 context.HandleResponse();
