@@ -150,48 +150,46 @@ namespace BLL.Service
     Guid userId,
     DateOnly? date)
         {
-            var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+             var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
 
-            var vietnamNow = TimeZoneInfo.ConvertTimeFromUtc(
-                DateTime.UtcNow,
-                vietnamTimeZone);
+   var vietnamNow = TimeZoneInfo.ConvertTimeFromUtc(
+       DateTime.UtcNow,
+       vietnamTimeZone);
 
-            var selectedDate = date ?? DateOnly.FromDateTime(vietnamNow);
+   var selectedDate = date ?? DateOnly.FromDateTime(vietnamNow);
 
-            var firstDay = new DateOnly(
-                selectedDate.Year,
-                selectedDate.Month,
-                1);
+   var firstDay = new DateOnly(selectedDate.Year, 1, 1);
+   var lastDay = new DateOnly(selectedDate.Year, 12, 31);
 
-            var lastDay = firstDay
-                .AddMonths(1)
-                .AddDays(-1);
+   var steps = await _dailyStepRepository.GetByDateRangeAsync(
+       userId,
+       firstDay,
+       lastDay);
 
-            var steps = await _dailyStepRepository.GetByDateRangeAsync(
-                userId,
-                firstDay,
-                lastDay);
+   var monthlySteps = steps
+       .GroupBy(x => x.StepDate.Month)
+       .ToDictionary(
+           g => g.Key,
+           g => g.Sum(x => x.StepCount));
 
-            var result = new List<DailyStepStatisticItemDto>();
+   var result = new List<DailyStepStatisticItemDto>();
 
-            for (var day = firstDay; day <= lastDay; day = day.AddDays(1))
-            {
-                var step = steps.FirstOrDefault(x => x.StepDate == day);
+   for (int month = 1; month <= 12; month++)
+   {
+       result.Add(new DailyStepStatisticItemDto
+       {
+           Label = month.ToString(), 
+           StepCount = monthlySteps.GetValueOrDefault(month, 0)
+       });
+   }
 
-                result.Add(new DailyStepStatisticItemDto
-                {
-                    Label = day.Day.ToString(),
-                    StepCount = step?.StepCount ?? 0
-                });
-            }
-
-            return new DailyStepStatisticDto
-            {
-                Type = "Monthly",
-                FromDate = firstDay,
-                ToDate = lastDay,
-                Data = result
-            };
+   return new DailyStepStatisticDto
+   {
+       Type = "Monthly",
+       FromDate = firstDay,
+       ToDate = lastDay,
+       Data = result
+   };
         }
 
         public async Task<LeaderboardDto> GetLeaderboardAsync(
