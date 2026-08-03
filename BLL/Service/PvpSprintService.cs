@@ -29,10 +29,14 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private static readonly string[] Results = ["win", "lose", "draw"];
     private readonly WalkamonContext _context;
     private readonly bool _realtimeEnabled;
+    private readonly bool _adaptiveMatchmakingEnabled;
+    private readonly bool _adaptiveMatchmakingShadowMode;
     private readonly IValidatedStepService _validatedStepService;
     private readonly IPvpPresenceTracker _presenceTracker;
     private readonly ILogger<PvpSprintService> _logger;
     private readonly TimePresentationSerializer _timePresentationSerializer;
+    private readonly PvpMatchmakingPolicyProvider _matchmakingPolicyProvider;
+    private readonly PvpBotCalibrationService _botCalibrationService;
 
     public PvpSprintService(
         WalkamonContext context,
@@ -40,16 +44,23 @@ public sealed partial class PvpSprintService : IPvpSprintService
         IValidatedStepService validatedStepService,
         ILogger<PvpSprintService> logger,
         TimePresentationSerializer? timePresentationSerializer = null,
-        IPvpPresenceTracker? presenceTracker = null)
+        IPvpPresenceTracker? presenceTracker = null,
+        IOptions<PvpMatchmakingOptions>? matchmakingOptions = null,
+        PvpMatchmakingPolicyProvider? matchmakingPolicyProvider = null,
+        PvpBotCalibrationService? botCalibrationService = null)
     {
         _context = context;
         _realtimeEnabled = realtimeOptions.Value.Enabled;
+        _adaptiveMatchmakingEnabled = matchmakingOptions?.Value.Enabled ?? true;
+        _adaptiveMatchmakingShadowMode = matchmakingOptions?.Value.ShadowMode ?? false;
         _validatedStepService = validatedStepService;
         _presenceTracker = presenceTracker ?? new PvpPresenceTracker();
         _logger = logger;
         _timePresentationSerializer = timePresentationSerializer
             ?? new TimePresentationSerializer(
                 Microsoft.Extensions.Options.Options.Create(new TimePresentationOptions()));
+        _matchmakingPolicyProvider = matchmakingPolicyProvider ?? new PvpMatchmakingPolicyProvider(context);
+        _botCalibrationService = botCalibrationService ?? new PvpBotCalibrationService();
     }
 
     public async Task<PvpInviteResponse> CreateInviteAsync(Guid userId, CreatePvpSprintInviteRequest request)
@@ -189,6 +200,9 @@ public sealed partial class PvpSprintService : IPvpSprintService
     {
         if (!string.Equals(request.MatchTypeCode, "ranked", StringComparison.OrdinalIgnoreCase))
             throw new BadRequestException("Only ranked matchmaking is available.");
+        if (!_adaptiveMatchmakingEnabled || _adaptiveMatchmakingShadowMode)
+            return await JoinLegacyMatchmakingAsync(userId);
+
         return await _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
         {
         var now = DateTime.UtcNow;
@@ -196,18 +210,74 @@ public sealed partial class PvpSprintService : IPvpSprintService
         await EnsureNoActivityAsync(userId);
         var profile = await EnsureProfileAsync(userId, now);
         await EnsureRewardMatrixAsync("ranked");
-        var waiting = await _context.MatchmakingQueues.Where(x => x.StatusCode == "waiting" && x.UserId != userId)
+        var policy = await _matchmakingPolicyProvider.GetActivePolicyAsync();
+        var userPower = await BuildUserPowerAsync(userId, policy, now);
+        var requiresRelief = IsReliefEligible(profile, policy);
+
+        if (requiresRelief)
+        {
+            var botDecision = await BuildBotDecisionAsync(
+                userId, profile, userPower, policy, now, now, forceRelief: true);
+            if (botDecision != null)
+            {
+                var reliefMatch = await CreateMatchAsync(
+                    userId, null, botDecision.BotProfile, "ranked", "bot", now, botDecision);
+                AddMatchActivity(userId, reliefMatch, now);
+                AddMatchOutbox(reliefMatch, "match.created");
+                await _context.SaveChangesAsync();
+                return new PvpMatchmakingStatusResponse
+                {
+                    ActivityType = "match_countdown",
+                    StatusCode = "countdown",
+                    MatchId = reliefMatch.MatchId,
+                    ServerTime = now
+                };
+            }
+        }
+
+        var waiting = await _context.MatchmakingQueues
+            .Where(x => x.StatusCode == "waiting" && !x.RequiresRelief && x.UserId != userId)
             .OrderBy(x => x.QueuedAt).ToListAsync();
         MatchmakingQueue? candidate = null;
+        ParticipantPowerSnapshot? candidatePower = null;
+        PvpMatchQuality? selectedQuality = null;
         foreach (var queue in waiting)
         {
+            if (!await IsActiveUserAsync(queue.UserId)) continue;
             var candidateProfile = await EnsureProfileAsync(queue.UserId, now);
-            if (Math.Abs(candidateProfile.Mmr - profile.Mmr) <= 100 && await IsActiveUserAsync(queue.UserId)) { candidate = queue; break; }
+            var power = await BuildUserPowerAsync(queue.UserId, policy, now);
+            var quality = PvpMatchQualityEvaluator.Evaluate(
+                profile.Mmr, userPower.Power, TimeSpan.Zero,
+                candidateProfile.Mmr, power.Power, now - queue.QueuedAt,
+                policy);
+            if (!quality.IsEligible) continue;
+            if (selectedQuality == null || quality.QualityCost < selectedQuality.Value.QualityCost)
+            {
+                candidate = queue;
+                candidatePower = power;
+                selectedQuality = quality;
+            }
         }
         if (candidate == null)
         {
-            _context.MatchmakingQueues.Add(new MatchmakingQueue { UserId = userId, MatchTypeCode = "ranked", StatusCode = "waiting", QueuedAt = now });
-            AddActivity(userId, "queue_waiting", userId, now.AddSeconds(15), now);
+            var fallbackAt = requiresRelief ? now : now.AddSeconds(policy.BotFallbackSeconds);
+            _context.MatchmakingQueues.Add(new MatchmakingQueue
+            {
+                UserId = userId,
+                MatchTypeCode = "ranked",
+                StatusCode = "waiting",
+                QueuedAt = now,
+                BotFallbackAt = fallbackAt,
+                MmrSnapshot = profile.Mmr,
+                DailyStepsSnapshot = userPower.Power.DailyEligibleSteps,
+                BasePaceSnapshot = userPower.Power.BasePaceMilliStepsPerSecond,
+                ExpectedDistanceUnits = userPower.Power.ExpectedDistanceUnits,
+                ExpectedSpeedBps = userPower.Power.ExpectedSpeedBps,
+                PolicyVersion = policy.PolicyVersion,
+                RequiresRelief = requiresRelief,
+                PowerSnapshotAt = now
+            });
+            AddActivity(userId, "queue_waiting", userId, fallbackAt, now);
             AddOutbox("user", userId, "queue.waiting", new { queuedAt = now });
             await _context.SaveChangesAsync();
             return new PvpMatchmakingStatusResponse
@@ -215,14 +285,20 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 ActivityType = "queue_waiting",
                 StatusCode = "waiting",
                 QueuedAt = now,
-                BotFallbackAt = now.AddSeconds(15),
+                BotFallbackAt = fallbackAt,
                 ServerTime = now
             };
         }
 
         _context.MatchmakingQueues.Remove(candidate);
         RemoveActivity(candidate.UserId);
-        var match = await CreateMatchAsync(userId, candidate.UserId, null, "ranked", "matchmaking", now);
+        var humanDecision = new PvpMatchmakingDecision(
+            policy,
+            userPower,
+            candidatePower!,
+            "human_quality_match",
+            HumanQuality: selectedQuality);
+        var match = await CreateMatchAsync(userId, candidate.UserId, null, "ranked", "matchmaking", now, humanDecision);
         AddMatchActivity(userId, match, now);
         AddMatchActivity(candidate.UserId, match, now);
         AddMatchOutbox(match, "match.created");
@@ -236,6 +312,59 @@ public sealed partial class PvpSprintService : IPvpSprintService
         };
         });
     }
+
+    private Task<PvpMatchmakingStatusResponse> JoinLegacyMatchmakingAsync(Guid userId) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+        {
+            var now = DateTime.UtcNow;
+            await EnsureActiveUserAsync(userId);
+            await EnsureNoActivityAsync(userId);
+            var profile = await EnsureProfileAsync(userId, now);
+            await EnsureRewardMatrixAsync("ranked");
+            var waiting = await _context.MatchmakingQueues
+                .Where(x => x.StatusCode == "waiting" && x.UserId != userId)
+                .OrderBy(x => x.QueuedAt)
+                .ToListAsync();
+            MatchmakingQueue? candidate = null;
+            foreach (var queue in waiting)
+            {
+                if (!await IsActiveUserAsync(queue.UserId)) continue;
+                var candidateProfile = await EnsureProfileAsync(queue.UserId, now);
+                if (Math.Abs(candidateProfile.Mmr - profile.Mmr) <= 100)
+                {
+                    candidate = queue;
+                    break;
+                }
+            }
+            if (candidate == null)
+            {
+                _context.MatchmakingQueues.Add(new MatchmakingQueue
+                {
+                    UserId = userId, MatchTypeCode = "ranked", StatusCode = "waiting",
+                    QueuedAt = now, BotFallbackAt = now.AddSeconds(15)
+                });
+                AddActivity(userId, "queue_waiting", userId, now.AddSeconds(15), now);
+                AddOutbox("user", userId, "queue.waiting", new { queuedAt = now });
+                await _context.SaveChangesAsync();
+                return new PvpMatchmakingStatusResponse
+                {
+                    ActivityType = "queue_waiting", StatusCode = "waiting", QueuedAt = now,
+                    BotFallbackAt = now.AddSeconds(15), ServerTime = now
+                };
+            }
+            _context.MatchmakingQueues.Remove(candidate);
+            RemoveActivity(candidate.UserId);
+            var match = await CreateMatchAsync(userId, candidate.UserId, null, "ranked", "matchmaking", now);
+            AddMatchActivity(userId, match, now);
+            AddMatchActivity(candidate.UserId, match, now);
+            AddMatchOutbox(match, "match.created");
+            await _context.SaveChangesAsync();
+            return new PvpMatchmakingStatusResponse
+            {
+                ActivityType = "match_countdown", StatusCode = "countdown", MatchId = match.MatchId,
+                ServerTime = now
+            };
+        });
 
     public async Task<PvpMatchmakingStatusResponse> GetMatchmakingStatusAsync(Guid userId)
     {
@@ -257,7 +386,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 ActivityType = activity.ActivityType,
                 StatusCode = "waiting",
                 QueuedAt = AsUtc(queue.QueuedAt),
-                BotFallbackAt = AsUtc(queue.QueuedAt.AddSeconds(15)),
+                BotFallbackAt = AsUtc(queue.BotFallbackAt ?? queue.QueuedAt.AddSeconds(15)),
                 ServerTime = now
             };
         }
@@ -331,25 +460,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             match.WinnerUserId = opponent.UserId;
 
             if (match.MatchTypeCode == "ranked")
-            {
-                var first = players[0];
-                var second = players[1];
-                var firstDelta = PvpRatingCalculator.CalculateDelta(
-                    first.MmrBefore,
-                    second.MmrBefore,
-                    first.ResultCode!,
-                    match.RatingK,
-                    match.RatingDivisor);
-                first.MmrDelta = firstDelta;
-                second.MmrDelta = -firstDelta;
-
-                foreach (var player in players.Where(x => x.UserId.HasValue))
-                {
-                    var profile = await EnsureProfileAsync(player.UserId!.Value, now);
-                    profile.Mmr += player.MmrDelta;
-                    profile.UpdatedAt = now;
-                }
-            }
+                await ApplyRankedRatingAsync(match, players, now, CancellationToken.None);
             else
             {
                 foreach (var player in players)
@@ -423,6 +534,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 return ToReadyResponse(match, now);
 
             actor.IsReady = true;
+            actor.ReadyAt ??= now;
             var allReady = match.PvpMatchPlayers.Count == 2 && match.PvpMatchPlayers.All(x => x.IsReady);
             if (allReady)
             {
@@ -595,7 +707,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             await ProcessLifecycleRecordAsync("invite", inviteId, () => ProcessExpiredInviteAsync(inviteId, cancellationToken));
 
         var queueUserIds = await _context.MatchmakingQueues.AsNoTracking()
-            .Where(x => x.StatusCode == "waiting" && x.QueuedAt <= now.AddSeconds(-15))
+            .Where(x => x.StatusCode == "waiting")
             .OrderBy(x => x.QueuedAt)
             .Select(x => x.UserId)
             .Take(batchSize)
@@ -714,6 +826,113 @@ public sealed partial class PvpSprintService : IPvpSprintService
         });
 
     private Task ProcessDueQueueAsync(Guid userId, CancellationToken cancellationToken) =>
+        !_adaptiveMatchmakingEnabled || _adaptiveMatchmakingShadowMode
+            ? ProcessDueQueueLegacyAsync(userId, cancellationToken)
+            : ProcessDueQueueAdaptiveAsync(userId, cancellationToken);
+
+    private Task ProcessDueQueueAdaptiveAsync(Guid userId, CancellationToken cancellationToken) =>
+        _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+        {
+            var now = DateTime.UtcNow;
+            var queue = await _context.MatchmakingQueues
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.StatusCode == "waiting", cancellationToken);
+            if (queue == null) return;
+            if (!await IsActiveUserAsync(queue.UserId))
+            {
+                _context.MatchmakingQueues.Remove(queue);
+                RemoveActivity(queue.UserId);
+                await _context.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            var playerProfile = await EnsureProfileAsync(queue.UserId, now);
+            var policy = await _matchmakingPolicyProvider.GetActivePolicyAsync(cancellationToken);
+            var playerPower = await BuildUserPowerAsync(queue.UserId, policy, now, cancellationToken);
+            var candidates = await _context.MatchmakingQueues
+                .Where(x => x.StatusCode == "waiting" && !x.RequiresRelief && x.UserId != queue.UserId)
+                .OrderBy(x => x.QueuedAt)
+                .ToListAsync(cancellationToken);
+            MatchmakingQueue? selected = null;
+            ParticipantPowerSnapshot? selectedPower = null;
+            PvpMatchQuality? selectedQuality = null;
+            foreach (var candidate in candidates)
+            {
+                if (!await IsActiveUserAsync(candidate.UserId)) continue;
+                var candidateProfile = await EnsureProfileAsync(candidate.UserId, now);
+                var candidatePower = await BuildUserPowerAsync(candidate.UserId, policy, now, cancellationToken);
+                var quality = PvpMatchQualityEvaluator.Evaluate(
+                    playerProfile.Mmr,
+                    playerPower.Power,
+                    now - queue.QueuedAt,
+                    candidateProfile.Mmr,
+                    candidatePower.Power,
+                    now - candidate.QueuedAt,
+                    policy);
+                if (!quality.IsEligible) continue;
+                if (selectedQuality == null || quality.QualityCost < selectedQuality.Value.QualityCost)
+                {
+                    selected = candidate;
+                    selectedPower = candidatePower;
+                    selectedQuality = quality;
+                }
+            }
+
+            if (selected != null)
+            {
+                _context.MatchmakingQueues.RemoveRange(queue, selected);
+                RemoveActivity(queue.UserId);
+                RemoveActivity(selected.UserId);
+                var humanDecision = new PvpMatchmakingDecision(
+                    policy,
+                    playerPower,
+                    selectedPower!,
+                    "human_quality_match",
+                    HumanQuality: selectedQuality);
+                var humanMatch = await CreateMatchAsync(
+                    queue.UserId,
+                    selected.UserId,
+                    null,
+                    "ranked",
+                    "matchmaking",
+                    now,
+                    humanDecision);
+                AddMatchActivity(queue.UserId, humanMatch, now);
+                AddMatchActivity(selected.UserId, humanMatch, now);
+                AddMatchOutbox(humanMatch, "match.created");
+                await _context.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            if (queue.BotFallbackAt.HasValue && queue.BotFallbackAt > now)
+                return;
+
+            var botDecision = await BuildBotDecisionAsync(
+                queue.UserId,
+                playerProfile,
+                playerPower,
+                policy,
+                queue.QueuedAt,
+                now,
+                queue.RequiresRelief,
+                cancellationToken);
+            if (botDecision == null) return;
+
+            _context.MatchmakingQueues.Remove(queue);
+            RemoveActivity(queue.UserId);
+            var match = await CreateMatchAsync(
+                queue.UserId,
+                null,
+                botDecision.BotProfile,
+                "ranked",
+                "bot",
+                now,
+                botDecision);
+            AddMatchActivity(queue.UserId, match, now);
+            AddMatchOutbox(match, "match.created");
+            await _context.SaveChangesAsync(cancellationToken);
+        });
+
+    private Task ProcessDueQueueLegacyAsync(Guid userId, CancellationToken cancellationToken) =>
         _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
         {
             var now = DateTime.UtcNow;
@@ -768,7 +987,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
 
             match.StatusCode = "running";
             match.StartedAt = now;
-            match.EndedAt = now.AddSeconds(30);
+            match.EndedAt = now.AddSeconds(match.MatchDurationSeconds);
             if (match.ScoringModeCode == DailyPowerScoringMode)
                 await SnapshotDailyPowerAsync(match, now, cancellationToken);
             if (_realtimeEnabled) await ApplySpiritPassivesAsync(match, now, cancellationToken);
@@ -897,22 +1116,16 @@ public sealed partial class PvpSprintService : IPvpSprintService
         else { first.ResultCode = "lose"; second.ResultCode = "win"; }
         var winner = players.SingleOrDefault(x => x.ResultCode == "win");
         match.WinnerUserId = winner?.UserId;
+        match.FinishReasonCode = "normal_completion";
+        match.ForfeitedByUserId = null;
         if (match.MatchTypeCode == "ranked")
-        {
-            var delta = PvpRatingCalculator.CalculateDelta(first.MmrBefore, second.MmrBefore, first.ResultCode!, match.RatingK, match.RatingDivisor);
-            first.MmrDelta = delta; second.MmrDelta = -delta;
-            foreach (var player in players.Where(x => x.UserId.HasValue))
-            {
-                var profile = await EnsureProfileAsync(player.UserId!.Value, now);
-                profile.Mmr += player.MmrDelta;
-                profile.UpdatedAt = now;
-            }
-        }
+            await ApplyRankedRatingAsync(match, players, now, cancellationToken);
+        else
+            foreach (var player in players) player.MmrDelta = 0;
+        await ApplyCompletionProfileStateAsync(match, players, now);
         foreach (var player in players.Where(x => x.UserId.HasValue))
             await CreateEntitlementAsync(match, player, rewardSnapshots, now);
         match.StatusCode = "finished";
-        match.FinishReasonCode = "normal_completion";
-        match.ForfeitedByUserId = null;
         match.ResolvedAt = now;
         foreach (var player in players.Where(x => x.UserId.HasValue)) RemoveActivity(player.UserId!.Value);
         foreach (var session in await _context.PvpStepSessions
@@ -925,6 +1138,111 @@ public sealed partial class PvpSprintService : IPvpSprintService
         AddMatchOutbox(match, "match.finished", notifyUsers: true);
     }
 
+    private async Task ApplyRankedRatingAsync(
+        PvpMatch match,
+        IReadOnlyList<PvpMatchPlayer> players,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var bot = players.SingleOrDefault(x => x.ParticipantTypeCode == "bot");
+        if (bot != null && string.Equals(match.RatingPolicyCode, "bot_tier_v1", StringComparison.Ordinal))
+        {
+            var human = players.Single(x => x.UserId.HasValue);
+            var proposed = PvpBotRatingPolicy.CalculateDelta(
+                human.ResultCode!,
+                match.BotWinMmrDelta,
+                match.BotDrawMmrDelta,
+                match.BotLossMmrDelta);
+            var recentPositiveDelta = await _context.PvpMatchPlayers.AsNoTracking()
+                .Where(x => x.UserId == human.UserId &&
+                            x.MatchId != match.MatchId &&
+                            x.Match.MatchTypeCode == "ranked" &&
+                            x.Match.SourceCode == "bot" &&
+                            x.Match.StatusCode == "finished")
+                .OrderByDescending(x => x.Match.ResolvedAt ?? x.Match.CreatedAt)
+                .Take(match.BotRatingWindow)
+                .Select(x => x.MmrDelta)
+                .Where(x => x > 0)
+                .SumAsync(cancellationToken);
+            human.MmrDelta = PvpBotRatingPolicy.ApplyPositiveRollingCap(
+                proposed,
+                recentPositiveDelta,
+                match.MaxPositiveBotMmrInWindow);
+            bot.MmrDelta = 0;
+            var profile = await EnsureProfileAsync(human.UserId!.Value, now);
+            profile.Mmr += human.MmrDelta;
+            profile.UpdatedAt = now;
+            return;
+        }
+
+        var first = players[0];
+        var second = players[1];
+        var firstDelta = PvpRatingCalculator.CalculateDelta(
+            first.MmrBefore,
+            second.MmrBefore,
+            first.ResultCode!,
+            match.RatingK,
+            match.RatingDivisor);
+        first.MmrDelta = firstDelta;
+        second.MmrDelta = -firstDelta;
+        foreach (var player in players.Where(x => x.UserId.HasValue))
+        {
+            var profile = await EnsureProfileAsync(player.UserId!.Value, now);
+            profile.Mmr += player.MmrDelta;
+            profile.UpdatedAt = now;
+        }
+    }
+
+    private async Task ApplyCompletionProfileStateAsync(
+        PvpMatch match,
+        IReadOnlyCollection<PvpMatchPlayer> players,
+        DateTime now)
+    {
+        if (match.ProfileStateAppliedAt.HasValue) return;
+
+        foreach (var player in players.Where(x => x.UserId.HasValue))
+        {
+            var profile = await EnsureProfileAsync(player.UserId!.Value, now);
+            var decision = PvpLossStreakPolicy.Evaluate(
+                profile.ConsecutiveValidRankedLosses,
+                new PvpCompletionEvidence(
+                    match.MatchTypeCode == "ranked",
+                    match.IsReliefMatch,
+                    match.FinishReasonCode == "normal_completion",
+                    player.IsReady && player.ReadyAt.HasValue,
+                    player.RealtimeJoinedAt.HasValue,
+                    player.ResultCode!));
+            player.StreakEligibilityCode = decision.EligibilityCode;
+            if (!decision.IsEligible) continue;
+
+            profile.ConsecutiveValidRankedLosses = checked((short)decision.NewLossStreak);
+            if (decision.ResetByRelief)
+            {
+                profile.CompletedRankedMatchesSinceRelief = 0;
+                profile.LastReliefCompletedAt = now;
+            }
+            else
+            {
+                profile.CompletedRankedMatchesSinceRelief++;
+            }
+
+            if (match.SourceCode == "bot")
+            {
+                profile.LastBotDifficultyCode = match.BotDifficultyCode;
+                profile.ConsecutiveHardBotCount = string.Equals(match.BotDifficultyCode, "hard", StringComparison.Ordinal)
+                    ? (byte)1
+                    : (byte)0;
+            }
+            else
+            {
+                profile.ConsecutiveHardBotCount = 0;
+            }
+            profile.UpdatedAt = now;
+        }
+
+        match.ProfileStateAppliedAt = now;
+    }
+
     private Task CreateEntitlementAsync(
         PvpMatch match,
         PvpMatchPlayer player,
@@ -932,6 +1250,8 @@ public sealed partial class PvpSprintService : IPvpSprintService
         DateTime now)
     {
         var snapshot = snapshots.Single(x => x.ResultCode == player.ResultCode);
+        if (snapshot.WalletAmount <= 0 && snapshot.Items.All(x => x.Quantity <= 0))
+            return Task.CompletedTask;
         var entitlement = new PvpMatchRewardEntitlement { MatchRewardEntitlementId = Guid.NewGuid(), MatchId = match.MatchId, UserId = player.UserId!.Value, ResultCode = player.ResultCode!, WalletAmount = snapshot.WalletAmount, CreatedAt = now };
         _context.PvpMatchRewardEntitlements.Add(entitlement);
         foreach (var item in snapshot.Items)
@@ -939,9 +1259,18 @@ public sealed partial class PvpSprintService : IPvpSprintService
         return Task.CompletedTask;
     }
 
-    private async Task<PvpMatch> CreateMatchAsync(Guid firstUserId, Guid? secondUserId, PvpBotProfile? bot, string matchType, string source, DateTime now)
+    private async Task<PvpMatch> CreateMatchAsync(
+        Guid firstUserId,
+        Guid? secondUserId,
+        PvpBotProfile? bot,
+        string matchType,
+        string source,
+        DateTime now,
+        PvpMatchmakingDecision? decision = null)
     {
         var firstProfile = await EnsureProfileAsync(firstUserId, now);
+        var policy = decision?.Policy;
+        var botDifficulty = decision?.BotDifficulty;
         var match = new PvpMatch
         {
             MatchId = Guid.NewGuid(),
@@ -959,12 +1288,32 @@ public sealed partial class PvpSprintService : IPvpSprintService
             ScoringModeCode = DailyPowerScoringMode,
             DailyStepPowerCap = PvpGameplayCalculator.DefaultDailyStepPowerCap,
             BasePaceMinMilliStepsPerSecond = PvpGameplayCalculator.DefaultMinimumPaceMilliStepsPerSecond,
-            BasePaceMaxMilliStepsPerSecond = PvpGameplayCalculator.DefaultMaximumPaceMilliStepsPerSecond
+            BasePaceMaxMilliStepsPerSecond = PvpGameplayCalculator.DefaultMaximumPaceMilliStepsPerSecond,
+            MatchDurationSeconds = policy?.MatchDurationSeconds ?? 30,
+            MatchmakingPolicyVersion = policy?.PolicyVersion,
+            MatchmakingReasonCode = decision?.ReasonCode,
+            BotDifficultyCode = botDifficulty?.DifficultyCode,
+            IsReliefMatch = botDifficulty?.IsRelief ?? false,
+            RatingPolicyCode = botDifficulty != null ? "bot_tier_v1" : "human_elo",
+            SelectionRollBps = botDifficulty == null ? null : checked((short)botDifficulty.Value.SelectionRollBps),
+            ExpectedFirstDistanceUnits = decision?.FirstPower.Power.ExpectedDistanceUnits,
+            ExpectedSecondDistanceUnits = decision?.SecondPower.Power.ExpectedDistanceUnits,
+            ExpectedGapBps = decision == null ? null : checked((short)PvpMatchQualityEvaluator.CalculatePowerGapBps(
+                decision.FirstPower.Power.ExpectedDistanceUnits,
+                decision.SecondPower.Power.ExpectedDistanceUnits)),
+            BotRewardMultiplierBps = decision?.RewardMultiplierBps ?? 10000,
+            BotWinMmrDelta = decision?.BotWinMmrDelta ?? 0,
+            BotDrawMmrDelta = decision?.BotDrawMmrDelta ?? 0,
+            BotLossMmrDelta = decision?.BotLossMmrDelta ?? 0,
+            BotRatingWindow = policy?.BotRatingWindow ?? 20,
+            MaxPositiveBotMmrInWindow = policy?.MaxPositiveBotMmrInWindow ?? 8
         };
         _context.PvpMatches.Add(match);
         await SnapshotMatchRewardsAsync(match, now);
         var firstPet = await GetPetSnapshotAsync(firstUserId);
         var firstPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = firstUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = firstPet.Level, PetIdSnapshot = firstPet.PetId, PetNameSnapshot = firstPet.Name, PetStageNoSnapshot = firstPet.StageNo, SpiritAffinityCode = firstPet.AffinityCode, Score = 0, MmrBefore = firstProfile.Mmr, BasePaceMilliStepsPerSecond = match.BasePaceMinMilliStepsPerSecond, IsReady = false, JoinedAt = now };
+        if (decision != null)
+            ApplyParticipantPowerSnapshot(firstPlayer, decision.FirstPower);
         _context.PvpMatchPlayers.Add(firstPlayer);
         await SnapshotPlayerLoadoutAsync(match, firstPlayer, firstUserId, now);
         if (secondUserId.HasValue)
@@ -972,6 +1321,8 @@ public sealed partial class PvpSprintService : IPvpSprintService
             var secondProfile = await EnsureProfileAsync(secondUserId.Value, now);
             var secondPet = await GetPetSnapshotAsync(secondUserId.Value);
             var secondPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = secondUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = secondPet.Level, PetIdSnapshot = secondPet.PetId, PetNameSnapshot = secondPet.Name, PetStageNoSnapshot = secondPet.StageNo, SpiritAffinityCode = secondPet.AffinityCode, Score = 0, MmrBefore = secondProfile.Mmr, BasePaceMilliStepsPerSecond = match.BasePaceMinMilliStepsPerSecond, IsReady = false, JoinedAt = now };
+            if (decision != null)
+                ApplyParticipantPowerSnapshot(secondPlayer, decision.SecondPower);
             _context.PvpMatchPlayers.Add(secondPlayer);
             await SnapshotPlayerLoadoutAsync(match, secondPlayer, secondUserId.Value, now);
         }
@@ -982,12 +1333,33 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 bot.StepsPerSecond * 1000m,
                 MidpointRounding.AwayFromZero));
             var botPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, BotProfileId = bot.BotProfileId, ParticipantTypeCode = "bot", SpiritAffinityCode = botAffinity, PetStageNoSnapshot = NormalizePetStageNo(botAffinity, bot.PetStageNo), StepsAtMatch = 0, PetLevelAtMatch = 1, Score = 0, MmrBefore = bot.Mmr, BasePaceMilliStepsPerSecond = botPaceMilli, IsReady = true, JoinedAt = now };
+            if (decision != null)
+            {
+                ApplyParticipantPowerSnapshot(botPlayer, decision.SecondPower);
+                botPlayer.BotMinPaceSnapshot = bot.MinPaceMilli;
+                botPlayer.BotMaxPaceSnapshot = bot.MaxPaceMilli;
+            }
             _context.PvpMatchPlayers.Add(botPlayer);
             await SnapshotBotLoadoutAsync(match, botPlayer, bot.BotProfileId, now);
         }
         AddMatchAssigned(firstUserId, match, now);
         if (secondUserId.HasValue) AddMatchAssigned(secondUserId.Value, match, now);
         return match;
+    }
+
+    private static void ApplyParticipantPowerSnapshot(
+        PvpMatchPlayer player,
+        ParticipantPowerSnapshot snapshot)
+    {
+        player.DailyEligibleStepsSnapshot = snapshot.Power.DailyEligibleSteps;
+        player.BasePaceMilliStepsPerSecond = snapshot.Power.BasePaceMilliStepsPerSecond;
+        player.ExpectedDistanceUnits = snapshot.Power.ExpectedDistanceUnits;
+        player.ExpectedSpeedBps = snapshot.Power.ExpectedSpeedBps;
+        player.ExpectedPassiveBps = snapshot.Power.ExpectedPassiveBps;
+        player.ExpectedLoadoutBps = snapshot.Power.ExpectedLoadoutBps;
+        player.PassiveRuleBonusBpsSnapshot = snapshot.PassiveRuleBonusBps;
+        player.PassiveRuleStartMinuteSnapshot = snapshot.PassiveRuleStartMinute;
+        player.PassiveRuleEndMinuteSnapshot = snapshot.PassiveRuleEndMinute;
     }
 
     private async Task SnapshotMatchRewardsAsync(PvpMatch match, DateTime now)
@@ -1007,19 +1379,26 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 MatchRewardSnapshotId = Guid.NewGuid(),
                 MatchId = match.MatchId,
                 ResultCode = rule.ResultCode,
-                WalletAmount = rule.RewardPackage.WalletAmount,
+                WalletAmount = ScaleReward(rule.RewardPackage.WalletAmount, match.BotRewardMultiplierBps),
                 CreatedAt = now
             };
             foreach (var item in rule.RewardPackage.RewardPackageItems)
+            {
+                var quantity = ScaleReward(item.Quantity, match.BotRewardMultiplierBps);
+                if (quantity <= 0) continue;
                 snapshot.Items.Add(new PvpMatchRewardSnapshotItem
                 {
                     MatchRewardSnapshotId = snapshot.MatchRewardSnapshotId,
                     ItemId = item.ItemId,
-                    Quantity = item.Quantity
+                    Quantity = quantity
                 });
+            }
             _context.PvpMatchRewardSnapshots.Add(snapshot);
         }
     }
+
+    private static int ScaleReward(int value, int multiplierBps) =>
+        checked((int)((long)Math.Max(0, value) * Math.Clamp(multiplierBps, 0, 10000) / 10000));
 
     private async Task<PvpMatch> GetMatchForUserAsync(Guid matchId, Guid userId)
     {

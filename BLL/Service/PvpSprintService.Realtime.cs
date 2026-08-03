@@ -312,7 +312,25 @@ public sealed partial class PvpSprintService
         var rules = await _context.PvpSpiritSpeedRules.AsNoTracking().Where(x => x.IsActive).ToListAsync(cancellationToken);
         foreach (var player in players)
         {
-            var rule = rules.FirstOrDefault(x => x.AffinityCode == player.SpiritAffinityCode);
+            PvpSpiritSpeedRule? rule;
+            if (player.PassiveRuleBonusBpsSnapshot.HasValue &&
+                player.PassiveRuleStartMinuteSnapshot.HasValue &&
+                player.PassiveRuleEndMinuteSnapshot.HasValue)
+            {
+                rule = new PvpSpiritSpeedRule
+                {
+                    AffinityCode = player.SpiritAffinityCode ?? "sprout",
+                    BonusBps = player.PassiveRuleBonusBpsSnapshot.Value,
+                    StartMinute = player.PassiveRuleStartMinuteSnapshot.Value,
+                    EndMinute = player.PassiveRuleEndMinuteSnapshot.Value,
+                    TimeZoneCode = "Asia/Ho_Chi_Minh",
+                    IsActive = true
+                };
+            }
+            else
+            {
+                rule = rules.FirstOrDefault(x => x.AffinityCode == player.SpiritAffinityCode);
+            }
             player.PassiveSpeedBps = rule != null && PvpGameplayCalculator.IsRuleActiveAtUtc(now, rule) ? rule.BonusBps : 0;
             if (player.PassiveSpeedBps <= 0 || !match.EndedAt.HasValue) continue;
             _context.PvpMatchEffects.Add(new PvpMatchEffect

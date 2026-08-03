@@ -74,6 +74,22 @@ public sealed class PvpSchemaIntegrationTests
                     "SELECT COUNT(*) FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID('dbo.pvp_matches') AND name='FK_pvp_matches_forfeited_user'"));
                 Assert.Equal(1, await ScalarAsync(connection,
                     "SELECT COUNT(*) FROM dbo.system_settings WHERE setting_key='utc_pet_timestamp_backfill_v1'"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.tables WHERE object_id=OBJECT_ID('dbo.pvp_matchmaking_policies')"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM dbo.pvp_matchmaking_policies WHERE policy_version=1 AND is_active=1"));
+                Assert.Equal(10, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.matchmaking_queue') AND name IN ('mmr_snapshot','daily_steps_snapshot','base_pace_snapshot','expected_distance_units','expected_speed_bps','policy_version','requires_relief','power_snapshot_at','bot_fallback_at','row_version')"));
+                Assert.Equal(6, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_player_profiles') AND name IN ('consecutive_valid_ranked_losses','completed_ranked_matches_since_relief','last_relief_completed_at','last_bot_difficulty_code','consecutive_hard_bot_count','row_version')"));
+                Assert.Equal(17, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_matches') AND name IN ('match_duration_seconds','matchmaking_policy_version','matchmaking_reason_code','bot_difficulty_code','is_relief_match','rating_policy_code','selection_roll_bps','expected_first_distance_units','expected_second_distance_units','expected_gap_bps','bot_reward_multiplier_bps','bot_win_mmr_delta','bot_draw_mmr_delta','bot_loss_mmr_delta','bot_rating_window','max_positive_bot_mmr_in_window','profile_state_applied_at')"));
+                Assert.Equal(13, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_match_players') AND name IN ('expected_distance_units','expected_speed_bps','expected_passive_bps','expected_loadout_bps','passive_rule_bonus_bps_snapshot','passive_rule_start_minute_snapshot','passive_rule_end_minute_snapshot','bot_min_pace_snapshot','bot_max_pace_snapshot','ready_at','realtime_joined_at','streak_eligibility_code','row_version')"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID('dbo.pvp_matches') AND name='FK_pvp_matches_matchmaking_policy'"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.pvp_matchmaking_policies') AND name='UX_pvp_matchmaking_policies_active' AND is_unique=1 AND has_filter=1"));
 
                 await using var duplicateAffinityCommand = connection.CreateCommand();
                 duplicateAffinityCommand.CommandText = """

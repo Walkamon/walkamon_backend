@@ -601,6 +601,16 @@ CREATE TABLE matchmaking_queue (
     status_code VARCHAR(20) NOT NULL
         CONSTRAINT DF_matchmaking_queue_status_code DEFAULT 'waiting',
     pet_level_snapshot TINYINT NULL,
+    mmr_snapshot INT NULL,
+    daily_steps_snapshot INT NULL,
+    base_pace_snapshot INT NULL,
+    expected_distance_units BIGINT NULL,
+    expected_speed_bps INT NULL,
+    policy_version INT NULL,
+    requires_relief BIT NOT NULL CONSTRAINT DF_matchmaking_queue_requires_relief DEFAULT 0,
+    power_snapshot_at DATETIME2(0) NULL,
+    bot_fallback_at DATETIME2(0) NULL,
+    row_version ROWVERSION NOT NULL,
     queued_at DATETIME2(0) NOT NULL
         CONSTRAINT DF_matchmaking_queue_queued_at DEFAULT SYSUTCDATETIME(),
     CONSTRAINT CK_matchmaking_queue_match_type_code
@@ -609,6 +619,12 @@ CREATE TABLE matchmaking_queue (
         CHECK (status_code IN ('waiting', 'matched', 'cancelled')),
     CONSTRAINT CK_matchmaking_queue_pet_level_snapshot
         CHECK (pet_level_snapshot IS NULL OR pet_level_snapshot > 0),
+    CONSTRAINT CK_matchmaking_queue_power_snapshot CHECK (
+        (daily_steps_snapshot IS NULL OR daily_steps_snapshot >= 0)
+        AND (base_pace_snapshot IS NULL OR base_pace_snapshot > 0)
+        AND (expected_distance_units IS NULL OR expected_distance_units >= 0)
+        AND (expected_speed_bps IS NULL OR expected_speed_bps BETWEEN 7500 AND 12500)
+    ),
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 GO
@@ -616,7 +632,18 @@ GO
 CREATE TABLE pvp_player_profiles (
     user_id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
     mmr INT NOT NULL CONSTRAINT DF_pvp_player_profiles_mmr DEFAULT 1000,
+    consecutive_valid_ranked_losses SMALLINT NOT NULL CONSTRAINT DF_pvp_profiles_loss_streak DEFAULT 0,
+    completed_ranked_matches_since_relief INT NOT NULL CONSTRAINT DF_pvp_profiles_since_relief DEFAULT 0,
+    last_relief_completed_at DATETIME2(0) NULL,
+    last_bot_difficulty_code VARCHAR(10) NULL,
+    consecutive_hard_bot_count TINYINT NOT NULL CONSTRAINT DF_pvp_profiles_hard_count DEFAULT 0,
+    row_version ROWVERSION NOT NULL,
     updated_at DATETIME2(0) NOT NULL CONSTRAINT DF_pvp_player_profiles_updated_at DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT CK_pvp_profiles_protection_state CHECK (
+        consecutive_valid_ranked_losses >= 0
+        AND completed_ranked_matches_since_relief >= 0
+        AND (last_bot_difficulty_code IS NULL OR last_bot_difficulty_code IN ('easy', 'fair', 'hard', 'relief'))
+    ),
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 GO
@@ -640,13 +667,122 @@ CREATE TABLE pvp_bot_profiles (
     avatar_url NVARCHAR(500) NULL,
     mmr INT NOT NULL,
     steps_per_second DECIMAL(5,2) NOT NULL,
+    difficulty_code VARCHAR(10) NOT NULL CONSTRAINT DF_pvp_bot_profiles_difficulty DEFAULT 'fair',
+    min_pace_milli INT NOT NULL CONSTRAINT DF_pvp_bot_profiles_min_pace DEFAULT 1000,
+    max_pace_milli INT NOT NULL CONSTRAINT DF_pvp_bot_profiles_max_pace DEFAULT 2500,
+    target_user_win_min_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_bot_profiles_target_min DEFAULT 4500,
+    target_user_win_max_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_bot_profiles_target_max DEFAULT 5500,
+    item_power_budget_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_bot_profiles_item_budget DEFAULT 1000,
+    profile_version INT NOT NULL CONSTRAINT DF_pvp_bot_profiles_version DEFAULT 1,
+    row_version ROWVERSION NOT NULL,
     spirit_affinity_code VARCHAR(30) NULL,
     pet_stage_no TINYINT NOT NULL CONSTRAINT DF_pvp_bot_profiles_pet_stage DEFAULT 1,
     is_active BIT NOT NULL CONSTRAINT DF_pvp_bot_profiles_active DEFAULT 1,
     created_at DATETIME2(0) NOT NULL CONSTRAINT DF_pvp_bot_profiles_created_at DEFAULT SYSUTCDATETIME(),
     updated_at DATETIME2(0) NOT NULL CONSTRAINT DF_pvp_bot_profiles_updated_at DEFAULT SYSUTCDATETIME(),
-    CONSTRAINT CK_pvp_bot_profiles_pace CHECK (steps_per_second > 0)
+    CONSTRAINT CK_pvp_bot_profiles_pace CHECK (
+        steps_per_second > 0
+        AND min_pace_milli > 0
+        AND max_pace_milli >= min_pace_milli
+    ),
+    CONSTRAINT CK_pvp_bot_profiles_difficulty CHECK (difficulty_code IN ('easy', 'fair', 'hard', 'relief')),
+    CONSTRAINT CK_pvp_bot_profiles_targets CHECK (
+        target_user_win_min_bps BETWEEN 0 AND 10000
+        AND target_user_win_max_bps BETWEEN target_user_win_min_bps AND 10000
+        AND item_power_budget_bps BETWEEN 0 AND 10000
+    )
 );
+GO
+
+CREATE TABLE pvp_matchmaking_policies (
+    policy_version INT NOT NULL PRIMARY KEY,
+    is_active BIT NOT NULL,
+    match_duration_seconds TINYINT NOT NULL CONSTRAINT DF_pvp_policy_duration DEFAULT 30,
+    bot_fallback_seconds TINYINT NOT NULL CONSTRAINT DF_pvp_policy_bot_fallback DEFAULT 15,
+    stage1_mmr_gap SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s1_mmr DEFAULT 75,
+    stage1_power_gap_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s1_power DEFAULT 800,
+    stage1_pace_ratio_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s1_pace DEFAULT 11000,
+    stage2_mmr_gap SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s2_mmr DEFAULT 100,
+    stage2_power_gap_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s2_power DEFAULT 1200,
+    stage2_pace_ratio_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s2_pace DEFAULT 11500,
+    stage3_mmr_gap SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s3_mmr DEFAULT 150,
+    stage3_power_gap_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s3_power DEFAULT 1500,
+    stage3_pace_ratio_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s3_pace DEFAULT 12000,
+    hard_mmr_gap SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_hard_mmr DEFAULT 250,
+    hard_power_gap_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_hard_power DEFAULT 2000,
+    hard_pace_ratio_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_hard_pace DEFAULT 12500,
+    streak01_easy_weight_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_01_easy DEFAULT 2000,
+    streak01_fair_weight_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_01_fair DEFAULT 5000,
+    streak01_hard_weight_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_01_hard DEFAULT 3000,
+    streak23_easy_weight_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_23_easy DEFAULT 4500,
+    streak23_fair_weight_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_23_fair DEFAULT 4500,
+    streak23_hard_weight_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_23_hard DEFAULT 1000,
+    streak4_easy_weight_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_4_easy DEFAULT 7000,
+    streak4_fair_weight_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_4_fair DEFAULT 3000,
+    streak4_hard_weight_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_4_hard DEFAULT 0,
+    relief_loss_threshold TINYINT NOT NULL CONSTRAINT DF_pvp_policy_relief_losses DEFAULT 5,
+    relief_target_user_win_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_relief_target DEFAULT 8200,
+    easy_target_user_win_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_easy_target DEFAULT 8200,
+    fair_target_user_win_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_fair_target DEFAULT 5000,
+    hard_target_user_win_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_hard_target DEFAULT 3000,
+    bot_history_window TINYINT NOT NULL CONSTRAINT DF_pvp_policy_bot_window DEFAULT 10,
+    max_bot_matches_in_window TINYINT NOT NULL CONSTRAINT DF_pvp_policy_bot_cap DEFAULT 6,
+    allow_consecutive_hard BIT NOT NULL CONSTRAINT DF_pvp_policy_hard_repeat DEFAULT 0,
+    easy_win_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_easy_win_mmr DEFAULT 0,
+    easy_draw_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_easy_draw_mmr DEFAULT 0,
+    easy_loss_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_easy_loss_mmr DEFAULT -1,
+    fair_win_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_fair_win_mmr DEFAULT 2,
+    fair_draw_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_fair_draw_mmr DEFAULT 0,
+    fair_loss_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_fair_loss_mmr DEFAULT -2,
+    hard_win_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_hard_win_mmr DEFAULT 6,
+    hard_draw_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_hard_draw_mmr DEFAULT 0,
+    hard_loss_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_hard_loss_mmr DEFAULT -2,
+    relief_win_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_relief_win_mmr DEFAULT 0,
+    relief_draw_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_relief_draw_mmr DEFAULT 0,
+    relief_loss_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_relief_loss_mmr DEFAULT 0,
+    bot_rating_window TINYINT NOT NULL CONSTRAINT DF_pvp_policy_rating_window DEFAULT 20,
+    max_positive_bot_mmr_in_window SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_rating_cap DEFAULT 8,
+    easy_reward_multiplier_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_easy_reward DEFAULT 2500,
+    fair_reward_multiplier_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_fair_reward DEFAULT 5000,
+    hard_reward_multiplier_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_hard_reward DEFAULT 10000,
+    relief_reward_multiplier_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_relief_reward DEFAULT 0,
+    created_at DATETIME2(0) NOT NULL CONSTRAINT DF_pvp_policy_created DEFAULT SYSUTCDATETIME(),
+    activated_at DATETIME2(0) NULL,
+    CONSTRAINT CK_pvp_policy_timing CHECK (match_duration_seconds BETWEEN 10 AND 120 AND bot_fallback_seconds BETWEEN 1 AND 120),
+    CONSTRAINT CK_pvp_policy_windows CHECK (
+        stage1_mmr_gap >= 0 AND stage1_power_gap_bps >= 0 AND stage1_pace_ratio_bps >= 10000
+        AND stage1_mmr_gap <= stage2_mmr_gap AND stage2_mmr_gap <= stage3_mmr_gap AND stage3_mmr_gap <= hard_mmr_gap
+        AND stage1_power_gap_bps <= stage2_power_gap_bps AND stage2_power_gap_bps <= stage3_power_gap_bps AND stage3_power_gap_bps <= hard_power_gap_bps
+        AND stage1_pace_ratio_bps <= stage2_pace_ratio_bps AND stage2_pace_ratio_bps <= stage3_pace_ratio_bps AND stage3_pace_ratio_bps <= hard_pace_ratio_bps
+    ),
+    CONSTRAINT CK_pvp_policy_weights CHECK (
+        streak01_easy_weight_bps + streak01_fair_weight_bps + streak01_hard_weight_bps = 10000
+        AND streak23_easy_weight_bps + streak23_fair_weight_bps + streak23_hard_weight_bps = 10000
+        AND streak4_easy_weight_bps + streak4_fair_weight_bps + streak4_hard_weight_bps = 10000
+    ),
+    CONSTRAINT CK_pvp_policy_caps CHECK (
+        relief_loss_threshold > 0
+        AND max_bot_matches_in_window <= bot_history_window
+        AND bot_rating_window > 0
+        AND max_positive_bot_mmr_in_window >= 0
+        AND relief_target_user_win_bps BETWEEN 0 AND 10000
+        AND easy_target_user_win_bps BETWEEN 0 AND 10000
+        AND fair_target_user_win_bps BETWEEN 0 AND 10000
+        AND hard_target_user_win_bps BETWEEN 0 AND 10000
+        AND easy_reward_multiplier_bps BETWEEN 0 AND 10000
+        AND fair_reward_multiplier_bps BETWEEN 0 AND 10000
+        AND hard_reward_multiplier_bps BETWEEN 0 AND 10000
+        AND relief_reward_multiplier_bps BETWEEN 0 AND 10000
+    )
+);
+GO
+
+INSERT INTO pvp_matchmaking_policies(policy_version, is_active, activated_at)
+VALUES (1, 1, SYSUTCDATETIME());
+GO
+
+ALTER TABLE matchmaking_queue ADD CONSTRAINT FK_matchmaking_queue_policy
+    FOREIGN KEY (policy_version) REFERENCES pvp_matchmaking_policies(policy_version);
 GO
 
 CREATE TABLE pvp_matches (
@@ -679,6 +815,23 @@ CREATE TABLE pvp_matches (
     daily_step_power_cap INT NOT NULL CONSTRAINT DF_pvp_matches_daily_power_cap DEFAULT 10000,
     base_pace_min_milli_steps_per_second INT NOT NULL CONSTRAINT DF_pvp_matches_min_pace DEFAULT 1000,
     base_pace_max_milli_steps_per_second INT NOT NULL CONSTRAINT DF_pvp_matches_max_pace DEFAULT 2500,
+    match_duration_seconds TINYINT NOT NULL CONSTRAINT DF_pvp_matches_duration DEFAULT 30,
+    matchmaking_policy_version INT NULL,
+    matchmaking_reason_code VARCHAR(30) NULL,
+    bot_difficulty_code VARCHAR(10) NULL,
+    is_relief_match BIT NOT NULL CONSTRAINT DF_pvp_matches_relief DEFAULT 0,
+    rating_policy_code VARCHAR(30) NULL,
+    selection_roll_bps SMALLINT NULL,
+    expected_first_distance_units BIGINT NULL,
+    expected_second_distance_units BIGINT NULL,
+    expected_gap_bps SMALLINT NULL,
+    bot_reward_multiplier_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_matches_bot_reward DEFAULT 10000,
+    bot_win_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_matches_bot_win_mmr DEFAULT 0,
+    bot_draw_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_matches_bot_draw_mmr DEFAULT 0,
+    bot_loss_mmr_delta SMALLINT NOT NULL CONSTRAINT DF_pvp_matches_bot_loss_mmr DEFAULT 0,
+    bot_rating_window TINYINT NOT NULL CONSTRAINT DF_pvp_matches_bot_rating_window DEFAULT 20,
+    max_positive_bot_mmr_in_window SMALLINT NOT NULL CONSTRAINT DF_pvp_matches_bot_rating_cap DEFAULT 8,
+    profile_state_applied_at DATETIME2(0) NULL,
     last_progress_at DATETIME2(3) NULL,
     last_event_sequence BIGINT NOT NULL CONSTRAINT DF_pvp_matches_last_event_sequence DEFAULT 0,
     row_version ROWVERSION NOT NULL,
@@ -693,6 +846,15 @@ CREATE TABLE pvp_matches (
         AND base_pace_min_milli_steps_per_second > 0
         AND base_pace_max_milli_steps_per_second >= base_pace_min_milli_steps_per_second
     ),
+    CONSTRAINT CK_pvp_matches_adaptive_snapshots CHECK (
+        match_duration_seconds BETWEEN 10 AND 120
+        AND (bot_difficulty_code IS NULL OR bot_difficulty_code IN ('easy', 'fair', 'hard', 'relief'))
+        AND (selection_roll_bps IS NULL OR selection_roll_bps BETWEEN 0 AND 9999)
+        AND (expected_gap_bps IS NULL OR expected_gap_bps BETWEEN 0 AND 10000)
+        AND bot_reward_multiplier_bps BETWEEN 0 AND 10000
+        AND bot_rating_window > 0
+        AND max_positive_bot_mmr_in_window >= 0
+    ),
     CONSTRAINT CK_pvp_matches_finish_reason CHECK (finish_reason_code IS NULL OR finish_reason_code IN ('normal_completion', 'user_forfeit')),
     CONSTRAINT CK_pvp_matches_dates
         CHECK (
@@ -702,6 +864,7 @@ CREATE TABLE pvp_matches (
         ),
     FOREIGN KEY (winner_user_id) REFERENCES users(user_id),
     CONSTRAINT FK_pvp_matches_forfeited_user FOREIGN KEY (forfeited_by_user_id) REFERENCES users(user_id)
+    ,CONSTRAINT FK_pvp_matches_matchmaking_policy FOREIGN KEY (matchmaking_policy_version) REFERENCES pvp_matchmaking_policies(policy_version)
 );
 GO
 
@@ -726,6 +889,18 @@ CREATE TABLE pvp_match_players (
     daily_eligible_steps_snapshot INT NOT NULL CONSTRAINT DF_pvp_match_players_daily_snapshot DEFAULT 0,
     base_pace_milli_steps_per_second INT NOT NULL CONSTRAINT DF_pvp_match_players_base_pace DEFAULT 1000,
     distance_units BIGINT NOT NULL CONSTRAINT DF_pvp_match_players_distance DEFAULT 0,
+    expected_distance_units BIGINT NULL,
+    expected_speed_bps INT NULL,
+    expected_passive_bps INT NULL,
+    expected_loadout_bps INT NULL,
+    passive_rule_bonus_bps_snapshot INT NULL,
+    passive_rule_start_minute_snapshot SMALLINT NULL,
+    passive_rule_end_minute_snapshot SMALLINT NULL,
+    bot_min_pace_snapshot INT NULL,
+    bot_max_pace_snapshot INT NULL,
+    ready_at DATETIME2(3) NULL,
+    realtime_joined_at DATETIME2(3) NULL,
+    streak_eligibility_code VARCHAR(30) NULL,
     row_version ROWVERSION NOT NULL,
     is_ready BIT NOT NULL
         CONSTRAINT DF_pvp_match_players_is_ready DEFAULT 0,
@@ -743,6 +918,13 @@ CREATE TABLE pvp_match_players (
         AND daily_eligible_steps_snapshot >= 0
         AND base_pace_milli_steps_per_second > 0
         AND distance_units >= 0
+    ),
+    CONSTRAINT CK_pvp_match_players_power_snapshot CHECK (
+        (expected_distance_units IS NULL OR expected_distance_units >= 0)
+        AND (expected_speed_bps IS NULL OR expected_speed_bps BETWEEN 7500 AND 12500)
+        AND (expected_passive_bps IS NULL OR expected_passive_bps >= 0)
+        AND (bot_min_pace_snapshot IS NULL OR bot_min_pace_snapshot > 0)
+        AND (bot_max_pace_snapshot IS NULL OR bot_min_pace_snapshot IS NOT NULL AND bot_max_pace_snapshot >= bot_min_pace_snapshot)
     ),
     CONSTRAINT CK_pvp_match_players_result_code
         CHECK (result_code IS NULL OR result_code IN ('win', 'lose', 'draw', 'quit')),
@@ -1319,6 +1501,18 @@ GO
 
 CREATE INDEX IX_matchmaking_queue_status_type_time
     ON matchmaking_queue(status_code, match_type_code, queued_at);
+GO
+CREATE INDEX IX_matchmaking_queue_status_fallback
+    ON matchmaking_queue(status_code, bot_fallback_at, queued_at);
+GO
+
+CREATE UNIQUE INDEX UX_pvp_matchmaking_policies_active
+    ON pvp_matchmaking_policies(is_active)
+    WHERE is_active = 1;
+GO
+
+CREATE INDEX IX_pvp_bot_profiles_active_difficulty_mmr
+    ON pvp_bot_profiles(is_active, difficulty_code, mmr);
 GO
 
 CREATE INDEX IX_pvp_matches_status_type_created

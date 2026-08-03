@@ -53,6 +53,40 @@ public partial class PvpMatch
 
     public int BasePaceMaxMilliStepsPerSecond { get; set; } = 2500;
 
+    public byte MatchDurationSeconds { get; set; } = 30;
+
+    public int? MatchmakingPolicyVersion { get; set; }
+
+    public string? MatchmakingReasonCode { get; set; }
+
+    public string? BotDifficultyCode { get; set; }
+
+    public bool IsReliefMatch { get; set; }
+
+    public string? RatingPolicyCode { get; set; }
+
+    public short? SelectionRollBps { get; set; }
+
+    public long? ExpectedFirstDistanceUnits { get; set; }
+
+    public long? ExpectedSecondDistanceUnits { get; set; }
+
+    public short? ExpectedGapBps { get; set; }
+
+    public short BotRewardMultiplierBps { get; set; } = 10000;
+
+    public short BotWinMmrDelta { get; set; }
+
+    public short BotDrawMmrDelta { get; set; }
+
+    public short BotLossMmrDelta { get; set; }
+
+    public byte BotRatingWindow { get; set; } = 20;
+
+    public short MaxPositiveBotMmrInWindow { get; set; } = 8;
+
+    public DateTime? ProfileStateAppliedAt { get; set; }
+
     public DateTime? LastProgressAt { get; set; }
 
     public long LastEventSequence { get; set; }
