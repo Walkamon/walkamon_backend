@@ -46,8 +46,7 @@ namespace Walkamon.Controllers
         public async Task<IActionResult> CreatePet(
     [FromBody] CreateUserPetRequest request)
         {
-            
-
+           
             await _petService.CreateUserPetAsync(
                 CurrentUserId,
                 request);
