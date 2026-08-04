@@ -12,19 +12,35 @@ namespace Walkamon.Controllers
     [Authorize(Roles = "User")]
     public class PetController : BaseController
     {
-        private readonly IPetService _petService;
-        private readonly IAchievementProgressService _achievementProgressService;
-        private readonly IMissionProgressService _missionProgressService;
+         private readonly IPetService _petService;
+    private readonly IUserService _userService;
+    private readonly IAchievementProgressService _achievementProgressService;
+    private readonly IMissionProgressService _missionProgressService;
 
-        public PetController(
-            IPetService petService,
-            IAchievementProgressService achievementProgressService,
-            IMissionProgressService missionProgressService)
+    public PetController(
+        IPetService petService,
+        IUserService userService,
+        IAchievementProgressService achievementProgressService,
+        IMissionProgressService missionProgressService)
+    {
+        _petService = petService;
+        _userService = userService;
+        _achievementProgressService = achievementProgressService;
+        _missionProgressService = missionProgressService;
+    }
+ [HttpGet("story-status")]
+    public async Task<IActionResult> GetStoryStatus()
+    {
+        var result = await _userService.GetStoryStatusAsync(CurrentUserId);
+
+        return Ok(new
         {
-            _petService = petService;
-            _achievementProgressService = achievementProgressService;
-            _missionProgressService = missionProgressService;
-        }
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Get story status successfully.",
+            Data = result
+        });
+    }
 
         [HttpPost("create-stater-pet")]
         public async Task<IActionResult> CreatePet(
