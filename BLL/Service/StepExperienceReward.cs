@@ -5,7 +5,7 @@ namespace BLL.Service;
 
 internal static class StepExperienceReward
 {
-    internal const int StepsPerReward = 100;
+    internal const int StepsPerReward = 10;
 
     internal static int ParseExpPerReward(string? configuredValue)
     {
