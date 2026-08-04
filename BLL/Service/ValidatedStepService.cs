@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -122,7 +123,7 @@ public sealed class ValidatedStepService : IValidatedStepService
             x.PurposeCode == purposeCode && x.MatchId == matchId && x.ExpiresAt > now);
         if (reusable != null)
         {
-            return ToSessionResponse(reusable, now);
+            return await ToSessionResponseAsync(reusable, now, cancellationToken);
         }
         foreach (var session in active)
         {
@@ -148,7 +149,7 @@ public sealed class ValidatedStepService : IValidatedStepService
         };
         _context.PvpStepSessions.Add(created);
         await _context.SaveChangesAsync(cancellationToken);
-        return ToSessionResponse(created, now);
+        return await ToSessionResponseAsync(created, now, cancellationToken);
         });
     }
 
@@ -160,8 +161,12 @@ public sealed class ValidatedStepService : IValidatedStepService
         SubmitPvpStepBatchRequest request,
         CancellationToken cancellationToken)
     {
-        if (request.Events.Count is < 1 or > 25)
-            throw new BadRequestException("A step batch must contain between 1 and 25 events.");
+        if (request.Events.Count < 1 || request.Events.Count > _options.MaxBatchEvents)
+            throw new BadRequestException(
+                $"A step batch must contain between 1 and {_options.MaxBatchEvents} events.");
+        if (request.MotionWindows.Count > _options.MaxBatchMotionWindows)
+            throw new BadRequestException(
+                $"A step batch cannot contain more than {_options.MaxBatchMotionWindows} motion windows.");
         return await _context.ExecuteInTransactionAsync(
             IsolationLevel.Serializable,
             async () =>
@@ -242,11 +247,12 @@ public sealed class ValidatedStepService : IValidatedStepService
             .FirstOrDefaultAsync(cancellationToken);
 
         AppAttestationResult attestation;
-        if (verifiedSessionBatch != null)
+        var hasBatchAttestation = !string.IsNullOrWhiteSpace(request.AttestationToken);
+        if (!hasBatchAttestation && !_options.RequirePerBatchAttestation && verifiedSessionBatch != null)
         {
             attestation = new(
                 true,
-                "session_cached",
+                "legacy_session_cached",
                 verifiedSessionBatch.PackageName,
                 verifiedSessionBatch.VerdictTimestamp,
                 null,
@@ -431,7 +437,10 @@ public sealed class ValidatedStepService : IValidatedStepService
                         match!, player, item.IntervalStartedAt, item.RecordedAt, effects)
                     : StepSensorRules.MinimumPvpMultiplier(
                         match!, player, item.RecordedAt, item.RecordedAt, effects);
-                var distance = PvpGameplayCalculator.CalculateDistanceUnits(eligible, lastMultiplier);
+                var distance = PvpGameplayCalculator.CalculateDistanceUnits(
+                    eligible,
+                    lastMultiplier,
+                    player.SpiritAffinityCode);
                 accepted += eligible;
                 distanceAdded = checked(distanceAdded + distance);
             }
@@ -478,6 +487,9 @@ public sealed class ValidatedStepService : IValidatedStepService
         session.LastSubmittedAt = now;
         session.LastSensorTotal = rollingSensorTotal;
         await _context.SaveChangesAsync(cancellationToken);
+        var dailySnapshot = purposeCode == "daily"
+            ? await GetDailySnapshotAsync(userId, now, cancellationToken)
+            : null;
         return new PvpStepBatchResponse
         {
             BatchId = batch.StepSensorBatchId,
@@ -486,6 +498,8 @@ public sealed class ValidatedStepService : IValidatedStepService
             RejectedSteps = batch.RejectedSteps,
             SuspiciousSteps = batch.SuspiciousSteps,
             NextSequence = session.LastSequence + 1,
+            DailyStepDate = dailySnapshot?.Date,
+            DailyAcceptedTotal = dailySnapshot?.Total,
             CurrentScore = player?.Score ?? 0,
             ValidatedSteps = player?.ValidatedSteps ?? batch.AcceptedSteps,
             DistanceUnits = player?.DistanceUnits ?? 0,
@@ -509,6 +523,9 @@ public sealed class ValidatedStepService : IValidatedStepService
             ? await _context.PvpMatchPlayers.AsNoTracking()
                 .FirstOrDefaultAsync(x => x.MatchId == matchId && x.UserId == userId, cancellationToken)
             : null;
+        var dailySnapshot = session.PurposeCode == "daily"
+            ? await GetDailySnapshotAsync(userId, DateTime.UtcNow, cancellationToken)
+            : null;
         return new PvpStepBatchResponse
         {
             BatchId = batch.StepSensorBatchId,
@@ -517,6 +534,8 @@ public sealed class ValidatedStepService : IValidatedStepService
             RejectedSteps = batch.RejectedSteps,
             SuspiciousSteps = batch.SuspiciousSteps,
             NextSequence = session.LastSequence + 1,
+            DailyStepDate = dailySnapshot?.Date,
+            DailyAcceptedTotal = dailySnapshot?.Total,
             CurrentScore = player?.Score ?? 0,
             ValidatedSteps = player?.ValidatedSteps ?? batch.AcceptedSteps,
             DistanceUnits = player?.DistanceUnits ?? 0,
@@ -572,6 +591,23 @@ public sealed class ValidatedStepService : IValidatedStepService
         }
         daily.UpdatedAt = now;
         return eligible;
+    }
+
+    private async Task<DailyStepSnapshot> GetDailySnapshotAsync(
+        Guid userId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
+            AsUtc(now), VietnamTimeZone));
+        var daily = _context.DailySteps.Local
+            .FirstOrDefault(x => x.UserId == userId && x.StepDate == date)
+            ?? await _context.DailySteps.AsNoTracking().FirstOrDefaultAsync(
+                x => x.UserId == userId && x.StepDate == date,
+                cancellationToken);
+        return new DailyStepSnapshot(
+            date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            daily?.EligibleStepCount ?? 0);
     }
 
     private async Task<long> GetTotalDailyValidatedStepsAsync(
@@ -692,24 +728,35 @@ public sealed class ValidatedStepService : IValidatedStepService
             throw new BadRequestException("Sensor mode must be detector or counter.");
     }
 
-    private PvpStepSessionResponse ToSessionResponse(PvpStepSession session, DateTime now) => new()
+    private async Task<PvpStepSessionResponse> ToSessionResponseAsync(
+        PvpStepSession session,
+        DateTime now,
+        CancellationToken cancellationToken)
     {
-        StepSessionId = session.StepSessionId,
-        Nonce = session.Nonce,
-        PurposeCode = session.PurposeCode,
-        ExpiresAt = session.ExpiresAt,
-        NextSequence = session.LastSequence + 1,
-        ServerTime = now,
-        MotionPolicy = new StepMotionPolicyResponse
+        var dailySnapshot = session.PurposeCode == "daily"
+            ? await GetDailySnapshotAsync(session.UserId, now, cancellationToken)
+            : null;
+        return new PvpStepSessionResponse
         {
-            ContractVersion = _motionOptions.ContractVersion,
-            Required = _motionOptions.Enabled,
-            WindowMilliseconds = _motionOptions.WindowMilliseconds,
-            TargetSampleHz = _motionOptions.TargetSampleHz,
-            MinSamplesPerWindow = _motionOptions.MinSamplesPerWindow,
-            MaxSamplesPerWindow = _motionOptions.MaxSamplesPerWindow
-        }
-    };
+            StepSessionId = session.StepSessionId,
+            Nonce = session.Nonce,
+            PurposeCode = session.PurposeCode,
+            ExpiresAt = session.ExpiresAt,
+            NextSequence = session.LastSequence + 1,
+            ServerTime = now,
+            DailyStepDate = dailySnapshot?.Date,
+            DailyAcceptedTotal = dailySnapshot?.Total,
+            MotionPolicy = new StepMotionPolicyResponse
+            {
+                ContractVersion = _motionOptions.ContractVersion,
+                Required = _motionOptions.Enabled,
+                WindowMilliseconds = _motionOptions.WindowMilliseconds,
+                TargetSampleHz = _motionOptions.TargetSampleHz,
+                MinSamplesPerWindow = _motionOptions.MinSamplesPerWindow,
+                MaxSamplesPerWindow = _motionOptions.MaxSamplesPerWindow
+            }
+        };
+    }
 
     private static DateTime NextVietnamDayExpiryUtc(DateTime now)
     {
@@ -732,4 +779,6 @@ public sealed class ValidatedStepService : IValidatedStepService
         DateTimeKind.Local => value.ToUniversalTime(),
         _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
     };
+
+    private sealed record DailyStepSnapshot(string Date, int Total);
 }

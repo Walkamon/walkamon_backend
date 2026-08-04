@@ -88,8 +88,15 @@ public sealed class SprintHub : Hub
     public async Task JoinMatch(Guid matchId)
     {
         var value = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(value, out var userId) || !await _context.PvpMatchPlayers.AnyAsync(x => x.MatchId == matchId && x.UserId == userId)) throw new HubException("You are not a participant in this Sprint match.");
+        if (!Guid.TryParse(value, out var userId))
+            throw new HubException("The authenticated user is invalid.");
+        if (!await _context.PvpMatchPlayers.AsNoTracking()
+                .AnyAsync(x => x.MatchId == matchId && x.UserId == userId))
+            throw new HubException("You are not a participant in this Sprint match.");
         await Groups.AddToGroupAsync(Context.ConnectionId, $"match:{matchId}");
+        await _context.PvpMatchPlayers
+            .Where(x => x.MatchId == matchId && x.UserId == userId && x.RealtimeJoinedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.RealtimeJoinedAt, DateTime.UtcNow));
     }
 
     public async Task<PvpMatchReadyResponse> ReadyMatch(Guid matchId)

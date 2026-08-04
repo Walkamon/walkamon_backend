@@ -9,12 +9,15 @@ public static class PvpGameplayCalculator
     public const int DefaultDailyStepPowerCap = 10000;
     public const int DefaultMinimumPaceMilliStepsPerSecond = 1000;
     public const int DefaultMaximumPaceMilliStepsPerSecond = 2500;
+    public const int SproutPaceScaleNumerator = 2;
+    public const int SproutPaceScaleDenominator = 3;
 
     public static int CalculateDailyPowerPaceMilli(
         int eligibleDailySteps,
         int dailyStepPowerCap = DefaultDailyStepPowerCap,
         int minimumPaceMilli = DefaultMinimumPaceMilliStepsPerSecond,
-        int maximumPaceMilli = DefaultMaximumPaceMilliStepsPerSecond)
+        int maximumPaceMilli = DefaultMaximumPaceMilliStepsPerSecond,
+        string? affinityCode = null)
     {
         if (dailyStepPowerCap <= 0)
             throw new ArgumentOutOfRangeException(nameof(dailyStepPowerCap));
@@ -24,8 +27,20 @@ public static class PvpGameplayCalculator
         var cappedSteps = Math.Clamp(eligibleDailySteps, 0, dailyStepPowerCap);
         var paceRange = maximumPaceMilli - minimumPaceMilli;
         var scaled = (decimal)cappedSteps * paceRange / dailyStepPowerCap;
-        return checked(minimumPaceMilli +
-                       (int)Math.Round(scaled, MidpointRounding.AwayFromZero));
+        var pace = checked(minimumPaceMilli +
+                           (int)Math.Round(scaled, MidpointRounding.AwayFromZero));
+        return ApplyAffinityPaceScale(pace, affinityCode);
+    }
+
+    public static int ApplyAffinityPaceScale(int paceMilli, string? affinityCode)
+    {
+        if (paceMilli <= 0) return paceMilli;
+        if (!string.Equals(affinityCode, "sprout", StringComparison.OrdinalIgnoreCase))
+            return paceMilli;
+
+        return checked((int)Math.Round(
+            paceMilli * (decimal)SproutPaceScaleNumerator / SproutPaceScaleDenominator,
+            MidpointRounding.AwayFromZero));
     }
 
     public static long CalculatePacedDistanceUnits(
@@ -58,8 +73,18 @@ public static class PvpGameplayCalculator
         return Math.Clamp(speed, minimumBps, maximumBps);
     }
 
-    public static long CalculateDistanceUnits(int eligibleSteps, int multiplierBps) =>
-        checked((long)eligibleSteps * multiplierBps);
+    public static long CalculateDistanceUnits(
+        int eligibleSteps,
+        int multiplierBps,
+        string? affinityCode = null)
+    {
+        var distance = checked((long)eligibleSteps * multiplierBps);
+        return string.Equals(affinityCode, "sprout", StringComparison.OrdinalIgnoreCase)
+            ? checked((long)Math.Round(
+                distance * (decimal)SproutPaceScaleNumerator / SproutPaceScaleDenominator,
+                MidpointRounding.AwayFromZero))
+            : distance;
+    }
 
     public static bool IsRuleActiveAtUtc(DateTime utc, PvpSpiritSpeedRule rule)
     {

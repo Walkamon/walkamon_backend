@@ -312,7 +312,25 @@ public sealed partial class PvpSprintService
         var rules = await _context.PvpSpiritSpeedRules.AsNoTracking().Where(x => x.IsActive).ToListAsync(cancellationToken);
         foreach (var player in players)
         {
-            var rule = rules.FirstOrDefault(x => x.AffinityCode == player.SpiritAffinityCode);
+            PvpSpiritSpeedRule? rule;
+            if (player.PassiveRuleBonusBpsSnapshot.HasValue &&
+                player.PassiveRuleStartMinuteSnapshot.HasValue &&
+                player.PassiveRuleEndMinuteSnapshot.HasValue)
+            {
+                rule = new PvpSpiritSpeedRule
+                {
+                    AffinityCode = player.SpiritAffinityCode ?? "sprout",
+                    BonusBps = player.PassiveRuleBonusBpsSnapshot.Value,
+                    StartMinute = player.PassiveRuleStartMinuteSnapshot.Value,
+                    EndMinute = player.PassiveRuleEndMinuteSnapshot.Value,
+                    TimeZoneCode = "Asia/Ho_Chi_Minh",
+                    IsActive = true
+                };
+            }
+            else
+            {
+                rule = rules.FirstOrDefault(x => x.AffinityCode == player.SpiritAffinityCode);
+            }
             player.PassiveSpeedBps = rule != null && PvpGameplayCalculator.IsRuleActiveAtUtc(now, rule) ? rule.BonusBps : 0;
             if (player.PassiveSpeedBps <= 0 || !match.EndedAt.HasValue) continue;
             _context.PvpMatchEffects.Add(new PvpMatchEffect
@@ -382,7 +400,8 @@ public sealed partial class PvpSprintService
                         snapshot,
                         match.DailyStepPowerCap,
                         match.BasePaceMinMilliStepsPerSecond,
-                        match.BasePaceMaxMilliStepsPerSecond);
+                        match.BasePaceMaxMilliStepsPerSecond,
+                        player.SpiritAffinityCode);
             }
             else
             {
@@ -574,7 +593,6 @@ public sealed partial class PvpSprintService
     private async Task CalculateBotDistanceAsync(PvpMatch match, PvpMatchPlayer bot, CancellationToken cancellationToken)
     {
         if (!match.StartedAt.HasValue || !match.EndedAt.HasValue || !bot.BotProfileId.HasValue) return;
-        var profile = await _context.PvpBotProfiles.AsNoTracking().FirstAsync(x => x.BotProfileId == bot.BotProfileId, cancellationToken);
         var effects = await _context.PvpMatchEffects.AsNoTracking().Where(x => x.MatchId == match.MatchId && x.TargetMatchPlayerId == bot.MatchPlayerId && (x.EffectKindCode == "buff" || x.EffectKindCode == "debuff")).ToListAsync(cancellationToken);
         var points = new List<DateTime> { match.StartedAt.Value, match.EndedAt.Value };
         foreach (var effect in effects)
@@ -591,9 +609,15 @@ public sealed partial class PvpSprintService
             var midpoint = start.AddTicks((end - start).Ticks / 2);
             var active = effects.Where(x => x.StartsAt <= midpoint && (x.ConsumedAt ?? x.EndsAt) > midpoint).Select(x => (x.EffectKindCode, x.MagnitudeBps));
             var multiplier = PvpGameplayCalculator.CalculateSpeedBps(bot.PassiveSpeedBps, active, match.SpeedMinBps, match.SpeedMaxBps);
-            distance += (decimal)(end - start).TotalSeconds * profile.StepsPerSecond * multiplier;
+            distance += PvpGameplayCalculator.CalculatePacedDistanceUnits(
+                end - start,
+                bot.BasePaceMilliStepsPerSecond,
+                multiplier);
         }
-        bot.ValidatedSteps = (int)Math.Floor((decimal)(match.EndedAt.Value - match.StartedAt.Value).TotalSeconds * profile.StepsPerSecond);
+        bot.ValidatedSteps = (int)Math.Floor(
+            (decimal)(match.EndedAt.Value - match.StartedAt.Value).TotalSeconds *
+            bot.BasePaceMilliStepsPerSecond /
+            1000m);
         bot.DistanceUnits = (long)Math.Round(distance, MidpointRounding.AwayFromZero);
         bot.Score = (int)Math.Min(int.MaxValue, bot.DistanceUnits / PvpGameplayCalculator.DistanceUnitsPerStep);
     }

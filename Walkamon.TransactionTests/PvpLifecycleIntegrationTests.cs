@@ -67,8 +67,8 @@ public sealed class PvpLifecycleIntegrationTests
                 {
                     UserId = secondUserId,
                     StepDate = vietnamToday,
-                    StepCount = 0,
-                    EligibleStepCount = 0,
+                    StepCount = 10000,
+                    EligibleStepCount = 10000,
                     UpdatedAt = DateTime.UtcNow
                 });
             await context.SaveChangesAsync();
@@ -81,6 +81,11 @@ public sealed class PvpLifecycleIntegrationTests
             var matchId = Assert.IsType<Guid>(assigned.MatchId);
             Assert.Equal("countdown", assigned.StatusCode);
             Assert.Equal(3, await context.PvpMatchRewardSnapshots.CountAsync(x => x.MatchId == matchId));
+            var secondDaily = await context.DailySteps.SingleAsync(x =>
+                x.UserId == secondUserId && x.StepDate == vietnamToday);
+            secondDaily.StepCount = 0;
+            secondDaily.EligibleStepCount = 0;
+            await context.SaveChangesAsync();
             var waitingForReady = await service.GetMatchAsync(firstUserId, matchId);
             Assert.Null(waitingForReady.CountdownStartsAt);
             Assert.Null(waitingForReady.CountdownEndsAt);
@@ -130,9 +135,9 @@ public sealed class PvpLifecycleIntegrationTests
                 .Where(x => x.MatchId == matchId)
                 .ToDictionaryAsync(x => x.UserId!.Value);
             Assert.Equal(10000, powerSnapshots[firstUserId].DailyEligibleStepsSnapshot);
-            Assert.Equal(2500, powerSnapshots[firstUserId].BasePaceMilliStepsPerSecond);
+            Assert.Equal(1667, powerSnapshots[firstUserId].BasePaceMilliStepsPerSecond);
             Assert.Equal(0, powerSnapshots[secondUserId].DailyEligibleStepsSnapshot);
-            Assert.Equal(1000, powerSnapshots[secondUserId].BasePaceMilliStepsPerSecond);
+            Assert.Equal(667, powerSnapshots[secondUserId].BasePaceMilliStepsPerSecond);
 
             await context.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE dbo.pvp_matches
@@ -363,7 +368,8 @@ public sealed class PvpLifecycleIntegrationTests
     private static Task AgeQueueAsync(WalkamonContext context, Guid userId) =>
         context.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE dbo.matchmaking_queue
-            SET queued_at=DATEADD(second,-16,SYSUTCDATETIME())
+            SET queued_at=DATEADD(second,-16,SYSUTCDATETIME()),
+                bot_fallback_at=DATEADD(second,-1,SYSUTCDATETIME())
             WHERE user_id={userId};
             UPDATE dbo.pvp_player_activities
             SET due_at=DATEADD(second,-1,SYSUTCDATETIME())
