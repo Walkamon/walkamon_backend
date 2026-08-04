@@ -23,5 +23,6 @@ namespace BLL.Interfaces
         Task DisableUserAsync(Guid userId);
 
         Task EnableUserAsync(Guid userId);
+        Task<StoryStatusResponse> GetStoryStatusAsync(Guid userId);
     }
 }

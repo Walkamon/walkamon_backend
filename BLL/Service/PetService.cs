@@ -22,14 +22,16 @@ namespace BLL.Service
         private readonly IPetEvolutionHistoryRepository _PetEvolutionHistory;
         private readonly IGenericRepository<Pet> _Pet;
         private readonly ISystemSettingRepository _systemSettingRepository;
+        private readonly IGenericRepository<UserProfile> _userProfileRepository;
         public PetService(
            IPetRepository petRepository, IGenericRepository<UserPet> repository ,
            IPetInteractionRepository petInteractionRepository, IGenericRepository<PetInteraction> PetInteraction,
           IPetEvolutionHistoryRepository petEvolutionHistoryRepository,
           IGenericRepository<PetEvolutionHistory> PetHistory,
           IGenericRepository<Pet> Pet,
-          ISystemSettingRepository systemSettingRepository
-            )
+          ISystemSettingRepository systemSettingRepository,
+           IGenericRepository<UserProfile> userProfileRepository)
+            
         {
             _Pet = Pet;
             _PetHistory = PetHistory;
@@ -39,6 +41,7 @@ namespace BLL.Service
             _petRepository = petRepository;
             _repository = repository;
             _systemSettingRepository = systemSettingRepository;
+            _userProfileRepository = userProfileRepository;
         }
         public async Task CreateUserPetAsync(Guid userId, CreateUserPetRequest request)
         {
@@ -77,7 +80,18 @@ namespace BLL.Service
             if (existed)
                 throw new BadRequestException("User already has a pet.");
             await _repository.AddAsync(userPet);
+            var profile = (await _userProfileRepository.GetAllAsync())
+    .FirstOrDefault(x => x.UserId == userId);
+
+            if (profile != null)
+            {
+                profile.HasSeenStory = true;
+                profile.UpdatedAt = DateTime.UtcNow;
+
+                _userProfileRepository.Update(profile);
+            }
             await _repository.SaveAsync();
+            await _userProfileRepository.SaveAsync();
         }
         public async Task<PetStatusResponse> GetPetStatusAsync(Guid currentUserId)
         {

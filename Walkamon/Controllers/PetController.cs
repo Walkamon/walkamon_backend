@@ -12,13 +12,26 @@ namespace Walkamon.Controllers
     public class PetController : BaseController
     {
         private readonly IPetService _petService;
-
+        private readonly IUserService _userService;
         public PetController(
-            IPetService petService)
+            IPetService petService, IUserService userService)
         {
             _petService = petService;
+            _userService = userService;
         }
-
+        [HttpGet("story-status")]
+        [Authorize(Roles = "User")]
+        public async Task<IActionResult> GetStoryStatus()
+        {
+           
+            var result = await _userService.GetStoryStatusAsync(CurrentUserId);
+            return Ok(new
+            {
+                Success = true,
+                Status = StatusCodes.Status200OK,
+                Data = result
+            });
+        }
         [HttpPost("create-stater-pet")]
         public async Task<IActionResult> CreatePet(
     [FromBody] CreateUserPetRequest request)

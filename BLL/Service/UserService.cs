@@ -14,9 +14,11 @@ namespace BLL.Service
     public class UserService : IUserService
     {
         private readonly IUserRepository _userRepository;
-
-        public UserService(IUserRepository userRepository)
+        private readonly IGenericRepository<UserProfile> _userProfileRepository;
+        public UserService(IUserRepository userRepository,
+             IGenericRepository<UserProfile> userProfileRepository)
         {
+            _userProfileRepository = userProfileRepository;
             _userRepository = userRepository;
         }
 
@@ -263,6 +265,19 @@ namespace BLL.Service
                         CreatedAt = user.UserProfile.CreatedAt,
                         UpdatedAt = user.UserProfile.UpdatedAt
                     }
+            };
+        }
+        public async Task<StoryStatusResponse> GetStoryStatusAsync(Guid userId)
+        {
+            var profile = (await _userProfileRepository.GetAllAsync())
+                .FirstOrDefault(x => x.UserId == userId);
+
+            if (profile == null)
+                throw new NotFoundException("User profile not found.");
+
+            return new StoryStatusResponse
+            {
+                HasSeenStory = profile.HasSeenStory
             };
         }
     }
