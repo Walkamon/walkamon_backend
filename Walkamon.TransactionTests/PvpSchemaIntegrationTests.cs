@@ -31,8 +31,49 @@ public sealed class PvpSchemaIntegrationTests
             await using (var connection = new SqlConnection(database))
             {
                 await connection.OpenAsync();
+                await using (var legacySpiritRules = connection.CreateCommand())
+                {
+                    legacySpiritRules.CommandText = """
+                        UPDATE dbo.pvp_spirit_speed_rules
+                        SET start_minute = CASE affinity_code
+                                WHEN 'dawn' THEN 300
+                                WHEN 'warm_sun' THEN 660
+                                WHEN 'moonlight' THEN 1020
+                                ELSE 0
+                            END,
+                            end_minute = CASE affinity_code
+                                WHEN 'dawn' THEN 659
+                                WHEN 'warm_sun' THEN 1019
+                                WHEN 'moonlight' THEN 299
+                                ELSE 1439
+                            END,
+                            bonus_bps = CASE affinity_code WHEN 'sprout' THEN 200 ELSE 500 END;
+                        """;
+                    await legacySpiritRules.ExecuteNonQueryAsync();
+                }
+
                 await ExecuteBatchesAsync(connection, upgradeSql);
+
+                Assert.Equal(4, await ScalarAsync(connection,
+                    """
+                    SELECT COUNT(*)
+                    FROM dbo.pvp_spirit_speed_rules
+                    WHERE (affinity_code='sprout' AND start_minute=0 AND end_minute=1439 AND bonus_bps=0)
+                       OR (affinity_code='dawn' AND start_minute=360 AND end_minute=719 AND bonus_bps=1000)
+                       OR (affinity_code='warm_sun' AND start_minute=720 AND end_minute=1079 AND bonus_bps=1000)
+                       OR (affinity_code='moonlight' AND start_minute=1080 AND end_minute=359 AND bonus_bps=1000)
+                    """));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM dbo.system_settings WHERE setting_key='pvp_spirit_speed_rules_v2'"));
+
+                await using (var adminOverride = connection.CreateCommand())
+                {
+                    adminOverride.CommandText = "UPDATE dbo.pvp_spirit_speed_rules SET bonus_bps=900 WHERE affinity_code='warm_sun';";
+                    await adminOverride.ExecuteNonQueryAsync();
+                }
                 await ExecuteBatchesAsync(connection, upgradeSql);
+                Assert.Equal(900, await ScalarAsync(connection,
+                    "SELECT bonus_bps FROM dbo.pvp_spirit_speed_rules WHERE affinity_code='warm_sun'"));
 
                 Assert.Equal(1, await ScalarAsync(connection,
                     "SELECT COUNT(*) FROM sys.tables WHERE object_id=OBJECT_ID('dbo.step_sensor_batches')"));
@@ -74,6 +115,22 @@ public sealed class PvpSchemaIntegrationTests
                     "SELECT COUNT(*) FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID('dbo.pvp_matches') AND name='FK_pvp_matches_forfeited_user'"));
                 Assert.Equal(1, await ScalarAsync(connection,
                     "SELECT COUNT(*) FROM dbo.system_settings WHERE setting_key='utc_pet_timestamp_backfill_v1'"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.tables WHERE object_id=OBJECT_ID('dbo.pvp_matchmaking_policies')"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM dbo.pvp_matchmaking_policies WHERE policy_version=1 AND is_active=1"));
+                Assert.Equal(10, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.matchmaking_queue') AND name IN ('mmr_snapshot','daily_steps_snapshot','base_pace_snapshot','expected_distance_units','expected_speed_bps','policy_version','requires_relief','power_snapshot_at','bot_fallback_at','row_version')"));
+                Assert.Equal(6, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_player_profiles') AND name IN ('consecutive_valid_ranked_losses','completed_ranked_matches_since_relief','last_relief_completed_at','last_bot_difficulty_code','consecutive_hard_bot_count','row_version')"));
+                Assert.Equal(17, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_matches') AND name IN ('match_duration_seconds','matchmaking_policy_version','matchmaking_reason_code','bot_difficulty_code','is_relief_match','rating_policy_code','selection_roll_bps','expected_first_distance_units','expected_second_distance_units','expected_gap_bps','bot_reward_multiplier_bps','bot_win_mmr_delta','bot_draw_mmr_delta','bot_loss_mmr_delta','bot_rating_window','max_positive_bot_mmr_in_window','profile_state_applied_at')"));
+                Assert.Equal(13, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.columns WHERE object_id=OBJECT_ID('dbo.pvp_match_players') AND name IN ('expected_distance_units','expected_speed_bps','expected_passive_bps','expected_loadout_bps','passive_rule_bonus_bps_snapshot','passive_rule_start_minute_snapshot','passive_rule_end_minute_snapshot','bot_min_pace_snapshot','bot_max_pace_snapshot','ready_at','realtime_joined_at','streak_eligibility_code','row_version')"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID('dbo.pvp_matches') AND name='FK_pvp_matches_matchmaking_policy'"));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.pvp_matchmaking_policies') AND name='UX_pvp_matchmaking_policies_active' AND is_unique=1 AND has_filter=1"));
 
                 await using var duplicateAffinityCommand = connection.CreateCommand();
                 duplicateAffinityCommand.CommandText = """

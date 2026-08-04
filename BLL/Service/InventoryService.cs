@@ -12,23 +12,17 @@ public class InventoryService : IInventoryService
     private readonly IGenericRepository<Item> _itemRepository;
     private readonly IGenericRepository<ItemType> _itemTypeRepository;
     private readonly IGenericRepository<UserPet> _userPetRepository;
-    private readonly IAchievementProgressService _achievementProgressService;
-    private readonly IMissionProgressService _missionProgressService;
 
     public InventoryService(
         IGenericRepository<InventoryItem> inventoryRepository,
         IGenericRepository<Item> itemRepository,
         IGenericRepository<ItemType> itemTypeRepository,
-        IGenericRepository<UserPet> userPetRepository,
-        IAchievementProgressService achievementProgressService,
-        IMissionProgressService missionProgressService)
+        IGenericRepository<UserPet> userPetRepository)
     {
         _inventoryRepository = inventoryRepository;
         _itemRepository = itemRepository;
         _itemTypeRepository = itemTypeRepository;
         _userPetRepository = userPetRepository;
-        _achievementProgressService = achievementProgressService;
-        _missionProgressService = missionProgressService;
     }
 
     public async Task<List<InventoryItemResponse>> GetInventoryAsync(Guid userId)
@@ -121,9 +115,6 @@ public class InventoryService : IInventoryService
 
         _userPetRepository.Update(userPet);
         await _inventoryRepository.SaveAsync();
-
-        await _achievementProgressService.AddProgressAsync(userId, "feed_pet", 1);
-        await _missionProgressService.AddProgressAsync(userId, "feed_pet", 1);
 
         return new UseItemResponse
         {

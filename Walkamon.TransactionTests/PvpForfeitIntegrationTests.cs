@@ -29,6 +29,7 @@ public sealed class PvpForfeitIntegrationTests
             var users = Enumerable.Range(0, 9).Select(_ => Guid.NewGuid()).ToArray();
             await scope.SeedUsersAsync(users);
             await scope.SeedPetAsync(users[0]);
+            await scope.SeedPetAsync(users[1]);
 
             await using var context = scope.CreateContext();
             var presenceTracker = new PvpPresenceTracker();
@@ -213,13 +214,17 @@ public sealed class PvpForfeitIntegrationTests
             var botStatus = await service.GetMatchmakingStatusAsync(users[4]);
             var botMatchId = Assert.IsType<Guid>(botStatus.MatchId);
             var botForfeit = await service.ForfeitMatchAsync(users[4], botMatchId);
-            Assert.Equal(-16, botForfeit.MmrDelta);
+            Assert.InRange(botForfeit.MmrDelta, -2, 0);
             Assert.Null(botForfeit.WinnerUserId);
             Assert.False(await context.PvpMatchRewardEntitlements.AsNoTracking()
                 .AnyAsync(x => x.MatchId == botMatchId));
             Assert.Equal(1000, await context.PvpBotProfiles.AsNoTracking()
                 .Where(x => x.BotProfileId == botId)
                 .Select(x => x.Mmr)
+                .SingleAsync());
+            Assert.Equal(0, await context.PvpPlayerProfiles.AsNoTracking()
+                .Where(x => x.UserId == users[4])
+                .Select(x => x.ConsecutiveValidRankedLosses)
                 .SingleAsync());
 
             // Two different users forfeiting concurrently: the match lock lets
@@ -279,6 +284,118 @@ public sealed class PvpForfeitIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task AdaptiveMatchmaking_FifthValidLossCreatesAndConsumesReliefOnlyAfterValidCompletion()
+    {
+        var scope = await PvpDatabaseScope.CreateAsync();
+        await using (scope)
+        {
+            var fourLossUser = Guid.NewGuid();
+            var fiveLossUser = Guid.NewGuid();
+            await scope.SeedUsersAsync([fourLossUser, fiveLossUser]);
+            await using var context = scope.CreateContext();
+            context.PvpPlayerProfiles.AddRange(
+                new PvpPlayerProfile
+                {
+                    UserId = fourLossUser,
+                    Mmr = 1000,
+                    ConsecutiveValidRankedLosses = 4,
+                    CompletedRankedMatchesSinceRelief = 4,
+                    UpdatedAt = DateTime.UtcNow
+                },
+                new PvpPlayerProfile
+                {
+                    UserId = fiveLossUser,
+                    Mmr = 1000,
+                    ConsecutiveValidRankedLosses = 5,
+                    CompletedRankedMatchesSinceRelief = 5,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            context.PvpBotProfiles.Add(new PvpBotProfile
+            {
+                BotProfileId = Guid.NewGuid(),
+                DisplayName = "Relief Test Bot",
+                Mmr = 1000,
+                StepsPerSecond = 1,
+                DifficultyCode = "relief",
+                MinPaceMilli = 800,
+                MaxPaceMilli = 1500,
+                SpiritAffinityCode = "sprout",
+                PetStageNo = 0,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+            await context.SaveChangesAsync();
+
+            var service = CreateService(context, new PvpPresenceTracker());
+            await service.UpdateRewardRulesAsync(RewardMatrix());
+
+            var fourLossStatus = await service.JoinMatchmakingAsync(
+                fourLossUser,
+                new JoinPvpMatchmakingRequest());
+            Assert.Equal("waiting", fourLossStatus.StatusCode);
+            Assert.False(await context.MatchmakingQueues.AsNoTracking()
+                .Where(x => x.UserId == fourLossUser)
+                .Select(x => x.RequiresRelief)
+                .SingleAsync());
+            await service.CancelMatchmakingAsync(fourLossUser);
+
+            var reliefStatus = await service.JoinMatchmakingAsync(
+                fiveLossUser,
+                new JoinPvpMatchmakingRequest());
+            var matchId = Assert.IsType<Guid>(reliefStatus.MatchId);
+            var matchSnapshot = await context.PvpMatches.AsNoTracking()
+                .SingleAsync(x => x.MatchId == matchId);
+            Assert.True(matchSnapshot.IsReliefMatch);
+            Assert.Equal("relief", matchSnapshot.BotDifficultyCode);
+            Assert.Equal("loss_streak_relief", matchSnapshot.MatchmakingReasonCode);
+            Assert.Equal(0, matchSnapshot.BotRewardMultiplierBps);
+
+            // Creating or readying the match does not consume the protection.
+            Assert.Equal(5, await context.PvpPlayerProfiles.AsNoTracking()
+                .Where(x => x.UserId == fiveLossUser)
+                .Select(x => x.ConsecutiveValidRankedLosses)
+                .SingleAsync());
+            var participant = await context.PvpMatchPlayers
+                .SingleAsync(x => x.MatchId == matchId && x.UserId == fiveLossUser);
+            participant.RealtimeJoinedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+            await service.ReadyMatchAsync(fiveLossUser, matchId);
+
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE dbo.pvp_matches
+                SET countdown_ends_at=DATEADD(second,-1,SYSUTCDATETIME())
+                WHERE match_id={matchId};
+                UPDATE dbo.pvp_player_activities
+                SET due_at=DATEADD(second,-1,SYSUTCDATETIME())
+                WHERE activity_id={matchId};
+                """);
+            context.ChangeTracker.Clear();
+            await service.ProcessDueWorkAsync();
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE dbo.pvp_matches
+                SET ended_at=started_at
+                WHERE match_id={matchId} AND status_code='running';
+                """);
+            context.ChangeTracker.Clear();
+            await service.ProcessDueWorkAsync();
+
+            var finished = await context.PvpMatches.AsNoTracking()
+                .SingleAsync(x => x.MatchId == matchId);
+            Assert.Equal("finished", finished.StatusCode);
+            Assert.NotNull(finished.ProfileStateAppliedAt);
+            var profile = await context.PvpPlayerProfiles.AsNoTracking()
+                .SingleAsync(x => x.UserId == fiveLossUser);
+            Assert.Equal(0, profile.ConsecutiveValidRankedLosses);
+            Assert.Equal(0, profile.CompletedRankedMatchesSinceRelief);
+            Assert.NotNull(profile.LastReliefCompletedAt);
+            Assert.Equal(1000, profile.Mmr);
+            Assert.False(await context.PvpMatchRewardEntitlements.AsNoTracking()
+                .AnyAsync(x => x.MatchId == matchId));
+        }
+    }
+
     private static PvpSprintService CreateService(
         WalkamonContext context,
         IPvpPresenceTracker presenceTracker) =>
@@ -320,7 +437,8 @@ public sealed class PvpForfeitIntegrationTests
     private static Task AgeQueueAsync(WalkamonContext context, Guid userId) =>
         context.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE dbo.matchmaking_queue
-            SET queued_at=DATEADD(second,-16,SYSUTCDATETIME())
+            SET queued_at=DATEADD(second,-16,SYSUTCDATETIME()),
+                bot_fallback_at=DATEADD(second,-1,SYSUTCDATETIME())
             WHERE user_id={userId};
             UPDATE dbo.pvp_player_activities
             SET due_at=DATEADD(second,-1,SYSUTCDATETIME())

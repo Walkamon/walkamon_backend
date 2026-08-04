@@ -28,6 +28,7 @@ public partial class WalkamonContext
     public DbSet<PvpMatchEffect> PvpMatchEffects => Set<PvpMatchEffect>();
     public DbSet<PvpSpiritSpeedRule> PvpSpiritSpeedRules => Set<PvpSpiritSpeedRule>();
     public DbSet<PvpRankTier> PvpRankTiers => Set<PvpRankTier>();
+    public DbSet<PvpMatchmakingPolicy> PvpMatchmakingPolicies => Set<PvpMatchmakingPolicy>();
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
@@ -52,8 +53,25 @@ public partial class WalkamonContext
             entity.Property(x => x.DailyStepPowerCap).HasColumnName("daily_step_power_cap").HasDefaultValue(10000);
             entity.Property(x => x.BasePaceMinMilliStepsPerSecond).HasColumnName("base_pace_min_milli_steps_per_second").HasDefaultValue(1000);
             entity.Property(x => x.BasePaceMaxMilliStepsPerSecond).HasColumnName("base_pace_max_milli_steps_per_second").HasDefaultValue(2500);
+            entity.Property(x => x.MatchDurationSeconds).HasColumnName("match_duration_seconds").HasDefaultValue((byte)30);
             entity.Property(x => x.LastProgressAt).HasColumnName("last_progress_at").HasPrecision(3);
             entity.Property(x => x.LastEventSequence).HasColumnName("last_event_sequence").HasDefaultValue(0L);
+            entity.Property(x => x.MatchmakingPolicyVersion).HasColumnName("matchmaking_policy_version");
+            entity.Property(x => x.MatchmakingReasonCode).HasColumnName("matchmaking_reason_code").HasMaxLength(30).IsUnicode(false);
+            entity.Property(x => x.BotDifficultyCode).HasColumnName("bot_difficulty_code").HasMaxLength(10).IsUnicode(false);
+            entity.Property(x => x.IsReliefMatch).HasColumnName("is_relief_match").HasDefaultValue(false);
+            entity.Property(x => x.RatingPolicyCode).HasColumnName("rating_policy_code").HasMaxLength(30).IsUnicode(false);
+            entity.Property(x => x.SelectionRollBps).HasColumnName("selection_roll_bps");
+            entity.Property(x => x.ExpectedFirstDistanceUnits).HasColumnName("expected_first_distance_units");
+            entity.Property(x => x.ExpectedSecondDistanceUnits).HasColumnName("expected_second_distance_units");
+            entity.Property(x => x.ExpectedGapBps).HasColumnName("expected_gap_bps");
+            entity.Property(x => x.BotRewardMultiplierBps).HasColumnName("bot_reward_multiplier_bps").ValueGeneratedNever();
+            entity.Property(x => x.BotWinMmrDelta).HasColumnName("bot_win_mmr_delta");
+            entity.Property(x => x.BotDrawMmrDelta).HasColumnName("bot_draw_mmr_delta");
+            entity.Property(x => x.BotLossMmrDelta).HasColumnName("bot_loss_mmr_delta");
+            entity.Property(x => x.BotRatingWindow).HasColumnName("bot_rating_window").HasDefaultValue((byte)20);
+            entity.Property(x => x.MaxPositiveBotMmrInWindow).HasColumnName("max_positive_bot_mmr_in_window").HasDefaultValue((short)8);
+            entity.Property(x => x.ProfileStateAppliedAt).HasColumnName("profile_state_applied_at").HasPrecision(0);
             entity.Property(x => x.RowVersion).HasColumnName("row_version").IsRowVersion();
             entity.HasOne(x => x.ForfeitedByUser).WithMany().HasForeignKey(x => x.ForfeitedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -81,6 +99,18 @@ public partial class WalkamonContext
             entity.Property(x => x.DailyEligibleStepsSnapshot).HasColumnName("daily_eligible_steps_snapshot");
             entity.Property(x => x.BasePaceMilliStepsPerSecond).HasColumnName("base_pace_milli_steps_per_second").HasDefaultValue(1000);
             entity.Property(x => x.DistanceUnits).HasColumnName("distance_units");
+            entity.Property(x => x.ExpectedDistanceUnits).HasColumnName("expected_distance_units");
+            entity.Property(x => x.ExpectedSpeedBps).HasColumnName("expected_speed_bps");
+            entity.Property(x => x.ExpectedPassiveBps).HasColumnName("expected_passive_bps");
+            entity.Property(x => x.ExpectedLoadoutBps).HasColumnName("expected_loadout_bps");
+            entity.Property(x => x.PassiveRuleBonusBpsSnapshot).HasColumnName("passive_rule_bonus_bps_snapshot");
+            entity.Property(x => x.PassiveRuleStartMinuteSnapshot).HasColumnName("passive_rule_start_minute_snapshot");
+            entity.Property(x => x.PassiveRuleEndMinuteSnapshot).HasColumnName("passive_rule_end_minute_snapshot");
+            entity.Property(x => x.BotMinPaceSnapshot).HasColumnName("bot_min_pace_snapshot");
+            entity.Property(x => x.BotMaxPaceSnapshot).HasColumnName("bot_max_pace_snapshot");
+            entity.Property(x => x.ReadyAt).HasColumnName("ready_at").HasPrecision(3);
+            entity.Property(x => x.RealtimeJoinedAt).HasColumnName("realtime_joined_at").HasPrecision(3);
+            entity.Property(x => x.StreakEligibilityCode).HasColumnName("streak_eligibility_code").HasMaxLength(30).IsUnicode(false);
             entity.Property(x => x.RowVersion).HasColumnName("row_version").IsRowVersion();
             entity.HasIndex(x => new { x.MatchId, x.UserId }, "UX_pvp_match_players_match_user").IsUnique().HasFilter("[user_id] IS NOT NULL");
             entity.HasIndex(x => new { x.MatchId, x.BotProfileId }, "UX_pvp_match_players_match_bot").IsUnique().HasFilter("[bot_profile_id] IS NOT NULL");
@@ -95,6 +125,12 @@ public partial class WalkamonContext
             entity.HasKey(x => x.UserId);
             entity.Property(x => x.UserId).HasColumnName("user_id");
             entity.Property(x => x.Mmr).HasColumnName("mmr").HasDefaultValue(1000);
+            entity.Property(x => x.ConsecutiveValidRankedLosses).HasColumnName("consecutive_valid_ranked_losses").HasDefaultValue((short)0);
+            entity.Property(x => x.CompletedRankedMatchesSinceRelief).HasColumnName("completed_ranked_matches_since_relief").HasDefaultValue(0);
+            entity.Property(x => x.LastReliefCompletedAt).HasColumnName("last_relief_completed_at").HasPrecision(0);
+            entity.Property(x => x.LastBotDifficultyCode).HasColumnName("last_bot_difficulty_code").HasMaxLength(10).IsUnicode(false);
+            entity.Property(x => x.ConsecutiveHardBotCount).HasColumnName("consecutive_hard_bot_count").HasDefaultValue((byte)0);
+            entity.Property(x => x.RowVersion).HasColumnName("row_version").IsRowVersion();
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasPrecision(0);
             entity.HasOne(x => x.User).WithOne(x => x.PvpPlayerProfile).HasForeignKey<PvpPlayerProfile>(x => x.UserId);
         });
@@ -123,11 +159,34 @@ public partial class WalkamonContext
             entity.Property(x => x.AvatarUrl).HasColumnName("avatar_url").HasMaxLength(500);
             entity.Property(x => x.Mmr).HasColumnName("mmr");
             entity.Property(x => x.StepsPerSecond).HasColumnName("steps_per_second").HasPrecision(5, 2);
+            entity.Property(x => x.DifficultyCode).HasColumnName("difficulty_code").HasMaxLength(10).IsUnicode(false).HasDefaultValue("fair");
+            entity.Property(x => x.MinPaceMilli).HasColumnName("min_pace_milli").HasDefaultValue(1000);
+            entity.Property(x => x.MaxPaceMilli).HasColumnName("max_pace_milli").HasDefaultValue(2500);
+            entity.Property(x => x.TargetUserWinMinBps).HasColumnName("target_user_win_min_bps").HasDefaultValue((short)4500);
+            entity.Property(x => x.TargetUserWinMaxBps).HasColumnName("target_user_win_max_bps").HasDefaultValue((short)5500);
+            entity.Property(x => x.ItemPowerBudgetBps).HasColumnName("item_power_budget_bps").HasDefaultValue((short)1000);
+            entity.Property(x => x.ProfileVersion).HasColumnName("profile_version").HasDefaultValue(1);
+            entity.Property(x => x.RowVersion).HasColumnName("row_version").IsRowVersion();
             entity.Property(x => x.SpiritAffinityCode).HasColumnName("spirit_affinity_code").HasMaxLength(30).IsUnicode(false);
             entity.Property(x => x.PetStageNo).HasColumnName("pet_stage_no").HasDefaultValue((byte)1);
             entity.Property(x => x.IsActive).HasColumnName("is_active");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasPrecision(0);
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasPrecision(0);
+            entity.HasIndex(x => new { x.IsActive, x.DifficultyCode, x.Mmr }, "IX_pvp_bot_profiles_active_difficulty_mmr");
+        });
+
+        modelBuilder.Entity<MatchmakingQueue>(entity =>
+        {
+            entity.Property(x => x.MmrSnapshot).HasColumnName("mmr_snapshot");
+            entity.Property(x => x.DailyStepsSnapshot).HasColumnName("daily_steps_snapshot");
+            entity.Property(x => x.BasePaceSnapshot).HasColumnName("base_pace_snapshot");
+            entity.Property(x => x.ExpectedDistanceUnits).HasColumnName("expected_distance_units");
+            entity.Property(x => x.ExpectedSpeedBps).HasColumnName("expected_speed_bps");
+            entity.Property(x => x.PolicyVersion).HasColumnName("policy_version");
+            entity.Property(x => x.RequiresRelief).HasColumnName("requires_relief").HasDefaultValue(false);
+            entity.Property(x => x.PowerSnapshotAt).HasColumnName("power_snapshot_at").HasPrecision(0);
+            entity.Property(x => x.BotFallbackAt).HasColumnName("bot_fallback_at").HasPrecision(0);
+            entity.Property(x => x.RowVersion).HasColumnName("row_version").IsRowVersion();
         });
 
         modelBuilder.Entity<PvpSprintInvite>(entity =>
@@ -496,6 +555,66 @@ public partial class WalkamonContext
             entity.Property(x => x.ColorHex).HasColumnName("color_hex").HasMaxLength(7).IsUnicode(false);
             entity.Property(x => x.IsActive).HasColumnName("is_active");
             entity.HasIndex(x => x.MinMmr).IsUnique();
+        });
+
+        modelBuilder.Entity<PvpMatchmakingPolicy>(entity =>
+        {
+            entity.ToTable("pvp_matchmaking_policies");
+            entity.HasKey(x => x.PolicyVersion);
+            entity.Property(x => x.PolicyVersion).HasColumnName("policy_version").ValueGeneratedNever();
+            entity.Property(x => x.IsActive).HasColumnName("is_active");
+            entity.Property(x => x.MatchDurationSeconds).HasColumnName("match_duration_seconds");
+            entity.Property(x => x.BotFallbackSeconds).HasColumnName("bot_fallback_seconds");
+            entity.Property(x => x.Stage1MmrGap).HasColumnName("stage1_mmr_gap");
+            entity.Property(x => x.Stage1PowerGapBps).HasColumnName("stage1_power_gap_bps");
+            entity.Property(x => x.Stage1PaceRatioBps).HasColumnName("stage1_pace_ratio_bps");
+            entity.Property(x => x.Stage2MmrGap).HasColumnName("stage2_mmr_gap");
+            entity.Property(x => x.Stage2PowerGapBps).HasColumnName("stage2_power_gap_bps");
+            entity.Property(x => x.Stage2PaceRatioBps).HasColumnName("stage2_pace_ratio_bps");
+            entity.Property(x => x.Stage3MmrGap).HasColumnName("stage3_mmr_gap");
+            entity.Property(x => x.Stage3PowerGapBps).HasColumnName("stage3_power_gap_bps");
+            entity.Property(x => x.Stage3PaceRatioBps).HasColumnName("stage3_pace_ratio_bps");
+            entity.Property(x => x.HardMmrGap).HasColumnName("hard_mmr_gap");
+            entity.Property(x => x.HardPowerGapBps).HasColumnName("hard_power_gap_bps");
+            entity.Property(x => x.HardPaceRatioBps).HasColumnName("hard_pace_ratio_bps");
+            entity.Property(x => x.Streak01EasyWeightBps).HasColumnName("streak01_easy_weight_bps");
+            entity.Property(x => x.Streak01FairWeightBps).HasColumnName("streak01_fair_weight_bps");
+            entity.Property(x => x.Streak01HardWeightBps).HasColumnName("streak01_hard_weight_bps");
+            entity.Property(x => x.Streak23EasyWeightBps).HasColumnName("streak23_easy_weight_bps");
+            entity.Property(x => x.Streak23FairWeightBps).HasColumnName("streak23_fair_weight_bps");
+            entity.Property(x => x.Streak23HardWeightBps).HasColumnName("streak23_hard_weight_bps");
+            entity.Property(x => x.Streak4EasyWeightBps).HasColumnName("streak4_easy_weight_bps");
+            entity.Property(x => x.Streak4FairWeightBps).HasColumnName("streak4_fair_weight_bps");
+            entity.Property(x => x.Streak4HardWeightBps).HasColumnName("streak4_hard_weight_bps");
+            entity.Property(x => x.ReliefLossThreshold).HasColumnName("relief_loss_threshold");
+            entity.Property(x => x.ReliefTargetUserWinBps).HasColumnName("relief_target_user_win_bps");
+            entity.Property(x => x.EasyTargetUserWinBps).HasColumnName("easy_target_user_win_bps");
+            entity.Property(x => x.FairTargetUserWinBps).HasColumnName("fair_target_user_win_bps");
+            entity.Property(x => x.HardTargetUserWinBps).HasColumnName("hard_target_user_win_bps");
+            entity.Property(x => x.BotHistoryWindow).HasColumnName("bot_history_window");
+            entity.Property(x => x.MaxBotMatchesInWindow).HasColumnName("max_bot_matches_in_window");
+            entity.Property(x => x.AllowConsecutiveHard).HasColumnName("allow_consecutive_hard");
+            entity.Property(x => x.EasyWinMmrDelta).HasColumnName("easy_win_mmr_delta");
+            entity.Property(x => x.EasyDrawMmrDelta).HasColumnName("easy_draw_mmr_delta");
+            entity.Property(x => x.EasyLossMmrDelta).HasColumnName("easy_loss_mmr_delta");
+            entity.Property(x => x.FairWinMmrDelta).HasColumnName("fair_win_mmr_delta");
+            entity.Property(x => x.FairDrawMmrDelta).HasColumnName("fair_draw_mmr_delta");
+            entity.Property(x => x.FairLossMmrDelta).HasColumnName("fair_loss_mmr_delta");
+            entity.Property(x => x.HardWinMmrDelta).HasColumnName("hard_win_mmr_delta");
+            entity.Property(x => x.HardDrawMmrDelta).HasColumnName("hard_draw_mmr_delta");
+            entity.Property(x => x.HardLossMmrDelta).HasColumnName("hard_loss_mmr_delta");
+            entity.Property(x => x.ReliefWinMmrDelta).HasColumnName("relief_win_mmr_delta");
+            entity.Property(x => x.ReliefDrawMmrDelta).HasColumnName("relief_draw_mmr_delta");
+            entity.Property(x => x.ReliefLossMmrDelta).HasColumnName("relief_loss_mmr_delta");
+            entity.Property(x => x.BotRatingWindow).HasColumnName("bot_rating_window");
+            entity.Property(x => x.MaxPositiveBotMmrInWindow).HasColumnName("max_positive_bot_mmr_in_window");
+            entity.Property(x => x.EasyRewardMultiplierBps).HasColumnName("easy_reward_multiplier_bps");
+            entity.Property(x => x.FairRewardMultiplierBps).HasColumnName("fair_reward_multiplier_bps");
+            entity.Property(x => x.HardRewardMultiplierBps).HasColumnName("hard_reward_multiplier_bps");
+            entity.Property(x => x.ReliefRewardMultiplierBps).HasColumnName("relief_reward_multiplier_bps");
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasPrecision(0);
+            entity.Property(x => x.ActivatedAt).HasColumnName("activated_at").HasPrecision(0);
+            entity.HasIndex(x => x.IsActive, "UX_pvp_matchmaking_policies_active").IsUnique().HasFilter("[is_active] = 1");
         });
     }
 }

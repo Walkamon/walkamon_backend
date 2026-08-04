@@ -43,6 +43,30 @@ public partial class PvpMatchPlayer
 
     public long DistanceUnits { get; set; }
 
+    public long? ExpectedDistanceUnits { get; set; }
+
+    public int? ExpectedSpeedBps { get; set; }
+
+    public int? ExpectedPassiveBps { get; set; }
+
+    public int? ExpectedLoadoutBps { get; set; }
+
+    public int? PassiveRuleBonusBpsSnapshot { get; set; }
+
+    public short? PassiveRuleStartMinuteSnapshot { get; set; }
+
+    public short? PassiveRuleEndMinuteSnapshot { get; set; }
+
+    public int? BotMinPaceSnapshot { get; set; }
+
+    public int? BotMaxPaceSnapshot { get; set; }
+
+    public DateTime? ReadyAt { get; set; }
+
+    public DateTime? RealtimeJoinedAt { get; set; }
+
+    public string? StreakEligibilityCode { get; set; }
+
     public byte[] RowVersion { get; set; } = null!;
 
     public bool IsReady { get; set; }

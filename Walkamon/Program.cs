@@ -19,14 +19,11 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Net;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
-using Walkamon.BackgroundServices;
-using Walkamon.Health;
-using Walkamon.Hubs;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
+
 var builder = WebApplication.CreateBuilder(args);
 var timePresentationOptions = builder.Configuration
     .GetSection(TimePresentationOptions.SectionName)
@@ -165,6 +162,8 @@ builder.Services.Configure<SmtpOptions>(
     builder.Configuration.GetSection(SmtpOptions.SectionName));
 builder.Services.Configure<PvpRealtimeOptions>(
     builder.Configuration.GetSection(PvpRealtimeOptions.SectionName));
+builder.Services.Configure<PvpMatchmakingOptions>(
+    builder.Configuration.GetSection(PvpMatchmakingOptions.SectionName));
 builder.Services.Configure<StepValidationOptions>(
     builder.Configuration.GetSection(StepValidationOptions.SectionName));
 builder.Services.Configure<MotionValidationOptions>(
@@ -235,6 +234,8 @@ builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddSingleton<IFcmPushService, FcmPushService>();
 builder.Services.AddSingleton<IPvpPresenceTracker, PvpPresenceTracker>();
+builder.Services.AddScoped<PvpMatchmakingPolicyProvider>();
+builder.Services.AddScoped<PvpBotCalibrationService>();
 builder.Services.AddScoped<IPvpSprintService, PvpSprintService>();
 builder.Services.AddScoped<IValidatedStepService, ValidatedStepService>();
 if (builder.Environment.IsDevelopment())

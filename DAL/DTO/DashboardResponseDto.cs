@@ -7,21 +7,37 @@ using System.Threading.Tasks;
 namespace DAL.DTO
 {
     public class DashboardResponseDto
-    {
-        public int TotalUsers { get; set; }
+{
+   
+    public int TotalUsers { get; set; }
 
-        public int ActiveUsers { get; set; }
+    public int NewUsersToday { get; set; }
 
-        public long TotalSteps { get; set; }
+    public int NewUsersThisMonth { get; set; }
 
-        public double UserGrowthPercentage { get; set; }
+    public double UserGrowthPercentage { get; set; }
 
-        public double AverageStepsPerDay { get; set; }
+    
+    public long TotalSteps { get; set; }
 
-        public int WalkingUsersToday { get; set; }
+    public long StepsToday { get; set; }
 
-        public double CompareWithYesterday { get; set; }
+    public double AverageStepsPerDay { get; set; }
 
-        public List<PetInteractionStatisticDto> PetInteractions { get; set; } = new();
-    }
+    public double AverageStepsPerUser { get; set; }
+
+    public int WalkingUsersToday { get; set; }
+
+    public double CompareWithYesterday { get; set; }
+
+   
+    public int TotalPets { get; set; }
+
+    public double AveragePetLevel { get; set; }
+
+    public int HighestPetLevel { get; set; }
+
+   
+    public List<PetInteractionStatisticDto> PetInteractions { get; set; } = new();
+}
 }

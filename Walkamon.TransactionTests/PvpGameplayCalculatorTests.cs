@@ -56,6 +56,34 @@ public sealed class PvpGameplayCalculatorTests
     }
 
     [Theory]
+    [InlineData(0, 667, 200100)]
+    [InlineData(5000, 1167, 350100)]
+    [InlineData(10000, 1667, 500100)]
+    public void CalculateDailyPowerPaceMilli_SproutStartsNearTwoHundredThousandAndStillScales(
+        int dailySteps,
+        int expectedPace,
+        long expectedDistance)
+    {
+        var pace = PvpGameplayCalculator.CalculateDailyPowerPaceMilli(
+            dailySteps,
+            affinityCode: "sprout");
+
+        Assert.Equal(expectedPace, pace);
+        Assert.Equal(expectedDistance,
+            PvpGameplayCalculator.CalculatePacedDistanceUnits(
+                TimeSpan.FromSeconds(30),
+                pace,
+                PvpGameplayCalculator.BaseSpeedBps));
+    }
+
+    [Fact]
+    public void CalculateDistanceUnits_SproutScalesLegacyStepDistanceByTwoThirds()
+    {
+        Assert.Equal(200000,
+            PvpGameplayCalculator.CalculateDistanceUnits(30, 10000, "sprout"));
+    }
+
+    [Theory]
     [InlineData("2026-07-15T22:59:00Z", "moonlight", true)]   // 05:59 UTC+7
     [InlineData("2026-07-15T23:00:00Z", "dawn", true)]        // 06:00 UTC+7
     [InlineData("2026-07-16T04:59:00Z", "dawn", true)]        // 11:59 UTC+7

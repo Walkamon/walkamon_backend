@@ -4,6 +4,12 @@ public partial class PvpPlayerProfile
 {
     public Guid UserId { get; set; }
     public int Mmr { get; set; } = 1000;
+    public short ConsecutiveValidRankedLosses { get; set; }
+    public int CompletedRankedMatchesSinceRelief { get; set; }
+    public DateTime? LastReliefCompletedAt { get; set; }
+    public string? LastBotDifficultyCode { get; set; }
+    public byte ConsecutiveHardBotCount { get; set; }
+    public byte[] RowVersion { get; set; } = null!;
     public DateTime UpdatedAt { get; set; }
     public User User { get; set; } = null!;
 }
@@ -27,11 +33,76 @@ public partial class PvpBotProfile
     public string? AvatarUrl { get; set; }
     public int Mmr { get; set; }
     public decimal StepsPerSecond { get; set; }
+    public string DifficultyCode { get; set; } = "fair";
+    public int MinPaceMilli { get; set; } = 1000;
+    public int MaxPaceMilli { get; set; } = 2500;
+    public short TargetUserWinMinBps { get; set; } = 4500;
+    public short TargetUserWinMaxBps { get; set; } = 5500;
+    public short ItemPowerBudgetBps { get; set; } = 1000;
+    public int ProfileVersion { get; set; } = 1;
+    public byte[] RowVersion { get; set; } = null!;
     public string? SpiritAffinityCode { get; set; }
     public byte PetStageNo { get; set; } = 1;
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+}
+
+public partial class PvpMatchmakingPolicy
+{
+    public int PolicyVersion { get; set; }
+    public bool IsActive { get; set; }
+    public byte MatchDurationSeconds { get; set; } = 30;
+    public byte BotFallbackSeconds { get; set; } = 15;
+    public short Stage1MmrGap { get; set; } = 75;
+    public short Stage1PowerGapBps { get; set; } = 800;
+    public short Stage1PaceRatioBps { get; set; } = 11000;
+    public short Stage2MmrGap { get; set; } = 100;
+    public short Stage2PowerGapBps { get; set; } = 1200;
+    public short Stage2PaceRatioBps { get; set; } = 11500;
+    public short Stage3MmrGap { get; set; } = 150;
+    public short Stage3PowerGapBps { get; set; } = 1500;
+    public short Stage3PaceRatioBps { get; set; } = 12000;
+    public short HardMmrGap { get; set; } = 250;
+    public short HardPowerGapBps { get; set; } = 2000;
+    public short HardPaceRatioBps { get; set; } = 12500;
+    public short Streak01EasyWeightBps { get; set; } = 2000;
+    public short Streak01FairWeightBps { get; set; } = 5000;
+    public short Streak01HardWeightBps { get; set; } = 3000;
+    public short Streak23EasyWeightBps { get; set; } = 4500;
+    public short Streak23FairWeightBps { get; set; } = 4500;
+    public short Streak23HardWeightBps { get; set; } = 1000;
+    public short Streak4EasyWeightBps { get; set; } = 7000;
+    public short Streak4FairWeightBps { get; set; } = 3000;
+    public short Streak4HardWeightBps { get; set; }
+    public byte ReliefLossThreshold { get; set; } = 5;
+    public short ReliefTargetUserWinBps { get; set; } = 8200;
+    public short EasyTargetUserWinBps { get; set; } = 8200;
+    public short FairTargetUserWinBps { get; set; } = 5000;
+    public short HardTargetUserWinBps { get; set; } = 3000;
+    public byte BotHistoryWindow { get; set; } = 10;
+    public byte MaxBotMatchesInWindow { get; set; } = 6;
+    public bool AllowConsecutiveHard { get; set; }
+    public short EasyWinMmrDelta { get; set; }
+    public short EasyDrawMmrDelta { get; set; }
+    public short EasyLossMmrDelta { get; set; } = -1;
+    public short FairWinMmrDelta { get; set; } = 2;
+    public short FairDrawMmrDelta { get; set; }
+    public short FairLossMmrDelta { get; set; } = -2;
+    public short HardWinMmrDelta { get; set; } = 6;
+    public short HardDrawMmrDelta { get; set; }
+    public short HardLossMmrDelta { get; set; } = -2;
+    public short ReliefWinMmrDelta { get; set; }
+    public short ReliefDrawMmrDelta { get; set; }
+    public short ReliefLossMmrDelta { get; set; }
+    public byte BotRatingWindow { get; set; } = 20;
+    public short MaxPositiveBotMmrInWindow { get; set; } = 8;
+    public short EasyRewardMultiplierBps { get; set; } = 2500;
+    public short FairRewardMultiplierBps { get; set; } = 5000;
+    public short HardRewardMultiplierBps { get; set; } = 10000;
+    public short ReliefRewardMultiplierBps { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? ActivatedAt { get; set; }
 }
 
 public partial class PvpSprintInvite
