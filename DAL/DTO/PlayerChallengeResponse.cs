@@ -24,5 +24,9 @@ public class PlayerChallengeResponse
 
     public string StatusCode { get; set; } = string.Empty;
 
+    public bool CanClaim { get; set; }
+
     public DateTime AssignedAt { get; set; }
+
+    public DateTime? ClaimedAt { get; set; }
 }

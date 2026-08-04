@@ -42,6 +42,7 @@ public class PlayerChallengeController : BaseController
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CreateRandomChallenge()
     {
         var result = await _playerChallengeService
@@ -62,6 +63,7 @@ public class PlayerChallengeController : BaseController
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CancelChallenge(Guid userMissionId)
     {
         var result = await _playerChallengeService.CancelChallengeAsync(
@@ -73,6 +75,27 @@ public class PlayerChallengeController : BaseController
             Success = true,
             Status = StatusCodes.Status200OK,
             Message = "Cancel challenge success",
+            Data = result
+        });
+    }
+
+    [HttpPost("{userMissionId:guid}/claim")]
+    [ProducesResponseType(typeof(ApiResponse<ClaimPlayerChallengeRewardResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ClaimChallengeReward(Guid userMissionId)
+    {
+        var result = await _playerChallengeService.ClaimChallengeRewardAsync(
+            CurrentUserId,
+            userMissionId);
+
+        return Ok(new ApiResponse<ClaimPlayerChallengeRewardResponse>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Claim challenge reward success",
             Data = result
         });
     }

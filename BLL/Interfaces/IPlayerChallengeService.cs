@@ -11,4 +11,8 @@ public interface IPlayerChallengeService
     Task<CancelPlayerChallengeResponse> CancelChallengeAsync(
         Guid userId,
         Guid userMissionId);
+
+    Task<ClaimPlayerChallengeRewardResponse> ClaimChallengeRewardAsync(
+        Guid userId,
+        Guid userMissionId);
 }

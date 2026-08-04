@@ -15,7 +15,9 @@ public class MissionProgressService : IMissionProgressService
 {
     private const string DailyMissionTypeCode = "daily";
     private const string OverallMissionTypeCode = "overall";
+    private const string ChallengeMissionTypeCode = "challenge";
     private const string ActiveStatusCode = "active";
+    private const string CompletedStatusCode = "completed";
     private const string ClaimedStatusCode = "claimed";
 
     private readonly WalkamonContext _context;
@@ -70,6 +72,30 @@ public class MissionProgressService : IMissionProgressService
                     ")
                     .SingleOrDefaultAsync();
 
+                var isChallenge = string.Equals(
+                    mission.MissionTypeCode,
+                    ChallengeMissionTypeCode,
+                    StringComparison.OrdinalIgnoreCase);
+
+                // A challenge must be explicitly assigned by the random challenge
+                // endpoint. Activity progress must never create hidden challenges.
+                if (isChallenge && userMission == null)
+                {
+                    continue;
+                }
+
+                // Completed challenges are frozen until claim, and terminal rows
+                // must never receive additional progress.
+                if (userMission != null
+                    && (!string.Equals(
+                            userMission.StatusCode,
+                            ActiveStatusCode,
+                            StringComparison.OrdinalIgnoreCase)
+                        || userMission.ClaimedAt.HasValue))
+                {
+                    continue;
+                }
+
                 if (userMission == null)
                 {
                     userMission = new UserMission
@@ -102,6 +128,12 @@ public class MissionProgressService : IMissionProgressService
                         userMission.ProgressValue = Math.Max(userMission.ProgressValue, valueOrAmount);
                     }
                     _context.UserMissions.Update(userMission);
+                }
+
+                if (isChallenge
+                    && userMission.ProgressValue >= mission.TargetValue)
+                {
+                    userMission.StatusCode = CompletedStatusCode;
                 }
             }
 
@@ -158,6 +190,7 @@ public class MissionProgressService : IMissionProgressService
         {
             DailyMissionTypeCode => today,
             OverallMissionTypeCode => DateOnly.MinValue,
+            ChallengeMissionTypeCode => ChallengeCycleDate.FromUtc(now),
             _ => today
         };
     }
