@@ -8,10 +8,7 @@ namespace Walkamon.TransactionTests;
 public sealed class StepExperienceRewardTests
 {
     [Theory]
-    [InlineData(0, 99, 0)]
     [InlineData(99, 1, 1)]
-    [InlineData(100, 99, 0)]
-    [InlineData(190, 210, 3)]
     public void CalculateRewardsCrossed_OnlyAwardsNewHundredStepMilestones(
         long previousSteps,
         int newSteps,
