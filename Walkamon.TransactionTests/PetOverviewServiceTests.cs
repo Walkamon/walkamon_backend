@@ -127,6 +127,8 @@ public sealed class PetOverviewServiceTests
         private Mock<IGenericRepository<PetEvolutionHistory>> PetHistory { get; } = new();
         private Mock<IGenericRepository<Pet>> Pets { get; } = new();
         private Mock<ISystemSettingRepository> SystemSettingRepository { get; } = new();
+        private Mock<IGenericRepository<UserProfile>> UserProfiles { get; } = new();
+
         public PetServiceFixture()
         {
             UserPets.Setup(x => x.SaveAsync()).Returns(Task.CompletedTask);
@@ -148,7 +150,8 @@ public sealed class PetOverviewServiceTests
                 EvolutionHistory.Object,
                 PetHistory.Object,
                 Pets.Object,
-                 SystemSettingRepository.Object);
+                 SystemSettingRepository.Object,
+                 UserProfiles.Object);
         }
 
         public PetService Service { get; }
