@@ -783,6 +783,10 @@ public sealed partial class PvpSprintService : IPvpSprintService
         foreach (var matchId in runningIds)
             await ProcessLifecycleRecordAsync("running", matchId, () => ProcessDueRunningAsync(matchId, cancellationToken));
 
+        // ProcessDueRunningAsync sets SettlementEndsAt using a newer timestamp than
+        // the one captured before the running batch. Refresh it so daily-power
+        // matches can be settled in this same worker pass as intended.
+        now = DateTime.UtcNow;
         var settlingIds = await _context.PvpMatches.AsNoTracking()
             .Where(x => x.StatusCode == "settling" && x.SettlementEndsAt <= now)
             .OrderBy(x => x.SettlementEndsAt)
