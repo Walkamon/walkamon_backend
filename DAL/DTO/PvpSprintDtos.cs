@@ -158,6 +158,8 @@ public sealed class PvpStepSessionResponse
     public DateTime ExpiresAt { get; set; }
     public int NextSequence { get; set; }
     public DateTime ServerTime { get; set; }
+    public string? DailyStepDate { get; set; }
+    public int? DailyAcceptedTotal { get; set; }
     public StepMotionPolicyResponse MotionPolicy { get; set; } = new();
 }
 public sealed class StepMotionPolicyResponse
@@ -177,6 +179,8 @@ public sealed class PvpStepBatchResponse
     public int RejectedSteps { get; set; }
     public int SuspiciousSteps { get; set; }
     public int NextSequence { get; set; }
+    public string? DailyStepDate { get; set; }
+    public int? DailyAcceptedTotal { get; set; }
     public int CurrentScore { get; set; }
     public int ValidatedSteps { get; set; }
     public long DistanceUnits { get; set; }
