@@ -1,4 +1,5 @@
 ﻿using BLL.Interfaces;
+using BLL.Service;
 using DAL.DTO;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -12,11 +13,17 @@ namespace Walkamon.Controllers
     public class PetController : BaseController
     {
         private readonly IPetService _petService;
+        private readonly IAchievementProgressService _achievementProgressService;
+        private readonly IMissionProgressService _missionProgressService;
 
         public PetController(
-            IPetService petService)
+            IPetService petService,
+            IAchievementProgressService achievementProgressService,
+            IMissionProgressService missionProgressService)
         {
             _petService = petService;
+            _achievementProgressService = achievementProgressService;
+            _missionProgressService = missionProgressService;
         }
 
         [HttpPost("create-stater-pet")]
@@ -85,6 +92,15 @@ namespace Walkamon.Controllers
         public async Task<IActionResult> FeedSpirit()
         {
             var result = await _petService.FeedSpiritAsync(CurrentUserId);
+
+            await _achievementProgressService.AddProgressAsync(
+                CurrentUserId,
+                MissionMetricCodeCatalog.FeedPet,
+                1);
+            await _missionProgressService.AddProgressAsync(
+                CurrentUserId,
+                MissionMetricCodeCatalog.FeedPet,
+                1);
 
             return Ok(new ApiResponse<PetStatusResponse>
             {
