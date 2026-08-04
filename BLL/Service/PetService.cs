@@ -23,6 +23,7 @@ namespace BLL.Service
         private readonly IGenericRepository<Pet> _Pet;
         private readonly ISystemSettingRepository _systemSettingRepository;
         private readonly IGenericRepository<UserProfile> _userProfileRepository;
+        private readonly IGenericRepository<Wallet> _walletRepository;
         public PetService(
            IPetRepository petRepository, IGenericRepository<UserPet> repository ,
            IPetInteractionRepository petInteractionRepository, IGenericRepository<PetInteraction> PetInteraction,
@@ -30,7 +31,8 @@ namespace BLL.Service
           IGenericRepository<PetEvolutionHistory> PetHistory,
           IGenericRepository<Pet> Pet,
           ISystemSettingRepository systemSettingRepository,
-           IGenericRepository<UserProfile> userProfileRepository)
+           IGenericRepository<UserProfile> userProfileRepository,
+             IGenericRepository<Wallet> walletRepository)
             
         {
             _Pet = Pet;
@@ -42,6 +44,7 @@ namespace BLL.Service
             _repository = repository;
             _systemSettingRepository = systemSettingRepository;
             _userProfileRepository = userProfileRepository;
+            _walletRepository = walletRepository;
         }
         public async Task CreateUserPetAsync(Guid userId, CreateUserPetRequest request)
         {
@@ -261,7 +264,7 @@ namespace BLL.Service
             };
         }
 
-        public async Task<PetStatusResponse>  FeedSpiritAsync(Guid userId)
+        public async Task<PetStatusResponse> FeedSpiritAsync(Guid userId)
         {
             var today = DateOnly.FromDateTime(GetVietnamNow());
 
@@ -290,20 +293,30 @@ namespace BLL.Service
             if (userPet == null)
                 throw new NotFoundException("Pet not found.");
 
+            var wallet = (await _walletRepository.GetAllAsync())
+                .FirstOrDefault(x => x.UserId == userId);
+
+            if (wallet == null)
+                throw new NotFoundException("Wallet not found.");
 
             await UpdateEnergy(userPet);
             await UpdateBond(userPet);
             await UpdateLifeForce(userPet);
 
-          
             if (userPet.CurrentPetLifeForce >= userPet.PetLifeForce)
                 throw new BadRequestException("Pet life force is already full.");
 
-          
-            if (interaction.Count >= 5)
+            if (interaction.Count >= 10)
                 throw new BadRequestException("You have reached the maximum feed limit today.");
 
-          
+            if (wallet.Balance < 5)
+                throw new BadRequestException(
+                    $"Not enough balance. Need 5 dewdrop to feed your pet.");
+
+           
+            wallet.Balance -= 5;
+
+       
             userPet.CurrentPetLifeForce = Math.Min(
                 userPet.PetLifeForce,
                 userPet.CurrentPetLifeForce + 20);
@@ -311,6 +324,7 @@ namespace BLL.Service
             interaction.Count++;
 
             _repository.Update(userPet);
+            _walletRepository.Update(wallet);
 
             if (!isNew)
             {
@@ -318,6 +332,7 @@ namespace BLL.Service
             }
 
             await _repository.SaveAsync();
+            await _walletRepository.SaveAsync();
 
             return new PetStatusResponse
             {
@@ -328,7 +343,8 @@ namespace BLL.Service
                 MaxBond = userPet.PetBond,
 
                 CurrentLifeForce = userPet.CurrentPetLifeForce,
-                MaxLifeForce = userPet.PetLifeForce
+                MaxLifeForce = userPet.PetLifeForce,
+
             };
         }
         public async Task<PetInfoResponse> GetPetInfoAsync(Guid userId)
