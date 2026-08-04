@@ -77,7 +77,8 @@ public sealed partial class PvpSprintService
             policy.MatchDurationSeconds,
             7500,
             12500,
-            calculatedAt);
+            calculatedAt,
+            normalizedAffinity);
         return new ParticipantPowerSnapshot(
             power,
             rule?.BonusBps ?? 0,
@@ -141,8 +142,12 @@ public sealed partial class PvpSprintService
             var calibration = _botCalibrationService.Calibrate(
                 userPower.Power,
                 botPower.Power.ExpectedSpeedBps,
-                bot.MinPaceMilli,
-                bot.MaxPaceMilli,
+                PvpGameplayCalculator.ApplyAffinityPaceScale(
+                    bot.MinPaceMilli,
+                    NormalizeAffinityCode(bot.SpiritAffinityCode)),
+                PvpGameplayCalculator.ApplyAffinityPaceScale(
+                    bot.MaxPaceMilli,
+                    NormalizeAffinityCode(bot.SpiritAffinityCode)),
                 policy.MatchDurationSeconds,
                 policy.HardPowerGapBps,
                 targetRatio);
@@ -224,7 +229,8 @@ public sealed partial class PvpSprintService
             policy.MatchDurationSeconds,
             7500,
             12500,
-            calculatedAt);
+            calculatedAt,
+            affinity);
         return new ParticipantPowerSnapshot(
             power,
             rule?.BonusBps ?? 0,

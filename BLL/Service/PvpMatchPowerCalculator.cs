@@ -31,7 +31,8 @@ public static class PvpMatchPowerCalculator
         int matchDurationSeconds,
         int speedMinimumBps,
         int speedMaximumBps,
-        DateTime calculatedAt)
+        DateTime calculatedAt,
+        string? affinityCode = null)
     {
         if (matchDurationSeconds <= 0)
             throw new ArgumentOutOfRangeException(nameof(matchDurationSeconds));
@@ -42,7 +43,8 @@ public static class PvpMatchPowerCalculator
             dailyEligibleSteps,
             dailyStepPowerCap,
             minimumPaceMilli,
-            maximumPaceMilli);
+            maximumPaceMilli,
+            affinityCode);
         var passive = realtimeEnabled ? Math.Max(0, expectedPassiveBps) : 0;
         var loadoutBps = realtimeEnabled
             ? CalculateExpectedLoadoutBps(loadout, expectedItemUseRateBps, matchDurationSeconds)

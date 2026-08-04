@@ -31,8 +31,49 @@ public sealed class PvpSchemaIntegrationTests
             await using (var connection = new SqlConnection(database))
             {
                 await connection.OpenAsync();
+                await using (var legacySpiritRules = connection.CreateCommand())
+                {
+                    legacySpiritRules.CommandText = """
+                        UPDATE dbo.pvp_spirit_speed_rules
+                        SET start_minute = CASE affinity_code
+                                WHEN 'dawn' THEN 300
+                                WHEN 'warm_sun' THEN 660
+                                WHEN 'moonlight' THEN 1020
+                                ELSE 0
+                            END,
+                            end_minute = CASE affinity_code
+                                WHEN 'dawn' THEN 659
+                                WHEN 'warm_sun' THEN 1019
+                                WHEN 'moonlight' THEN 299
+                                ELSE 1439
+                            END,
+                            bonus_bps = CASE affinity_code WHEN 'sprout' THEN 200 ELSE 500 END;
+                        """;
+                    await legacySpiritRules.ExecuteNonQueryAsync();
+                }
+
                 await ExecuteBatchesAsync(connection, upgradeSql);
+
+                Assert.Equal(4, await ScalarAsync(connection,
+                    """
+                    SELECT COUNT(*)
+                    FROM dbo.pvp_spirit_speed_rules
+                    WHERE (affinity_code='sprout' AND start_minute=0 AND end_minute=1439 AND bonus_bps=0)
+                       OR (affinity_code='dawn' AND start_minute=360 AND end_minute=719 AND bonus_bps=1000)
+                       OR (affinity_code='warm_sun' AND start_minute=720 AND end_minute=1079 AND bonus_bps=1000)
+                       OR (affinity_code='moonlight' AND start_minute=1080 AND end_minute=359 AND bonus_bps=1000)
+                    """));
+                Assert.Equal(1, await ScalarAsync(connection,
+                    "SELECT COUNT(*) FROM dbo.system_settings WHERE setting_key='pvp_spirit_speed_rules_v2'"));
+
+                await using (var adminOverride = connection.CreateCommand())
+                {
+                    adminOverride.CommandText = "UPDATE dbo.pvp_spirit_speed_rules SET bonus_bps=900 WHERE affinity_code='warm_sun';";
+                    await adminOverride.ExecuteNonQueryAsync();
+                }
                 await ExecuteBatchesAsync(connection, upgradeSql);
+                Assert.Equal(900, await ScalarAsync(connection,
+                    "SELECT bonus_bps FROM dbo.pvp_spirit_speed_rules WHERE affinity_code='warm_sun'"));
 
                 Assert.Equal(1, await ScalarAsync(connection,
                     "SELECT COUNT(*) FROM sys.tables WHERE object_id=OBJECT_ID('dbo.step_sensor_batches')"));

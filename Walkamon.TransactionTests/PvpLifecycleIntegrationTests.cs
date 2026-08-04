@@ -135,9 +135,9 @@ public sealed class PvpLifecycleIntegrationTests
                 .Where(x => x.MatchId == matchId)
                 .ToDictionaryAsync(x => x.UserId!.Value);
             Assert.Equal(10000, powerSnapshots[firstUserId].DailyEligibleStepsSnapshot);
-            Assert.Equal(2500, powerSnapshots[firstUserId].BasePaceMilliStepsPerSecond);
+            Assert.Equal(1667, powerSnapshots[firstUserId].BasePaceMilliStepsPerSecond);
             Assert.Equal(0, powerSnapshots[secondUserId].DailyEligibleStepsSnapshot);
-            Assert.Equal(1000, powerSnapshots[secondUserId].BasePaceMilliStepsPerSecond);
+            Assert.Equal(667, powerSnapshots[secondUserId].BasePaceMilliStepsPerSecond);
 
             await context.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE dbo.pvp_matches

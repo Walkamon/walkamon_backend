@@ -437,7 +437,10 @@ public sealed class ValidatedStepService : IValidatedStepService
                         match!, player, item.IntervalStartedAt, item.RecordedAt, effects)
                     : StepSensorRules.MinimumPvpMultiplier(
                         match!, player, item.RecordedAt, item.RecordedAt, effects);
-                var distance = PvpGameplayCalculator.CalculateDistanceUnits(eligible, lastMultiplier);
+                var distance = PvpGameplayCalculator.CalculateDistanceUnits(
+                    eligible,
+                    lastMultiplier,
+                    player.SpiritAffinityCode);
                 accepted += eligible;
                 distanceAdded = checked(distanceAdded + distance);
             }

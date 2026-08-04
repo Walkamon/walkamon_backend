@@ -29,6 +29,7 @@ public sealed class PvpForfeitIntegrationTests
             var users = Enumerable.Range(0, 9).Select(_ => Guid.NewGuid()).ToArray();
             await scope.SeedUsersAsync(users);
             await scope.SeedPetAsync(users[0]);
+            await scope.SeedPetAsync(users[1]);
 
             await using var context = scope.CreateContext();
             var presenceTracker = new PvpPresenceTracker();

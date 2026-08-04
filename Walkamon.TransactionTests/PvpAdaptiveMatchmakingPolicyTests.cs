@@ -35,6 +35,28 @@ public sealed class PvpAdaptiveMatchmakingPolicyTests
     }
 
     [Fact]
+    public void MatchPower_SproutUsesReducedPaceForCandidateSelection()
+    {
+        var snapshot = PvpMatchPowerCalculator.Calculate(
+            0,
+            10000,
+            1000,
+            2500,
+            0,
+            [],
+            false,
+            PvpMatchPowerCalculator.HumanExpectedItemUseRateBps,
+            30,
+            7500,
+            12500,
+            DateTime.UnixEpoch,
+            "sprout");
+
+        Assert.Equal(667, snapshot.BasePaceMilliStepsPerSecond);
+        Assert.Equal(200100, snapshot.ExpectedDistanceUnits);
+    }
+
+    [Fact]
     public void MatchPower_ValuesOnlyDistanceChangingLoadoutAndRespectsSpeedCap()
     {
         var snapshot = PvpMatchPowerCalculator.Calculate(

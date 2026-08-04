@@ -774,6 +774,35 @@ IF NOT EXISTS(SELECT 1 FROM dbo.pvp_rank_tiers WHERE tier_code=''tinh_tu'') INSE
 IF NOT EXISTS(SELECT 1 FROM dbo.pvp_rank_tiers WHERE tier_code=''lumina'') INSERT dbo.pvp_rank_tiers VALUES(''lumina'',N''Lumina'',1900,6,N''Assets/Mobile/PVP/Rank/lumina.png'',''#F3C969'',1);
 ');
 
+/* One-time correction for the legacy production spirit schedule. Keep the
+   marker so later administrator changes are not overwritten on every deploy. */
+IF NOT EXISTS (
+    SELECT 1
+    FROM dbo.system_settings
+    WHERE setting_key = 'pvp_spirit_speed_rules_v2'
+)
+BEGIN
+    EXEC(N'
+        UPDATE r
+        SET start_minute = expected.start_minute,
+            end_minute = expected.end_minute,
+            bonus_bps = expected.bonus_bps,
+            time_zone_code = ''Asia/Ho_Chi_Minh'',
+            is_active = 1,
+            updated_at = SYSUTCDATETIME()
+        FROM dbo.pvp_spirit_speed_rules r
+        INNER JOIN (VALUES
+            (''sprout'', 0, 1439, 0),
+            (''dawn'', 360, 719, 1000),
+            (''warm_sun'', 720, 1079, 1000),
+            (''moonlight'', 1080, 359, 1000)
+        ) expected(affinity_code, start_minute, end_minute, bonus_bps)
+            ON expected.affinity_code = r.affinity_code;');
+
+    INSERT INTO dbo.system_settings(setting_key, setting_value)
+    VALUES ('pvp_spirit_speed_rules_v2', 'applied');
+END;
+
 -- Shared daily/PvP sensor pipeline. Every column/index operation is compiled
 -- only after its prerequisite exists, so this block is safe on older schemas.
 IF COL_LENGTH('dbo.pvp_step_sessions', 'purpose_code') IS NULL
