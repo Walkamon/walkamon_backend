@@ -190,11 +190,20 @@ public sealed class PvpLifecycleIntegrationTests
                 new long[] { 1, 2, 3, 4, 5, 6 },
                 eventSequences.Order().ToArray());
 
-            // At 15 seconds the queue falls back only when an active bot exists.
+            // At 15 seconds an unavailable bot pool fails the queue explicitly
+            // instead of leaving the player waiting forever.
             await service.JoinMatchmakingAsync(botUserId, new JoinPvpMatchmakingRequest());
             await AgeQueueAsync(context, botUserId);
             await service.ProcessDueWorkAsync();
-            Assert.Equal("waiting", (await service.GetMatchmakingStatusAsync(botUserId)).StatusCode);
+            Assert.Equal("idle", (await service.GetMatchmakingStatusAsync(botUserId)).StatusCode);
+            Assert.False(await context.MatchmakingQueues.AnyAsync(x => x.UserId == botUserId));
+            Assert.False(await context.PvpPlayerActivities.AnyAsync(x => x.UserId == botUserId));
+            var failedQueueEvent = await context.OutboxEvents.AsNoTracking()
+                .Where(x => x.AggregateType == "user" &&
+                            x.AggregateId == botUserId &&
+                            x.EventType == "queue.failed")
+                .SingleAsync();
+            Assert.Contains("bot_unavailable", failedQueueEvent.PayloadJson, StringComparison.Ordinal);
 
             context.PvpBotProfiles.Add(new PvpBotProfile
             {
@@ -208,6 +217,9 @@ public sealed class PvpLifecycleIntegrationTests
                 UpdatedAt = DateTime.UtcNow
             });
             await context.SaveChangesAsync();
+            var requeued = await service.JoinMatchmakingAsync(botUserId, new JoinPvpMatchmakingRequest());
+            Assert.Equal("waiting", requeued.StatusCode);
+            await AgeQueueAsync(context, botUserId);
             await service.ProcessDueWorkAsync();
             var botStatus = await service.GetMatchmakingStatusAsync(botUserId);
             var botMatchId = Assert.IsType<Guid>(botStatus.MatchId);
@@ -215,11 +227,20 @@ public sealed class PvpLifecycleIntegrationTests
             var botParticipants = await context.PvpMatchPlayers.AsNoTracking()
                 .Where(x => x.MatchId == botMatchId)
                 .ToListAsync();
+            Assert.Equal(2, botParticipants.Count);
+            Assert.Contains(botParticipants, x => x.ParticipantTypeCode == "user" && x.UserId == botUserId);
             var botParticipant = Assert.Single(botParticipants, x => x.ParticipantTypeCode == "bot");
             Assert.Null(botParticipant.UserId);
             Assert.NotNull(botParticipant.BotProfileId);
             Assert.True(botParticipant.IsReady);
             Assert.False(Assert.Single(botParticipants, x => x.ParticipantTypeCode == "user").IsReady);
+            Assert.Contains(
+                await context.OutboxEvents.AsNoTracking()
+                    .Where(x => x.AggregateType == "user" &&
+                                x.AggregateId == botUserId &&
+                                x.EventType == "match.assigned")
+                    .ToListAsync(),
+                x => x.PayloadJson.Contains(botMatchId.ToString(), StringComparison.OrdinalIgnoreCase));
             var botReady = await service.ReadyMatchAsync(botUserId, botMatchId);
             Assert.True(botReady.AllReady);
             Assert.Equal(

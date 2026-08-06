@@ -919,7 +919,11 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 now,
                 queue.RequiresRelief,
                 cancellationToken);
-            if (botDecision == null) return;
+            if (botDecision?.BotProfile == null)
+            {
+                await FailMatchmakingQueueAsync(queue, now, cancellationToken);
+                return;
+            }
 
             _context.MatchmakingQueues.Remove(queue);
             RemoveActivity(queue.UserId);
@@ -957,7 +961,11 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 .OrderBy(x => Math.Abs(x.Mmr - playerProfile.Mmr))
                 .ThenBy(x => x.BotProfileId)
                 .FirstOrDefaultAsync(cancellationToken);
-            if (bot == null) return;
+            if (bot == null)
+            {
+                await FailMatchmakingQueueAsync(queue, now, cancellationToken);
+                return;
+            }
 
             _context.MatchmakingQueues.Remove(queue);
             RemoveActivity(queue.UserId);
@@ -966,6 +974,35 @@ public sealed partial class PvpSprintService : IPvpSprintService
             AddMatchOutbox(match, "match.created");
             await _context.SaveChangesAsync(cancellationToken);
         });
+
+    private async Task FailMatchmakingQueueAsync(
+        MatchmakingQueue queue,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var activeBotCount = await _context.PvpBotProfiles
+            .CountAsync(x => x.IsActive, cancellationToken);
+        _logger.LogWarning(
+            "PvP matchmaking queue failed because no eligible bot was available. " +
+            "UserId={UserId} QueuedAt={QueuedAt} ActiveBotCount={ActiveBotCount}",
+            queue.UserId,
+            queue.QueuedAt,
+            activeBotCount);
+
+        _context.MatchmakingQueues.Remove(queue);
+        RemoveActivity(queue.UserId);
+        AddOutbox(
+            "user",
+            queue.UserId,
+            "queue.failed",
+            new
+            {
+                reasonCode = "bot_unavailable",
+                queuedAt = AsUtc(queue.QueuedAt),
+                failedAt = AsUtc(now)
+            });
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 
     private Task ProcessDueCountdownAsync(Guid matchId, CancellationToken cancellationToken) =>
         _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
@@ -1272,6 +1309,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
         DateTime now,
         PvpMatchmakingDecision? decision = null)
     {
+        ValidateMatchCreationInputs(firstUserId, secondUserId, bot, source);
         var firstProfile = await EnsureProfileAsync(firstUserId, now);
         var policy = decision?.Policy;
         var botDifficulty = decision?.BotDifficulty;
@@ -1318,6 +1356,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
         var firstPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = firstUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = firstPet.Level, PetIdSnapshot = firstPet.PetId, PetNameSnapshot = firstPet.Name, PetStageNoSnapshot = firstPet.StageNo, SpiritAffinityCode = firstPet.AffinityCode, Score = 0, MmrBefore = firstProfile.Mmr, BasePaceMilliStepsPerSecond = match.BasePaceMinMilliStepsPerSecond, IsReady = false, JoinedAt = now };
         if (decision != null)
             ApplyParticipantPowerSnapshot(firstPlayer, decision.FirstPower);
+        var participants = new List<PvpMatchPlayer> { firstPlayer };
         _context.PvpMatchPlayers.Add(firstPlayer);
         await SnapshotPlayerLoadoutAsync(match, firstPlayer, firstUserId, now);
         if (secondUserId.HasValue)
@@ -1327,6 +1366,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             var secondPlayer = new PvpMatchPlayer { MatchPlayerId = Guid.NewGuid(), MatchId = match.MatchId, UserId = secondUserId, ParticipantTypeCode = "user", StepsAtMatch = 0, PetLevelAtMatch = secondPet.Level, PetIdSnapshot = secondPet.PetId, PetNameSnapshot = secondPet.Name, PetStageNoSnapshot = secondPet.StageNo, SpiritAffinityCode = secondPet.AffinityCode, Score = 0, MmrBefore = secondProfile.Mmr, BasePaceMilliStepsPerSecond = match.BasePaceMinMilliStepsPerSecond, IsReady = false, JoinedAt = now };
             if (decision != null)
                 ApplyParticipantPowerSnapshot(secondPlayer, decision.SecondPower);
+            participants.Add(secondPlayer);
             _context.PvpMatchPlayers.Add(secondPlayer);
             await SnapshotPlayerLoadoutAsync(match, secondPlayer, secondUserId.Value, now);
         }
@@ -1343,12 +1383,51 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 botPlayer.BotMinPaceSnapshot = bot.MinPaceMilli;
                 botPlayer.BotMaxPaceSnapshot = bot.MaxPaceMilli;
             }
+            participants.Add(botPlayer);
             _context.PvpMatchPlayers.Add(botPlayer);
             await SnapshotBotLoadoutAsync(match, botPlayer, bot.BotProfileId, now);
         }
-        AddMatchAssigned(firstUserId, match, now);
-        if (secondUserId.HasValue) AddMatchAssigned(secondUserId.Value, match, now);
+        ValidateMatchParticipants(firstUserId, secondUserId, bot, participants);
+        foreach (var userId in participants.Where(x => x.UserId.HasValue).Select(x => x.UserId!.Value))
+            AddMatchAssigned(userId, match, now);
         return match;
+    }
+
+    private static void ValidateMatchCreationInputs(
+        Guid firstUserId,
+        Guid? secondUserId,
+        PvpBotProfile? bot,
+        string source)
+    {
+        if (firstUserId == Guid.Empty)
+            throw new InvalidOperationException("A PvP match requires a first user participant.");
+        if (secondUserId == firstUserId)
+            throw new InvalidOperationException("A PvP match cannot contain the same user twice.");
+        if (string.Equals(source, "bot", StringComparison.OrdinalIgnoreCase) != (bot != null))
+            throw new InvalidOperationException("PvP match source and bot participant are inconsistent.");
+        if (secondUserId.HasValue == (bot != null))
+            throw new InvalidOperationException("A PvP match must contain either a second user or a bot participant.");
+    }
+
+    private static void ValidateMatchParticipants(
+        Guid firstUserId,
+        Guid? secondUserId,
+        PvpBotProfile? bot,
+        IReadOnlyCollection<PvpMatchPlayer> participants)
+    {
+        if (participants.Count != 2)
+            throw new InvalidOperationException("A PvP match must contain exactly two participants.");
+
+        var users = participants.Where(x => x.ParticipantTypeCode == "user").ToList();
+        var bots = participants.Where(x => x.ParticipantTypeCode == "bot").ToList();
+        if (users.Count != (bot == null ? 2 : 1) || bots.Count != (bot == null ? 0 : 1))
+            throw new InvalidOperationException("PvP match participant types are invalid.");
+        if (!users.Any(x => x.UserId == firstUserId))
+            throw new InvalidOperationException("The first PvP user participant is missing.");
+        if (secondUserId.HasValue && !users.Any(x => x.UserId == secondUserId.Value))
+            throw new InvalidOperationException("The second PvP user participant is missing.");
+        if (bot != null && bots[0].BotProfileId != bot.BotProfileId)
+            throw new InvalidOperationException("The PvP bot participant does not match the selected bot profile.");
     }
 
     private static void ApplyParticipantPowerSnapshot(
