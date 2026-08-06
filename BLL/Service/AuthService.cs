@@ -1,9 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Data;
 using BLL.Exceptions;
 using BLL.Interfaces;
 using DAL.Data;
 using DAL.DTO;
+using DAL.Extensions;
 using DAL.Interfaces;
 using DAL.Models;
 using Google.Apis.Auth;
@@ -21,6 +23,9 @@ public class AuthService : IAuthService
 {
     private const string VerifyEmailPurposeCode = "verify_email";
     private const string ForgotPasswordPurposeCode = "forgot_password";
+    private const string PasswordResetTicketPurpose = "forgot_password_reset";
+    private const string PasswordResetTicketAudience = "WalkamonPasswordReset";
+    private const int PasswordResetTicketLifetimeMinutes = 10;
     private const string UserRoleCode = "0";
     private const string GoogleProviderName = "google";
     private static readonly string[] PolicySettingKeys =
@@ -343,7 +348,9 @@ public class AuthService : IAuthService
             EnsureCooldownElapsed(latestOtp.CreatedAt, now, policy.ResendCooldownSeconds);
         }
 
-        foreach (var pendingOtp in userOtpRequests.Where(otp => otp.StatusCode == "pending"))
+        foreach (var pendingOtp in userOtpRequests.Where(otp =>
+                     otp.StatusCode == "pending"
+                     || (otp.StatusCode == "verified" && otp.UsedAt == null)))
         {
             CancelOtp(pendingOtp, now);
         }
@@ -374,6 +381,95 @@ public class AuthService : IAuthService
         await SendOtpOrCancelAsync(otp, user.Email, plaintextOtp, policy.ExpiryMinutes);
 
         return ToOtpSentResponse(otp, policy.ResendCooldownSeconds);
+    }
+
+    public async Task<ForgotPasswordResetTicketResponse> VerifyForgotPasswordOtpAsync(
+        VerifyForgotPasswordOtpRequest request)
+    {
+        var outcome = await _context.ExecuteInTransactionAsync(
+            IsolationLevel.Serializable,
+            async () =>
+            {
+                var otp = await _userRepository.GetOtpRequestAsync(request.RequestCode);
+                var now = DateTime.UtcNow;
+
+                if (otp == null
+                    || otp.PurposeCode != ForgotPasswordPurposeCode
+                    || otp.User == null
+                    || otp.User.DeletedAt != null
+                    || !otp.User.StatusCode.Equals("active", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new OtpVerificationOutcome(null, "OTP request is invalid");
+                }
+
+                var otpMatches = CryptographicOperations.FixedTimeEquals(
+                    otp.OtpHash,
+                    HashOtp(request.Otp.Trim()));
+
+                if (otp.StatusCode == "verified" && otp.UsedAt == null)
+                {
+                    if (otp.ExpiresAt <= now)
+                    {
+                        otp.StatusCode = "expired";
+                        otp.UpdatedAt = now;
+                        await _userRepository.SaveChangesAsync();
+                        return new OtpVerificationOutcome(null, "OTP has expired");
+                    }
+
+                    if (!otpMatches)
+                    {
+                        return new OtpVerificationOutcome(null, "OTP is invalid");
+                    }
+
+                    return new OtpVerificationOutcome(
+                        CreatePasswordResetTicket(otp, otp.ExpiresAt),
+                        null);
+                }
+
+                if (otp.StatusCode != "pending")
+                {
+                    return new OtpVerificationOutcome(null, "OTP request is invalid");
+                }
+
+                if (otp.ExpiresAt <= now)
+                {
+                    otp.StatusCode = "expired";
+                    otp.UpdatedAt = now;
+                    await _userRepository.SaveChangesAsync();
+                    return new OtpVerificationOutcome(null, "OTP has expired");
+                }
+
+                if (!otpMatches)
+                {
+                    otp.AttemptCount++;
+                    otp.UpdatedAt = now;
+                    if (otp.AttemptCount >= otp.MaxAttempts)
+                    {
+                        otp.StatusCode = "cancelled";
+                    }
+
+                    await _userRepository.SaveChangesAsync();
+                    return new OtpVerificationOutcome(null, "OTP is invalid");
+                }
+
+                var ticketExpiresAt = now.AddMinutes(PasswordResetTicketLifetimeMinutes);
+                otp.StatusCode = "verified";
+                otp.UsedAt = null;
+                otp.ExpiresAt = ticketExpiresAt;
+                otp.UpdatedAt = now;
+                await _userRepository.SaveChangesAsync();
+
+                return new OtpVerificationOutcome(
+                    CreatePasswordResetTicket(otp, ticketExpiresAt),
+                    null);
+            });
+
+        if (outcome.Error != null)
+        {
+            throw new BadRequestException(outcome.Error);
+        }
+
+        return outcome.Ticket!;
     }
 
     // Quên mật khẩu: xác thực OTP và đổi mật khẩu mới.
@@ -429,6 +525,53 @@ public class AuthService : IAuthService
         }
 
         await _userRepository.SaveChangesAsync();
+    }
+
+    public async Task ResetForgotPasswordWithTicketAsync(
+        ResetForgotPasswordWithTicketRequest request)
+    {
+        var ticket = ValidatePasswordResetTicket(request.ResetToken);
+
+        await _context.ExecuteInTransactionAsync(
+            IsolationLevel.Serializable,
+            async () =>
+            {
+                var otp = await _userRepository.GetOtpRequestAsync(ticket.RequestCode);
+                var now = DateTime.UtcNow;
+
+                if (otp == null
+                    || otp.RequestCode != ticket.RequestCode
+                    || otp.PurposeCode != ForgotPasswordPurposeCode
+                    || otp.StatusCode != "verified"
+                    || otp.UsedAt != null
+                    || otp.ExpiresAt <= now
+                    || otp.UserId != ticket.UserId
+                    || otp.User == null
+                    || otp.User.DeletedAt != null
+                    || !otp.User.StatusCode.Equals("active", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new BadRequestException("Reset ticket is invalid or expired");
+                }
+
+                otp.UsedAt = now;
+                otp.UpdatedAt = now;
+                var isPendingUser = !otp.User.EmailConfirmed;
+                otp.User.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+                otp.User.EmailConfirmed = true;
+                otp.User.StatusCode = "active";
+                otp.User.PasswordChangedAt = now;
+                otp.User.LastLogoutAt = GetVietnamNow();
+                otp.User.AccessFailedCount = 0;
+                otp.User.LockoutEndAt = null;
+                otp.User.UpdatedAt = now;
+
+                if (isPendingUser)
+                {
+                    await EnsureWalletExistsAsync(otp.User.UserId);
+                }
+
+                await _userRepository.SaveChangesAsync();
+            });
     }
 
     // Đổi mật khẩu: user tự đổi bằng mật khẩu hiện tại.
@@ -1002,6 +1145,86 @@ public class AuthService : IAuthService
         }
     }
 
+    private ForgotPasswordResetTicketResponse CreatePasswordResetTicket(
+        OtpRequest otp,
+        DateTime expiresAtUtc)
+    {
+        var issuedAtUtc = DateTime.UtcNow;
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, otp.UserId.ToString()),
+            new Claim("request_code", otp.RequestCode.ToString()),
+            new Claim("purpose", PasswordResetTicketPurpose),
+            new Claim(
+                JwtRegisteredClaimNames.Iat,
+                new DateTimeOffset(issuedAtUtc).ToUnixTimeSeconds().ToString(),
+                ClaimValueTypes.Integer64),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        };
+
+        var key = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(
+            issuer: _configuration["Jwt:Issuer"],
+            audience: PasswordResetTicketAudience,
+            claims: claims,
+            notBefore: issuedAtUtc,
+            expires: expiresAtUtc,
+            signingCredentials: credentials);
+
+        return new ForgotPasswordResetTicketResponse
+        {
+            ResetToken = new JwtSecurityTokenHandler().WriteToken(token),
+            ExpiresAtUtc = expiresAtUtc
+        };
+    }
+
+    private PasswordResetTicketClaims ValidatePasswordResetTicket(string resetToken)
+    {
+        try
+        {
+            var handler = new JwtSecurityTokenHandler { MapInboundClaims = false };
+            var principal = handler.ValidateToken(
+                resetToken,
+                new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer = _configuration["Jwt:Issuer"],
+                    ValidateAudience = true,
+                    ValidAudience = PasswordResetTicketAudience,
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.Zero,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(
+                        Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!))
+                },
+                out _);
+
+            var purpose = principal.FindFirst("purpose")?.Value;
+            var requestCodeText = principal.FindFirst("request_code")?.Value;
+            var userIdText = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+            var tokenId = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+            if (purpose != PasswordResetTicketPurpose
+                || string.IsNullOrWhiteSpace(tokenId)
+                || !Guid.TryParse(requestCodeText, out var requestCode)
+                || !Guid.TryParse(userIdText, out var userId))
+            {
+                throw new SecurityTokenException("Invalid password reset ticket claims");
+            }
+
+            return new PasswordResetTicketClaims(userId, requestCode);
+        }
+        catch (SecurityTokenException)
+        {
+            throw new BadRequestException("Reset ticket is invalid or expired");
+        }
+        catch (ArgumentException)
+        {
+            throw new BadRequestException("Reset ticket is invalid or expired");
+        }
+    }
+
     private static void CancelOtp(OtpRequest otp, DateTime now)
     {
         otp.StatusCode = "cancelled";
@@ -1055,4 +1278,12 @@ public class AuthService : IAuthService
         int IpWindowMinutes,
         int IpMaxCount,
         int PendingRegistrationTtlHours);
+
+    private sealed record OtpVerificationOutcome(
+        ForgotPasswordResetTicketResponse? Ticket,
+        string? Error);
+
+    private sealed record PasswordResetTicketClaims(
+        Guid UserId,
+        Guid RequestCode);
 }

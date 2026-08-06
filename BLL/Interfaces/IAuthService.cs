@@ -20,7 +20,13 @@ public interface IAuthService
         ForgotPasswordRequest request,
         string requestedIp);
 
+    Task<ForgotPasswordResetTicketResponse> VerifyForgotPasswordOtpAsync(
+        VerifyForgotPasswordOtpRequest request);
+
     Task ResetForgotPasswordAsync(ResetForgotPasswordRequest request);
+
+    Task ResetForgotPasswordWithTicketAsync(
+        ResetForgotPasswordWithTicketRequest request);
 
     Task ChangePasswordAsync(Guid userId, ChangePasswordRequest request);
 

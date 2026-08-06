@@ -143,6 +143,40 @@ public class AuthController : BaseController
             });
     }
 
+    [HttpPost("forgot-password/verify")]
+    [ProducesResponseType(typeof(ApiResponse<ForgotPasswordResetTicketResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> VerifyForgotPasswordOtp(
+        VerifyForgotPasswordOtpRequest request)
+    {
+        var result = await _authService.VerifyForgotPasswordOtpAsync(request);
+
+        return Ok(new ApiResponse<ForgotPasswordResetTicketResponse>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "OTP verified",
+            Data = result
+        });
+    }
+
+    [HttpPost("forgot-password/reset-with-ticket")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResetForgotPasswordWithTicket(
+        ResetForgotPasswordWithTicketRequest request)
+    {
+        await _authService.ResetForgotPasswordWithTicketAsync(request);
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Status = StatusCodes.Status200OK,
+            Message = "Password reset success",
+            Data = null
+        });
+    }
+
     // Xem profile của user hiện tại.
     [Authorize]
     [HttpGet("profile")]
