@@ -7,6 +7,11 @@ internal static class StepExperienceReward
 {
     internal const int StepsPerReward = 10;
 
+    private const double LowLifeForceExpMultiplier = 0.80;
+    private const double HighBondExpMultiplier = 1.10;
+    private const int LowLifeForceThreshold = 20;
+    private const int HighBondThreshold = 50;
+
     internal static int ParseExpPerReward(string? configuredValue)
     {
         if (!int.TryParse(configuredValue, out var expPerReward) || expPerReward <= 0)
@@ -23,6 +28,30 @@ internal static class StepExperienceReward
         var previousRewards = previousValidatedSteps / StepsPerReward;
         var currentRewards = checked(previousValidatedSteps + newlyValidatedSteps) / StepsPerReward;
         return checked((int)(currentRewards - previousRewards));
+    }
+
+    internal static int CalculateAdjustedExperience(
+        UserPet userPet,
+        int baseExp)
+    {
+        if (baseExp <= 0)
+            return 0;
+
+        if (userPet.PetLifeForce <= 0)
+            throw new AppSystemException(
+                "Pet LifeForce is not configured correctly.");
+
+        if (userPet.PetBond < 0)
+            throw new AppSystemException(
+                "Pet Bond is not configured correctly.");
+
+        var multiplier = 1.0;
+        if (userPet.CurrentPetLifeForce < LowLifeForceThreshold)
+            multiplier *= LowLifeForceExpMultiplier;
+        if (userPet.CurrentPetBond > HighBondThreshold)
+            multiplier *= HighBondExpMultiplier;
+
+        return checked((int)Math.Ceiling(baseExp * multiplier));
     }
 
     internal static void ApplyExperience(

@@ -154,7 +154,20 @@ SET lease_owner = {_workerId},
                 }
                 item.PublishedAt = DateTime.UtcNow; item.LeaseUntil = null; item.LeaseOwner = null;
             }
-            catch { item.LeaseUntil = DateTime.UtcNow.AddSeconds(10); item.LeaseOwner = null; }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "PvP outbox event delivery failed. EventId={EventId} EventType={EventType} " +
+                    "AggregateType={AggregateType} AggregateId={AggregateId} Attempts={Attempts}",
+                    item.EventId,
+                    item.EventType,
+                    item.AggregateType,
+                    item.AggregateId,
+                    item.Attempts);
+                item.LeaseUntil = DateTime.UtcNow.AddSeconds(10);
+                item.LeaseOwner = null;
+            }
         }
         await context.SaveChangesAsync(cancellationToken);
     }

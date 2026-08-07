@@ -99,6 +99,7 @@ public class PvpMatchResponse
     public string SourceCode { get; set; } = null!;
     public string StatusCode { get; set; } = null!;
     public string? FinishReasonCode { get; set; }
+    public string? CancelReasonCode { get; set; }
     public Guid? ForfeitedByUserId { get; set; }
     public Guid? WinnerUserId { get; set; }
     public DateTime CreatedAt { get; set; }

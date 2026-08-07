@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using DAL.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 
 namespace BLL.Service;
@@ -108,7 +109,15 @@ public sealed partial class PvpSprintService
             recentBotMatches,
             roll,
             policy);
-        if (tier == null) return null;
+        if (tier == null)
+        {
+            _logger.LogWarning(
+                "PvP bot selection skipped because no difficulty tier was selected. UserId={UserId} QueueAt={QueuedAt} PolicyVersion={PolicyVersion}",
+                userId,
+                queuedAt,
+                policy.PolicyVersion);
+            return null;
+        }
 
         var profileTiers = tier.Value.IsRelief ? new[] { "easy", "relief" } : new[] { tier.Value.DifficultyCode };
         var bots = await _context.PvpBotProfiles.AsNoTracking()
@@ -129,15 +138,25 @@ public sealed partial class PvpSprintService
                 .ToListAsync(cancellationToken);
         }
         var targetRatio = PvpBotDifficultySelector.GetTargetBotDistanceRatioBps(tier.Value);
+        var rejectedLoadoutBudget = 0;
+        var rejectedEasyPower = 0;
+        var rejectedCalibration = 0;
+        var rejectedPace = 0;
 
         foreach (var bot in bots)
         {
             var botPower = await BuildBotPowerAsync(bot, policy, now, cancellationToken);
             if (botPower.Power.ExpectedLoadoutBps > bot.ItemPowerBudgetBps)
+            {
+                rejectedLoadoutBudget++;
                 continue;
+            }
             if (tier.Value.DifficultyCode is "easy" or "relief" &&
                 botPower.Power.ExpectedLoadoutBps > userPower.Power.ExpectedLoadoutBps)
+            {
+                rejectedEasyPower++;
                 continue;
+            }
 
             var calibration = _botCalibrationService.Calibrate(
                 userPower.Power,
@@ -151,7 +170,11 @@ public sealed partial class PvpSprintService
                 policy.MatchDurationSeconds,
                 policy.HardPowerGapBps,
                 targetRatio);
-            if (calibration == null) continue;
+            if (calibration == null)
+            {
+                rejectedCalibration++;
+                continue;
+            }
             var minimumPace = Math.Min(
                 userPower.Power.BasePaceMilliStepsPerSecond,
                 calibration.Value.CalibratedPaceMilli);
@@ -161,7 +184,10 @@ public sealed partial class PvpSprintService
                     userPower.Power.BasePaceMilliStepsPerSecond,
                     calibration.Value.CalibratedPaceMilli) * 10000 / minimumPace));
             if (paceRatioBps > policy.HardPaceRatioBps)
+            {
+                rejectedPace++;
                 continue;
+            }
 
             var calibratedPower = botPower with
             {
@@ -187,6 +213,17 @@ public sealed partial class PvpSprintService
                 BotLossMmrDelta: loss);
         }
 
+        _logger.LogWarning(
+            "PvP bot selection found no eligible bot. UserId={UserId} QueueAt={QueuedAt} PolicyVersion={PolicyVersion} Tier={Tier} CandidateCount={CandidateCount} RejectedLoadoutBudget={RejectedLoadoutBudget} RejectedEasyPower={RejectedEasyPower} RejectedCalibration={RejectedCalibration} RejectedPace={RejectedPace}",
+            userId,
+            queuedAt,
+            policy.PolicyVersion,
+            tier.Value.DifficultyCode,
+            bots.Count,
+            rejectedLoadoutBudget,
+            rejectedEasyPower,
+            rejectedCalibration,
+            rejectedPace);
         return null;
     }
 

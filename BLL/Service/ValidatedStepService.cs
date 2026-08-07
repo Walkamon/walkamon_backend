@@ -636,7 +636,14 @@ public sealed class ValidatedStepService : IValidatedStepService
             return null;
 
         var previousLevel = userPet.Level;
-        StepExperienceReward.ApplyExperience(userPet, userPet.Pet, expToAdd, AsUtc(now));
+        var adjustedExperience = StepExperienceReward.CalculateAdjustedExperience(
+            userPet,
+            expToAdd);
+        StepExperienceReward.ApplyExperience(
+            userPet,
+            userPet.Pet,
+            adjustedExperience,
+            AsUtc(now));
         return userPet.Level > previousLevel ? userPet.Level : null;
     }
 

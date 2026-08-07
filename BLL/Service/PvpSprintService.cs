@@ -22,6 +22,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private const int RatingK = 32;
     private const int RatingDivisor = 400;
     private const int ReadyTimeoutSeconds = 30;
+    private const int PvpEnergyCost = 15;
     private const int CountdownDeliveryLeadSeconds = 3;
     private const int CountdownDurationSeconds = 5;
     private const string DailyPowerScoringMode = "daily_power_v1";
@@ -78,6 +79,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
         EnsureOnline(request.TargetUserId, "This friend is offline and cannot receive a Sprint invite.");
         await EnsureNoActivityAsync(userId);
         await EnsureNoActivityAsync(request.TargetUserId);
+        await EnsurePvpEnergyAvailableAsync(userId, now);
 
         var low = userId.CompareTo(request.TargetUserId) < 0 ? userId : request.TargetUserId;
         var high = userId.CompareTo(request.TargetUserId) < 0 ? request.TargetUserId : userId;
@@ -208,6 +210,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
         var now = DateTime.UtcNow;
         await EnsureActiveUserAsync(userId);
         await EnsureNoActivityAsync(userId);
+        await EnsurePvpEnergyAvailableAsync(userId, now);
         var profile = await EnsureProfileAsync(userId, now);
         await EnsureRewardMatrixAsync("ranked");
         var policy = await _matchmakingPolicyProvider.GetActivePolicyAsync();
@@ -244,6 +247,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
         foreach (var queue in waiting)
         {
             if (!await IsActiveUserAsync(queue.UserId)) continue;
+            if (!await HasPvpEnergyAsync(queue.UserId, now)) continue;
             var candidateProfile = await EnsureProfileAsync(queue.UserId, now);
             var power = await BuildUserPowerAsync(queue.UserId, policy, now);
             var quality = PvpMatchQualityEvaluator.Evaluate(
@@ -319,6 +323,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             var now = DateTime.UtcNow;
             await EnsureActiveUserAsync(userId);
             await EnsureNoActivityAsync(userId);
+            await EnsurePvpEnergyAvailableAsync(userId, now);
             var profile = await EnsureProfileAsync(userId, now);
             await EnsureRewardMatrixAsync("ranked");
             var waiting = await _context.MatchmakingQueues
@@ -329,6 +334,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             foreach (var queue in waiting)
             {
                 if (!await IsActiveUserAsync(queue.UserId)) continue;
+                if (!await HasPvpEnergyAsync(queue.UserId, now)) continue;
                 var candidateProfile = await EnsureProfileAsync(queue.UserId, now);
                 if (Math.Abs(candidateProfile.Mmr - profile.Mmr) <= 100)
                 {
@@ -538,6 +544,19 @@ public sealed partial class PvpSprintService : IPvpSprintService
             var allReady = match.PvpMatchPlayers.Count == 2 && match.PvpMatchPlayers.All(x => x.IsReady);
             if (allReady)
             {
+                var humanUserIds = match.PvpMatchPlayers
+                    .Where(x => x.UserId.HasValue)
+                    .Select(x => x.UserId!.Value)
+                    .Distinct()
+                    .ToArray();
+                if (humanUserIds.Length != 2 ||
+                    !await HasPvpEnergyForAllAsync(humanUserIds, now))
+                {
+                    await CancelMatchAsync(match, "insufficient_energy", now, CancellationToken.None);
+                    await _context.SaveChangesAsync();
+                    return ToReadyResponse(match, now);
+                }
+
                 var countdownStartsAt = CeilingToSecond(now).AddSeconds(CountdownDeliveryLeadSeconds);
                 match.CountdownEndsAt = countdownStartsAt.AddSeconds(CountdownDurationSeconds);
                 foreach (var activity in await _context.PvpPlayerActivities
@@ -577,7 +596,8 @@ public sealed partial class PvpSprintService : IPvpSprintService
         return new PvpResultResponse
         {
             MatchId = response.MatchId, MatchTypeCode = response.MatchTypeCode, SourceCode = response.SourceCode, StatusCode = response.StatusCode,
-            FinishReasonCode = response.FinishReasonCode, ForfeitedByUserId = response.ForfeitedByUserId,
+            FinishReasonCode = response.FinishReasonCode, CancelReasonCode = response.CancelReasonCode,
+            ForfeitedByUserId = response.ForfeitedByUserId,
             WinnerUserId = response.WinnerUserId, ResolvedAt = response.ResolvedAt,
             CreatedAt = response.CreatedAt, CountdownStartsAt = response.CountdownStartsAt,
             CountdownEndsAt = response.CountdownEndsAt, StartedAt = response.StartedAt,
@@ -848,6 +868,15 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 await _context.SaveChangesAsync(cancellationToken);
                 return;
             }
+            if (!await HasPvpEnergyAsync(queue.UserId, now, cancellationToken))
+            {
+                await FailMatchmakingQueueAsync(
+                    queue,
+                    now,
+                    cancellationToken,
+                    "insufficient_energy");
+                return;
+            }
 
             var playerProfile = await EnsureProfileAsync(queue.UserId, now);
             var policy = await _matchmakingPolicyProvider.GetActivePolicyAsync(cancellationToken);
@@ -862,6 +891,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             foreach (var candidate in candidates)
             {
                 if (!await IsActiveUserAsync(candidate.UserId)) continue;
+                if (!await HasPvpEnergyAsync(candidate.UserId, now, cancellationToken)) continue;
                 var candidateProfile = await EnsureProfileAsync(candidate.UserId, now);
                 var candidatePower = await BuildUserPowerAsync(candidate.UserId, policy, now, cancellationToken);
                 var quality = PvpMatchQualityEvaluator.Evaluate(
@@ -954,6 +984,15 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 await _context.SaveChangesAsync(cancellationToken);
                 return;
             }
+            if (!await HasPvpEnergyAsync(queue.UserId, now, cancellationToken))
+            {
+                await FailMatchmakingQueueAsync(
+                    queue,
+                    now,
+                    cancellationToken,
+                    "insufficient_energy");
+                return;
+            }
 
             var playerProfile = await EnsureProfileAsync(queue.UserId, now);
             var bot = await _context.PvpBotProfiles
@@ -978,13 +1017,15 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private async Task FailMatchmakingQueueAsync(
         MatchmakingQueue queue,
         DateTime now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string reasonCode = "bot_unavailable")
     {
         var activeBotCount = await _context.PvpBotProfiles
             .CountAsync(x => x.IsActive, cancellationToken);
         _logger.LogWarning(
-            "PvP matchmaking queue failed because no eligible bot was available. " +
+            "PvP matchmaking queue failed. ReasonCode={ReasonCode} " +
             "UserId={UserId} QueuedAt={QueuedAt} ActiveBotCount={ActiveBotCount}",
+            reasonCode,
             queue.UserId,
             queue.QueuedAt,
             activeBotCount);
@@ -997,7 +1038,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             "queue.failed",
             new
             {
-                reasonCode = "bot_unavailable",
+                reasonCode,
                 queuedAt = AsUtc(queue.QueuedAt),
                 failedAt = AsUtc(now)
             });
@@ -1022,6 +1063,18 @@ public sealed partial class PvpSprintService : IPvpSprintService
             if (match.PvpMatchPlayers.Count != 2 || match.PvpMatchPlayers.Any(x => !x.IsReady))
             {
                 await CancelMatchAsync(match, "player_not_ready", now, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            var humanUserIds = match.PvpMatchPlayers
+                .Where(x => x.UserId.HasValue)
+                .Select(x => x.UserId!.Value)
+                .Distinct()
+                .ToArray();
+            if (!await TryConsumePvpEnergyAsync(humanUserIds, now, cancellationToken))
+            {
+                await CancelMatchAsync(match, "insufficient_energy", now, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -1122,7 +1175,11 @@ public sealed partial class PvpSprintService : IPvpSprintService
             session.StatusCode = "closed";
             session.ClosedReason = reason;
         }
-        AddMatchOutbox(match, "match.cancelled", notifyUsers: true);
+        AddMatchOutbox(
+            match,
+            "match.cancelled",
+            notifyUsers: true,
+            details: new { reasonCode = reason });
     }
 
     private async Task ResolveMatchAsync(PvpMatch match, DateTime now, CancellationToken cancellationToken)
@@ -1524,6 +1581,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
         {
             MatchId = match.MatchId, MatchTypeCode = match.MatchTypeCode, SourceCode = match.SourceCode,
             StatusCode = match.StatusCode, FinishReasonCode = match.FinishReasonCode,
+            CancelReasonCode = match.CancelReason,
             ForfeitedByUserId = match.ForfeitedByUserId, WinnerUserId = match.WinnerUserId,
             CreatedAt = AsUtc(match.CreatedAt),
             CountdownStartsAt = GetCountdownStartsAt(match.CountdownEndsAt),
@@ -1591,6 +1649,94 @@ public sealed partial class PvpSprintService : IPvpSprintService
     {
         if (await _context.PvpPlayerActivities.AnyAsync(x => x.UserId == userId)) throw new ConflictException("Player already has an active PvP activity.");
     }
+    private async Task EnsurePvpEnergyAvailableAsync(
+        Guid userId,
+        DateTime? now = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await HasPvpEnergyAsync(userId, now ?? DateTime.UtcNow, cancellationToken))
+            throw new ConflictException($"At least {PvpEnergyCost} pet energy is required to play PvP.");
+    }
+    private async Task<bool> HasPvpEnergyAsync(
+        Guid userId,
+        DateTime now,
+        CancellationToken cancellationToken = default)
+    {
+        var pet = await _context.UserPets
+            .FirstOrDefaultAsync(x => x.UserId == userId, cancellationToken);
+        if (pet == null || pet.PetEnergy <= 0)
+            return false;
+
+        var recoveryPerMinute = await GetEnergyRecoveryPerMinuteAsync(cancellationToken);
+        ApplyEnergyRecovery(pet, recoveryPerMinute, now);
+        return pet.CurrentPetEnergy >= PvpEnergyCost;
+    }
+    private async Task<bool> HasPvpEnergyForAllAsync(
+        IReadOnlyCollection<Guid> userIds,
+        DateTime now,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = userIds.Distinct().ToArray();
+        if (ids.Length == 0)
+            return false;
+        var pets = await _context.UserPets
+            .Where(x => ids.Contains(x.UserId))
+            .ToListAsync(cancellationToken);
+        if (pets.Count != ids.Length || pets.Any(x => x.PetEnergy <= 0))
+            return false;
+
+        var recoveryPerMinute = await GetEnergyRecoveryPerMinuteAsync(cancellationToken);
+        foreach (var pet in pets)
+            ApplyEnergyRecovery(pet, recoveryPerMinute, now);
+        return pets.All(x => x.CurrentPetEnergy >= PvpEnergyCost);
+    }
+    private async Task<bool> TryConsumePvpEnergyAsync(
+        IReadOnlyCollection<Guid> userIds,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var ids = userIds.Distinct().ToArray();
+        if (ids.Length == 0)
+            return false;
+        var pets = await _context.UserPets
+            .Where(x => ids.Contains(x.UserId))
+            .ToListAsync(cancellationToken);
+        if (pets.Count != ids.Length || pets.Any(x => x.PetEnergy <= 0))
+            return false;
+
+        var recoveryPerMinute = await GetEnergyRecoveryPerMinuteAsync(cancellationToken);
+        foreach (var pet in pets)
+            ApplyEnergyRecovery(pet, recoveryPerMinute, now);
+        if (pets.Any(x => x.CurrentPetEnergy < PvpEnergyCost))
+            return false;
+
+        foreach (var pet in pets)
+            pet.CurrentPetEnergy = checked(pet.CurrentPetEnergy - PvpEnergyCost);
+        return true;
+    }
+    private async Task<int> GetEnergyRecoveryPerMinuteAsync(CancellationToken cancellationToken)
+    {
+        var configuredValue = await _context.SystemSettings
+            .AsNoTracking()
+            .Where(x => x.SettingKey == "EnergyRecoverPerMinute")
+            .Select(x => x.SettingValue)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (!int.TryParse(configuredValue, out var amount) || amount < 0)
+            throw new AppSystemException("Energy recovery is not configured correctly.");
+        return amount;
+    }
+    private static void ApplyEnergyRecovery(UserPet pet, int recoveryPerMinute, DateTime now)
+    {
+        if (recoveryPerMinute < 0)
+            throw new AppSystemException("Energy recovery is not configured correctly.");
+        var elapsedMinutes = (int)(AsUtc(now) - AsUtc(pet.EnergyUpdatedAt)).TotalMinutes;
+        if (elapsedMinutes <= 0)
+            return;
+        pet.CurrentPetEnergy = Math.Min(
+            pet.PetEnergy,
+            checked(pet.CurrentPetEnergy + checked(elapsedMinutes * recoveryPerMinute)));
+        pet.EnergyUpdatedAt = AsUtc(pet.EnergyUpdatedAt).AddMinutes(elapsedMinutes);
+    }
     private void EnsureOnline(Guid userId, string message)
     {
         if (!_presenceTracker.IsOnline(userId)) throw new ConflictException(message);
@@ -1599,6 +1745,8 @@ public sealed partial class PvpSprintService : IPvpSprintService
     {
         EnsureOnline(invite.InviterUserId, "The inviter is offline. This Sprint invite cannot be accepted.");
         EnsureOnline(invite.InviteeUserId, "Connect to the realtime presence hub before accepting this invite.");
+        await EnsurePvpEnergyAvailableAsync(invite.InviterUserId);
+        await EnsurePvpEnergyAvailableAsync(invite.InviteeUserId);
         var activities = await _context.PvpPlayerActivities
             .Where(x => x.UserId == invite.InviterUserId || x.UserId == invite.InviteeUserId)
             .ToListAsync();
