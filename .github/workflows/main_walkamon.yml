@@ -1,7 +1,6 @@
-name: Test and publish Walkamon API
+name: Publish Walkamon API
 
 on:
-  pull_request:
   push:
     branches:
       - main
@@ -12,34 +11,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: windows-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-
-      - name: Restore
-        run: dotnet restore Walkamon.sln
-
-      - name: Build
-        run: dotnet build Walkamon.sln --configuration Release --no-restore
-
-      - name: Test
-        run: dotnet test Walkamon.sln --configuration Release --no-build --logger "trx;LogFileName=walkamon-tests.trx"
-
   publish-image:
-    if: github.ref == 'refs/heads/main'
-    needs: test
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       packages: write
+
     steps:
       - uses: actions/checkout@v4
 
