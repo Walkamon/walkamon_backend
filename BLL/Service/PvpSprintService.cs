@@ -549,7 +549,10 @@ public sealed partial class PvpSprintService : IPvpSprintService
                     .Select(x => x.UserId!.Value)
                     .Distinct()
                     .ToArray();
-                if (humanUserIds.Length != 2 ||
+                // A human-vs-bot match has one human participant. Energy belongs to
+                // users only, so validate every human in the match instead of
+                // requiring two user-backed participants.
+                if (humanUserIds.Length == 0 ||
                     !await HasPvpEnergyForAllAsync(humanUserIds, now))
                 {
                     await CancelMatchAsync(match, "insufficient_energy", now, CancellationToken.None);
