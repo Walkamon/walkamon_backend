@@ -38,6 +38,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
     private readonly TimePresentationSerializer _timePresentationSerializer;
     private readonly PvpMatchmakingPolicyProvider _matchmakingPolicyProvider;
     private readonly PvpBotCalibrationService _botCalibrationService;
+    private readonly int _stepSettlementSeconds;
 
     public PvpSprintService(
         WalkamonContext context,
@@ -48,7 +49,8 @@ public sealed partial class PvpSprintService : IPvpSprintService
         IPvpPresenceTracker? presenceTracker = null,
         IOptions<PvpMatchmakingOptions>? matchmakingOptions = null,
         PvpMatchmakingPolicyProvider? matchmakingPolicyProvider = null,
-        PvpBotCalibrationService? botCalibrationService = null)
+        PvpBotCalibrationService? botCalibrationService = null,
+        IOptions<StepValidationOptions>? stepValidationOptions = null)
     {
         _context = context;
         _realtimeEnabled = realtimeOptions.Value.Enabled;
@@ -62,6 +64,9 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 Microsoft.Extensions.Options.Options.Create(new TimePresentationOptions()));
         _matchmakingPolicyProvider = matchmakingPolicyProvider ?? new PvpMatchmakingPolicyProvider(context);
         _botCalibrationService = botCalibrationService ?? new PvpBotCalibrationService();
+        _stepSettlementSeconds = Math.Max(
+            1,
+            stepValidationOptions?.Value.CounterSettlementSeconds ?? 15);
     }
 
     public async Task<PvpInviteResponse> CreateInviteAsync(Guid userId, CreatePvpSprintInviteRequest request)
@@ -1136,10 +1141,11 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 AddProgressOutbox(match, match.EndedAt.Value);
             }
             match.StatusCode = "settling";
-            // Daily-power scoring is entirely server-authoritative, so there is
-            // no late sensor batch to wait for. Keep the settling state/event
-            // for client compatibility, then allow settlement immediately.
-            match.SettlementEndsAt = now;
+            // Daily-power scoring has no late race sensor batch. Legacy physical
+            // step scoring must remain open for detector/counter reconciliation.
+            match.SettlementEndsAt = match.ScoringModeCode == DailyPowerScoringMode
+                ? now
+                : now.AddSeconds(_stepSettlementSeconds);
             foreach (var activity in await _context.PvpPlayerActivities
                          .Where(x => x.ActivityId == match.MatchId)
                          .ToListAsync(cancellationToken))

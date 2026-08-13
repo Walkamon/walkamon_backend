@@ -40,6 +40,10 @@ x-api-environment: &api-environment
   StepValidation__MinimumVersionCode: "1"
   StepValidation__RequireDeviceIntegrity: "true"
   StepValidation__RequireLicensingVerdict: "false"
+  StepValidation__SimpleStepValidationEnabled: ${SIMPLE_STEP_VALIDATION_ENABLED:-true}
+  StepValidation__SimpleStepValidationRevision: ${SIMPLE_STEP_VALIDATION_REVISION:-temporal_v2_policy_b}
+  StepValidation__SimpleStepValidationAuthoritativeEnabled: ${SIMPLE_STEP_VALIDATION_AUTHORITATIVE_ENABLED:-false}
+  StepValidation__V3AuthoritativeEnabled: ${V3_AUTHORITATIVE_ENABLED:-false}
   MotionValidation__Enabled: "true"
   MotionValidation__Enforce: "true"
   MotionValidation__AcceptedScore: "60"

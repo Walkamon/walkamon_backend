@@ -130,6 +130,8 @@ public partial class PvpStepSession
     public string PurposeCode { get; set; } = null!;
     public string PlatformCode { get; set; } = null!;
     public string SensorModeCode { get; set; } = null!;
+    public int ContractVersion { get; set; } = 2;
+    public string? CaptureMetadataJson { get; set; }
     public string Nonce { get; set; } = null!;
     public string StatusCode { get; set; } = null!;
     public DateTime ExpiresAt { get; set; }
@@ -163,10 +165,26 @@ public partial class StepSensorBatch
     public int AcceptedSteps { get; set; }
     public int RejectedSteps { get; set; }
     public int SuspiciousSteps { get; set; }
+    public string ReconciliationStatus { get; set; } = "unavailable";
+    public string? ReconciliationReason { get; set; }
     public DateTime ReceivedAt { get; set; }
     public PvpStepSession StepSession { get; set; } = null!;
     public ICollection<ValidatedStepRecord> Records { get; set; } = new List<ValidatedStepRecord>();
     public ICollection<StepMotionEvidenceWindow> MotionWindows { get; set; } = new List<StepMotionEvidenceWindow>();
+    public ICollection<StepCounterEvidenceSample> CounterSamples { get; set; } = new List<StepCounterEvidenceSample>();
+}
+
+public partial class StepCounterEvidenceSample
+{
+    public Guid CounterSampleId { get; set; }
+    public Guid BatchId { get; set; }
+    public short SampleIndex { get; set; }
+    public Guid ClientSampleId { get; set; }
+    public Guid BootSessionId { get; set; }
+    public long SensorElapsedRealtimeNs { get; set; }
+    public DateTime ObservedAt { get; set; }
+    public long CounterTotal { get; set; }
+    public StepSensorBatch Batch { get; set; } = null!;
 }
 
 public partial class StepMotionEvidenceWindow
@@ -174,6 +192,9 @@ public partial class StepMotionEvidenceWindow
     public Guid StepMotionEvidenceWindowId { get; set; }
     public Guid BatchId { get; set; }
     public short WindowIndex { get; set; }
+    public Guid? BootSessionId { get; set; }
+    public long? WindowStartElapsedRealtimeNs { get; set; }
+    public long? WindowEndElapsedRealtimeNs { get; set; }
     public DateTime WindowStartedAt { get; set; }
     public DateTime WindowEndedAt { get; set; }
     public short SampleCount { get; set; }
@@ -204,6 +225,9 @@ public partial class ValidatedStepRecord
     public Guid? StepSessionId { get; set; }
     public Guid? BatchId { get; set; }
     public int? EventIndex { get; set; }
+    public Guid? ClientEventId { get; set; }
+    public Guid? BootSessionId { get; set; }
+    public long? SensorElapsedRealtimeNs { get; set; }
     public string PlatformCode { get; set; } = null!;
     public string SourceCode { get; set; } = null!;
     public string SensorModeCode { get; set; } = null!;

@@ -11,6 +11,7 @@ public partial class WalkamonContext
     public DbSet<PvpSprintInvite> PvpSprintInvites => Set<PvpSprintInvite>();
     public DbSet<PvpStepSession> PvpStepSessions => Set<PvpStepSession>();
     public DbSet<StepSensorBatch> StepSensorBatches => Set<StepSensorBatch>();
+    public DbSet<StepCounterEvidenceSample> StepCounterEvidenceSamples => Set<StepCounterEvidenceSample>();
     public DbSet<StepMotionEvidenceWindow> StepMotionEvidenceWindows => Set<StepMotionEvidenceWindow>();
     public DbSet<ValidatedStepRecord> ValidatedStepRecords => Set<ValidatedStepRecord>();
     public DbSet<PvpRewardRule> PvpRewardRules => Set<PvpRewardRule>();
@@ -219,6 +220,8 @@ public partial class WalkamonContext
             entity.Property(x => x.PurposeCode).HasColumnName("purpose_code").HasMaxLength(10).IsUnicode(false);
             entity.Property(x => x.PlatformCode).HasColumnName("platform_code").HasMaxLength(20).IsUnicode(false);
             entity.Property(x => x.SensorModeCode).HasColumnName("sensor_mode_code").HasMaxLength(20).IsUnicode(false);
+            entity.Property(x => x.ContractVersion).HasColumnName("contract_version").HasDefaultValue(2);
+            entity.Property(x => x.CaptureMetadataJson).HasColumnName("capture_metadata_json");
             entity.Property(x => x.Nonce).HasColumnName("nonce").HasMaxLength(128);
             entity.Property(x => x.StatusCode).HasColumnName("status_code").HasMaxLength(20).IsUnicode(false);
             entity.Property(x => x.ExpiresAt).HasColumnName("expires_at").HasPrecision(0);
@@ -255,10 +258,30 @@ public partial class WalkamonContext
             entity.Property(x => x.AcceptedSteps).HasColumnName("accepted_steps");
             entity.Property(x => x.RejectedSteps).HasColumnName("rejected_steps");
             entity.Property(x => x.SuspiciousSteps).HasColumnName("suspicious_steps");
+            entity.Property(x => x.ReconciliationStatus).HasColumnName("reconciliation_status").HasMaxLength(30).IsUnicode(false).HasDefaultValue("unavailable");
+            entity.Property(x => x.ReconciliationReason).HasColumnName("reconciliation_reason").HasMaxLength(200);
             entity.Property(x => x.ReceivedAt).HasColumnName("received_at").HasPrecision(3);
             entity.HasIndex(x => new { x.StepSessionId, x.Sequence }, "UX_step_sensor_batches_session_sequence").IsUnique();
             entity.HasIndex(x => new { x.StepSessionId, x.PayloadHash }, "UX_step_sensor_batches_session_hash").IsUnique();
             entity.HasOne(x => x.StepSession).WithMany(x => x.Batches).HasForeignKey(x => x.StepSessionId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<StepCounterEvidenceSample>(entity =>
+        {
+            entity.ToTable("step_counter_evidence_samples");
+            entity.HasKey(x => x.CounterSampleId);
+            entity.Property(x => x.CounterSampleId).HasColumnName("counter_sample_id");
+            entity.Property(x => x.BatchId).HasColumnName("batch_id");
+            entity.Property(x => x.SampleIndex).HasColumnName("sample_index");
+            entity.Property(x => x.ClientSampleId).HasColumnName("client_sample_id");
+            entity.Property(x => x.BootSessionId).HasColumnName("boot_session_id");
+            entity.Property(x => x.SensorElapsedRealtimeNs).HasColumnName("sensor_elapsed_realtime_ns");
+            entity.Property(x => x.ObservedAt).HasColumnName("observed_at").HasPrecision(3);
+            entity.Property(x => x.CounterTotal).HasColumnName("counter_total");
+            entity.HasIndex(x => new { x.BatchId, x.SampleIndex }, "UX_step_counter_samples_batch_index").IsUnique();
+            entity.HasIndex(x => x.ClientSampleId, "UX_step_counter_samples_client_id").IsUnique();
+            entity.HasIndex(x => new { x.BootSessionId, x.SensorElapsedRealtimeNs }, "IX_step_counter_samples_boot_elapsed");
+            entity.HasOne(x => x.Batch).WithMany(x => x.CounterSamples).HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<StepMotionEvidenceWindow>(entity =>
@@ -268,6 +291,9 @@ public partial class WalkamonContext
             entity.Property(x => x.StepMotionEvidenceWindowId).HasColumnName("step_motion_evidence_window_id");
             entity.Property(x => x.BatchId).HasColumnName("batch_id");
             entity.Property(x => x.WindowIndex).HasColumnName("window_index");
+            entity.Property(x => x.BootSessionId).HasColumnName("boot_session_id");
+            entity.Property(x => x.WindowStartElapsedRealtimeNs).HasColumnName("window_start_elapsed_realtime_ns");
+            entity.Property(x => x.WindowEndElapsedRealtimeNs).HasColumnName("window_end_elapsed_realtime_ns");
             entity.Property(x => x.WindowStartedAt).HasColumnName("window_started_at").HasPrecision(3);
             entity.Property(x => x.WindowEndedAt).HasColumnName("window_ended_at").HasPrecision(3);
             entity.Property(x => x.SampleCount).HasColumnName("sample_count");
@@ -289,6 +315,14 @@ public partial class WalkamonContext
             entity.Property(x => x.Classification).HasColumnName("classification").HasMaxLength(20).IsUnicode(false);
             entity.Property(x => x.ReasonCodes).HasColumnName("reason_codes").HasMaxLength(500);
             entity.HasIndex(x => new { x.BatchId, x.WindowIndex }, "UX_step_motion_windows_batch_index").IsUnique();
+            entity.HasIndex(
+                x => new
+                {
+                    x.BootSessionId,
+                    x.WindowStartElapsedRealtimeNs,
+                    x.WindowEndElapsedRealtimeNs
+                },
+                "IX_step_motion_windows_boot_elapsed");
             entity.HasIndex(x => new { x.Classification, x.WindowStartedAt }, "IX_step_motion_windows_classification_started");
             entity.HasOne(x => x.Batch).WithMany(x => x.MotionWindows).HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -302,6 +336,9 @@ public partial class WalkamonContext
             entity.Property(x => x.StepSessionId).HasColumnName("step_session_id");
             entity.Property(x => x.BatchId).HasColumnName("batch_id");
             entity.Property(x => x.EventIndex).HasColumnName("event_index");
+            entity.Property(x => x.ClientEventId).HasColumnName("client_event_id");
+            entity.Property(x => x.BootSessionId).HasColumnName("boot_session_id");
+            entity.Property(x => x.SensorElapsedRealtimeNs).HasColumnName("sensor_elapsed_realtime_ns");
             entity.Property(x => x.PlatformCode).HasColumnName("platform_code").HasMaxLength(20).IsUnicode(false);
             entity.Property(x => x.SourceCode).HasColumnName("source_code").HasMaxLength(30).IsUnicode(false);
             entity.Property(x => x.SensorModeCode).HasColumnName("sensor_mode_code").HasMaxLength(20).IsUnicode(false);
@@ -320,6 +357,7 @@ public partial class WalkamonContext
             entity.Property(x => x.ReceivedAt).HasColumnName("received_at").HasPrecision(3);
             entity.HasIndex(x => new { x.UserId, x.PayloadHash }, "UX_validated_step_records_user_hash").IsUnique();
             entity.HasIndex(x => new { x.BatchId, x.EventIndex }, "UX_validated_step_records_batch_event").IsUnique().HasFilter("[batch_id] IS NOT NULL");
+            entity.HasIndex(x => new { x.StepSessionId, x.ClientEventId }, "UX_validated_step_records_session_client_event").IsUnique().HasFilter("[client_event_id] IS NOT NULL");
             entity.HasOne(x => x.User).WithMany(x => x.ValidatedStepRecords).HasForeignKey(x => x.UserId);
             entity.HasOne(x => x.StepSession).WithMany().HasForeignKey(x => x.StepSessionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.Batch).WithMany(x => x.Records).HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);

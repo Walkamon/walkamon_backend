@@ -25,6 +25,10 @@ using System.Text;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+var startupStepValidationOptions = builder.Configuration
+    .GetSection(StepValidationOptions.SectionName)
+    .Get<StepValidationOptions>() ?? new StepValidationOptions();
+StepValidationConfigurationValidator.Validate(startupStepValidationOptions);
 var timePresentationOptions = builder.Configuration
     .GetSection(TimePresentationOptions.SectionName)
     .Get<TimePresentationOptions>() ?? new TimePresentationOptions();
@@ -166,6 +170,8 @@ builder.Services.Configure<PvpMatchmakingOptions>(
     builder.Configuration.GetSection(PvpMatchmakingOptions.SectionName));
 builder.Services.Configure<StepValidationOptions>(
     builder.Configuration.GetSection(StepValidationOptions.SectionName));
+builder.Services.Configure<StepTrackingBenchmarkOptions>(
+    builder.Configuration.GetSection(StepTrackingBenchmarkOptions.SectionName));
 builder.Services.Configure<MotionValidationOptions>(
     builder.Configuration.GetSection(MotionValidationOptions.SectionName));
 builder.Services.Configure<TimePresentationOptions>(
@@ -238,6 +244,15 @@ builder.Services.AddScoped<PvpMatchmakingPolicyProvider>();
 builder.Services.AddScoped<PvpBotCalibrationService>();
 builder.Services.AddScoped<IPvpSprintService, PvpSprintService>();
 builder.Services.AddScoped<IValidatedStepService, ValidatedStepService>();
+builder.Services.AddSingleton<IStepTrackingBenchmarkSink>(services =>
+{
+    var options = services
+        .GetRequiredService<Microsoft.Extensions.Options.IOptions<StepTrackingBenchmarkOptions>>()
+        .Value;
+    return StepTrackingBenchmarkSinkFactory.Create(
+        builder.Environment.IsDevelopment(),
+        options);
+});
 if (builder.Environment.IsDevelopment())
 {
     builder.Services.AddSingleton<IAppAttestationVerifier>(

@@ -5,8 +5,11 @@ public sealed class RespondPvpSprintInviteRequest { public bool Accept { get; se
 public sealed class JoinPvpMatchmakingRequest { public string MatchTypeCode { get; set; } = "ranked"; }
 public sealed class CreatePvpStepSessionRequest
 {
+    public int ContractVersion { get; set; } = 2;
     public string PlatformCode { get; set; } = null!;
-    public string SensorModeCode { get; set; } = null!;
+    public string? SensorModeCode { get; set; }
+    public string? CaptureMode { get; set; }
+    public System.Text.Json.JsonElement? CaptureMetadata { get; set; }
 }
 public sealed class SubmitPvpStepBatchRequest
 {
@@ -16,7 +19,24 @@ public sealed class SubmitPvpStepBatchRequest
     public string AttestationToken { get; set; } = null!;
     public string PayloadHash { get; set; } = null!;
     public List<PvpStepEventRequest> Events { get; set; } = [];
+    public List<StepDetectorEventRequest> DetectorEvents { get; set; } = [];
+    public List<StepCounterSampleRequest> CounterSamples { get; set; } = [];
     public List<StepMotionWindowRequest> MotionWindows { get; set; } = [];
+}
+public sealed class StepDetectorEventRequest
+{
+    public Guid ClientEventId { get; set; }
+    public Guid BootSessionId { get; set; }
+    public long SensorElapsedRealtimeNs { get; set; }
+    public DateTime RecordedAt { get; set; }
+}
+public sealed class StepCounterSampleRequest
+{
+    public Guid ClientSampleId { get; set; }
+    public Guid BootSessionId { get; set; }
+    public long SensorElapsedRealtimeNs { get; set; }
+    public DateTime ObservedAt { get; set; }
+    public long CounterTotal { get; set; }
 }
 public sealed class PvpStepEventRequest
 {
@@ -28,6 +48,9 @@ public sealed class PvpStepEventRequest
 }
 public sealed class StepMotionWindowRequest
 {
+    public Guid BootSessionId { get; set; }
+    public long WindowStartElapsedRealtimeNs { get; set; }
+    public long WindowEndElapsedRealtimeNs { get; set; }
     public DateTime WindowStartedAt { get; set; }
     public DateTime WindowEndedAt { get; set; }
     public int SampleCount { get; set; }
@@ -40,6 +63,11 @@ public sealed class StepMotionWindowRequest
     public int? GyroscopeRmsMilli { get; set; }
     public int? GyroscopePeakMilli { get; set; }
     public int? OrientationDeltaMilliDegrees { get; set; }
+    public int? AngularTravelMilliDegrees
+    {
+        get => OrientationDeltaMilliDegrees;
+        set => OrientationDeltaMilliDegrees = value;
+    }
     public int DominantFrequencyMilliHz { get; set; }
     public int PeriodicityBps { get; set; }
     public int GaitCycleCount { get; set; }
@@ -161,6 +189,8 @@ public sealed class PvpStepSessionResponse
     public DateTime ServerTime { get; set; }
     public string? DailyStepDate { get; set; }
     public int? DailyAcceptedTotal { get; set; }
+    public int ContractVersion { get; set; } = 2;
+    public string CaptureMode { get; set; } = "detector";
     public StepMotionPolicyResponse MotionPolicy { get; set; } = new();
 }
 public sealed class StepMotionPolicyResponse
@@ -177,6 +207,7 @@ public sealed class PvpStepBatchResponse
     public Guid BatchId { get; set; }
     public string AttestationStatus { get; set; } = "unavailable";
     public int AcceptedSteps { get; set; }
+    public int PendingSteps { get; set; }
     public int RejectedSteps { get; set; }
     public int SuspiciousSteps { get; set; }
     public int NextSequence { get; set; }
@@ -190,6 +221,16 @@ public sealed class PvpStepBatchResponse
     public int MotionScore { get; set; }
     public bool DegradedEvidence { get; set; }
     public List<string> MotionReasons { get; set; } = [];
+    public string ReconciliationStatus { get; set; } = "unavailable";
+    public string? ReconciliationReason { get; set; }
+    public List<StepDetectorResolutionResponse> DetectorResolutions { get; set; } = [];
+}
+public sealed class StepDetectorResolutionResponse
+{
+    public Guid ClientEventId { get; set; }
+    public string Status { get; set; } = "pending";
+    public int AcceptedStepCount { get; set; }
+    public string? Reason { get; set; }
 }
 public sealed class PvpRewardClaimResponse { public int WalletBalance { get; set; } public int WalletReward { get; set; } public List<PvpRewardItemRequest> RewardItems { get; set; } = []; }
 public sealed class PvpRewardRuleResponse : PvpRewardRuleRequest { public bool IsActive { get; set; } }

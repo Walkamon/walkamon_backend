@@ -21,8 +21,9 @@ public sealed class MotionValidationOptions
     public int ShakeJerkRmsMilli { get; set; } = 30000;
     public int ShakeGyroscopeRmsMilli { get; set; } = 3000;
     public int ShakeGyroscopePeakMilli { get; set; } = 7000;
-    public int ShakeOrientationDeltaMilliDegrees { get; set; } = 120000;
+    public int ShakeAngularTravelMilliDegrees { get; set; } = 120000;
     public int MachinePeriodicityBps { get; set; } = 9200;
     public int MachineCadenceVariationBps { get; set; } = 300;
     public int MaxCadenceMilliHz { get; set; } = 4000;
+    public string ThresholdProvenance { get; set; } = "EXPERIMENTAL";
 }
