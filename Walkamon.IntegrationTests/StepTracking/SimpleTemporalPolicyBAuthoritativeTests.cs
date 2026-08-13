@@ -190,10 +190,12 @@ public sealed class SimpleTemporalPolicyBAuthoritativeTests
     public async Task ConcurrentIntervalTransitionsIncrementDailyTotalOnce()
     {
         var databaseName = $"WalkamonSimpleConcurrency_{Guid.NewGuid():N}";
-        var master =
-            "Server=(localdb)\\MSSQLLocalDB;Database=master;Integrated Security=true;TrustServerCertificate=true";
-        var connectionString =
-            $"Server=(localdb)\\MSSQLLocalDB;Database={databaseName};Integrated Security=true;TrustServerCertificate=true";
+        var master = Environment.GetEnvironmentVariable("WALKAMON_TEST_SQL_MASTER")
+            ?? "Server=(localdb)\\MSSQLLocalDB;Database=master;Integrated Security=true;TrustServerCertificate=true";
+        var connectionString = new SqlConnectionStringBuilder(master)
+        {
+            InitialCatalog = databaseName
+        }.ConnectionString;
         var userId = Guid.NewGuid();
         var intervalHash = new string('A', 64);
 
