@@ -176,6 +176,7 @@ public class NotificationRepository : INotificationRepository
         return _context.Notifications
             .Where(x =>
                 x.StatusCode == "scheduled"
+                && x.TargetAudienceCode != "single_user"
                 && x.ScheduledAt != null
                 && x.ScheduledAt <= now)
             .OrderBy(x => x.ScheduledAt)

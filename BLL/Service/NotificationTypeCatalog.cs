@@ -6,6 +6,7 @@ public static class NotificationTypeCatalog
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["daily_reward"] = "gift",
+            [DailyActivityReminderConstants.NotificationTypeCode] = "footprints",
             ["streak_reward"] = "flame",
             ["mission_complete"] = "target",
             ["achievement_complete"] = "trophy",

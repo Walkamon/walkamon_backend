@@ -238,7 +238,9 @@ builder.Services.AddScoped<IPetInteractionRepository, PetInteractionRepository>(
 builder.Services.AddScoped<  IPetEvolutionHistoryRepository, PetEvolutionHistoryRepository>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IDailyActivityReminderService, DailyActivityReminderService>();
 builder.Services.AddSingleton<IFcmPushService, FcmPushService>();
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IPvpPresenceTracker, PvpPresenceTracker>();
 builder.Services.AddScoped<PvpMatchmakingPolicyProvider>();
 builder.Services.AddScoped<PvpBotCalibrationService>();

@@ -38,6 +38,8 @@ public class FcmPushService : IFcmPushService
         DalNotification notification,
         CancellationToken cancellationToken = default)
     {
+        var isDailyActivityReminder = notification.NotificationTypeCode ==
+            DailyActivityReminderConstants.NotificationTypeCode;
         var app = GetOrCreateApp();
         if (app == null)
         {
@@ -60,15 +62,22 @@ public class FcmPushService : IFcmPushService
                 ? null
                 : new AndroidConfig
                 {
+                    CollapseKey = isDailyActivityReminder
+                        ? notification.NotificationId.ToString("N")
+                        : null,
                     Notification = new AndroidNotification
                     {
-                        ChannelId = _options.AndroidChannelId
+                        ChannelId = _options.AndroidChannelId,
+                        Tag = isDailyActivityReminder
+                            ? $"walkamon-{notification.NotificationId:N}"
+                            : null
                     }
                 },
             Data = new Dictionary<string, string>
             {
                 ["notificationId"] = notification.NotificationId.ToString(),
-                ["typeCode"] = notification.NotificationTypeCode
+                ["typeCode"] = notification.NotificationTypeCode,
+                ["deliveryKey"] = notification.NotificationId.ToString("N")
             }
         };
 

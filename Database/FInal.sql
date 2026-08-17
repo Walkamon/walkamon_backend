@@ -1,3 +1,14 @@
+/*
+Canonical fresh-install schema snapshot for the current Walkamon production model.
+
+Database engine: Microsoft SQL Server
+Database name: Walkamon
+
+Use this file only to create a fresh database. For an existing database, use the
+idempotent additive patch in Database/step_tracking_v3_schema.sql instead.
+Simple Temporal Segment lifecycle reuses the raw Step v3 tables and intentionally
+does not add a separate persistence table.
+*/
 CREATE DATABASE Walkamon;
 GO
 
@@ -1646,14 +1657,6 @@ IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'pvp_daily_step
     INSERT INTO system_settings (setting_key, setting_value) VALUES ('pvp_daily_step_limit', '100000');
 IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'utc_pet_timestamp_backfill_v1')
     INSERT INTO system_settings (setting_key, setting_value) VALUES ('utc_pet_timestamp_backfill_v1', 'fresh_schema_utc');
-IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'daily_activity_reminder_enabled')
-    INSERT INTO system_settings (setting_key, setting_value) VALUES ('daily_activity_reminder_enabled', 'false');
-IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'daily_activity_reminder_default_goal')
-    INSERT INTO system_settings (setting_key, setting_value) VALUES ('daily_activity_reminder_default_goal', '7000');
-IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'daily_activity_reminder_local_time')
-    INSERT INTO system_settings (setting_key, setting_value) VALUES ('daily_activity_reminder_local_time', '18:00');
-IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'daily_activity_reminder_grace_minutes')
-    INSERT INTO system_settings (setting_key, setting_value) VALUES ('daily_activity_reminder_grace_minutes', '120');
 GO
 
 UPDATE pets SET pvp_affinity_code = 'sprout' WHERE pvp_affinity_code IS NULL AND LOWER(pet_name) IN ('stater', 'starter', N'mầm non');
@@ -1755,6 +1758,20 @@ IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'otp_send_ip_ma
 IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'pending_registration_ttl_hours')
     INSERT INTO system_settings (setting_key, setting_value) VALUES ('pending_registration_ttl_hours', '24');
 
+-- Daily Activity Reminder is installed disabled. Enable it explicitly after
+-- the notification worker and Firebase credentials are production-ready.
+IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'daily_activity_reminder_enabled')
+    INSERT INTO system_settings (setting_key, setting_value) VALUES ('daily_activity_reminder_enabled', 'false');
+
+IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'daily_activity_reminder_default_goal')
+    INSERT INTO system_settings (setting_key, setting_value) VALUES ('daily_activity_reminder_default_goal', '7000');
+
+IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'daily_activity_reminder_local_time')
+    INSERT INTO system_settings (setting_key, setting_value) VALUES ('daily_activity_reminder_local_time', '18:00');
+
+IF NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'daily_activity_reminder_grace_minutes')
+    INSERT INTO system_settings (setting_key, setting_value) VALUES ('daily_activity_reminder_grace_minutes', '120');
+
 IF NOT EXISTS (
     SELECT 1
     FROM sys.indexes
@@ -1767,3 +1784,4 @@ BEGIN
         WHERE purpose_code = 'verify_email'
           AND status_code = 'pending';
 END;
+

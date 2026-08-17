@@ -32,6 +32,15 @@ public class NotificationSchedulerService : BackgroundService
                 _logger.LogError(ex, "Scheduled notification processing failed.");
             }
 
+            try
+            {
+                await ProcessDailyActivityRemindersAsync(stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Daily activity reminder processing failed.");
+            }
+
             await timer.WaitForNextTickAsync(stoppingToken);
         }
     }
@@ -51,5 +60,30 @@ public class NotificationSchedulerService : BackgroundService
                 "Processed {NotificationCount} scheduled notifications.",
                 processed);
         }
+    }
+
+    private async Task ProcessDailyActivityRemindersAsync(
+        CancellationToken stoppingToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var reminderService =
+            scope.ServiceProvider.GetRequiredService<IDailyActivityReminderService>();
+        var result = await reminderService.ProcessAsync(stoppingToken);
+
+        _logger.LogInformation(
+            "DAILY_ACTIVITY_REMINDER_JOB executedAtUtc={ExecutedAtUtc}, featureEnabled={FeatureEnabled}, evaluatedUsers={EvaluatedUsers}, usersInLocalWindow={UsersInLocalWindow}, eligibleUsers={EligibleUsers}, sentUsers={SentUsers}, alreadySentSkipped={AlreadySentSkipped}, goalReachedSkipped={GoalReachedSkipped}, notificationDisabledSkipped={NotificationDisabledSkipped}, missingTokenSkipped={MissingTokenSkipped}, retryDeferred={RetryDeferred}, failures={Failures}, invalidTimeZoneFallbacks={InvalidTimeZoneFallbacks}",
+            result.ExecutedAtUtc,
+            result.FeatureEnabled,
+            result.EvaluatedUsers,
+            result.UsersInLocalWindow,
+            result.EligibleUsers,
+            result.SentUsers,
+            result.AlreadySentSkipped,
+            result.GoalReachedSkipped,
+            result.NotificationDisabledSkipped,
+            result.MissingTokenSkipped,
+            result.RetryDeferred,
+            result.Failures,
+            result.InvalidTimeZoneFallbacks);
     }
 }
