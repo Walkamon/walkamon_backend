@@ -395,7 +395,7 @@ namespace BLL.Service
 
             var result = new List<EvolutionOptionResponse>();
 
-            foreach (var pet in pets)
+            foreach (var pet in pets.Where(IsAllowedEvolutionPet))
             {
                 var stage = await _petRepository.GetFirstStageAsync(pet.PetId);
 
@@ -435,6 +435,9 @@ namespace BLL.Service
             if (pet == null)
                 throw new NotFoundException("Evolution pet not found.");
 
+            if (!IsAllowedEvolutionPet(pet))
+                throw new BadRequestException("Evolution pet is not an allowed Lumina branch.");
+
             var firstStage = await _petRepository
                 .GetFirstStageAsync(petId);
 
@@ -449,12 +452,18 @@ namespace BLL.Service
             userPet.PetEnergy = pet.Energy;
             userPet.PetBond = pet.Bond;
             userPet.PetLifeForce = pet.LifeForce;
-            userPet.PetExp = pet.Exp;
+            var expIncrementSetting = await _systemSettingRepository
+                .GetByKeyAsync("PetExpIncreasePerLevel");
+            var expIncrement = StepExperienceReward.ParseExpIncreasePerLevel(
+                expIncrementSetting?.SettingValue);
+            userPet.PetExp = StepExperienceReward.CalculateRequiredExperience(
+                userPet.Level,
+                pet.Exp,
+                expIncrement);
 
             userPet.CurrentPetEnergy = pet.Energy;
             userPet.CurrentPetBond = pet.Bond;
             userPet.CurrentPetLifeForce = pet.LifeForce;
-            userPet.CurrentPetExp = 0;
 
             userPet.EnergyUpdatedAt = DateTime.UtcNow;
             userPet.BondUpdatedAt = DateTime.UtcNow;
@@ -477,24 +486,24 @@ namespace BLL.Service
         private async Task UpdateEnergy(UserPet pet)
         {
             var setting = await _systemSettingRepository
-                .GetByKeyAsync("EnergyRecoverPerMinute");
+                .GetByKeyAsync("EnergyRecoveryIntervalMinutes");
 
-            int amount = int.Parse(setting!.SettingValue);
+            var intervalMinutes = ParseSetting(setting, "EnergyRecoveryIntervalMinutes", 1, 1440);
 
             var now = DateTime.UtcNow;
 
-            int elapsedMinutes =
-                (int)(now - pet.EnergyUpdatedAt).TotalMinutes;
+            var elapsedMinutes = (long)(now - pet.EnergyUpdatedAt).TotalMinutes;
+            var elapsedIntervals = elapsedMinutes / intervalMinutes;
 
-            if (elapsedMinutes <= 0)
+            if (elapsedIntervals <= 0)
                 return;
 
-            pet.CurrentPetEnergy = Math.Min(
-                pet.PetEnergy,
-                pet.CurrentPetEnergy + elapsedMinutes * amount);
+            pet.CurrentPetEnergy = (int)Math.Min(
+                (long)pet.PetEnergy,
+                (long)pet.CurrentPetEnergy + elapsedIntervals);
 
             pet.EnergyUpdatedAt =
-                pet.EnergyUpdatedAt.AddMinutes(elapsedMinutes);
+                pet.EnergyUpdatedAt.AddMinutes(elapsedIntervals * intervalMinutes);
         }
         public async Task<List<EvolutionStageResponse>> GetEvolutionStagesAsync(Guid userId)
         {
@@ -671,48 +680,90 @@ namespace BLL.Service
         private async Task UpdateBond(UserPet pet)
         {
             var setting = await _systemSettingRepository
-                .GetByKeyAsync("BondDecreasePerMinute");
+                .GetByKeyAsync("BondDecayPercentPerDay");
+            var floorSetting = await _systemSettingRepository
+                .GetByKeyAsync("PassiveStatFloorPercent");
 
-            int amount = int.Parse(setting!.SettingValue);
+            var decayPercent = ParseSetting(setting, "BondDecayPercentPerDay", 0, 100);
+            var floorPercent = ParseSetting(floorSetting, "PassiveStatFloorPercent", 0, 100);
 
             var now = DateTime.UtcNow;
 
-            int elapsedMinutes =
-                (int)(now - pet.BondUpdatedAt).TotalMinutes;
+            var elapsedDays = (long)(now - pet.BondUpdatedAt).TotalHours / 24;
 
-            if (elapsedMinutes <= 0)
+            if (elapsedDays <= 0)
                 return;
 
-            pet.CurrentPetBond = Math.Max(
-                0,
-                pet.CurrentPetBond - elapsedMinutes * amount);
+            var floor = PercentOfMax(pet.PetBond, floorPercent);
+            if (pet.CurrentPetBond > floor)
+            {
+                var amountPerDay = PercentOfMax(pet.PetBond, decayPercent);
+                pet.CurrentPetBond = Math.Max(
+                    floor,
+                    (int)Math.Max(0L, (long)pet.CurrentPetBond - amountPerDay * elapsedDays));
+            }
 
             pet.BondUpdatedAt =
-                pet.BondUpdatedAt.AddMinutes(elapsedMinutes);
+                pet.BondUpdatedAt.AddDays(elapsedDays);
         }
 
         private async Task UpdateLifeForce(UserPet pet)
         {
             var setting = await _systemSettingRepository
-                .GetByKeyAsync("LifeForceDecreasePerMinute");
+                .GetByKeyAsync("LifeForceDecayPercentPerDay");
+            var floorSetting = await _systemSettingRepository
+                .GetByKeyAsync("PassiveStatFloorPercent");
 
-            int amount = int.Parse(setting!.SettingValue);
+            var decayPercent = ParseSetting(setting, "LifeForceDecayPercentPerDay", 0, 100);
+            var floorPercent = ParseSetting(floorSetting, "PassiveStatFloorPercent", 0, 100);
 
             var now = DateTime.UtcNow;
 
-            int elapsedMinutes =
-                (int)(now - pet.LifeForceUpdatedAt).TotalMinutes;
+            var elapsedDays = (long)(now - pet.LifeForceUpdatedAt).TotalHours / 24;
 
-            if (elapsedMinutes <= 0)
+            if (elapsedDays <= 0)
                 return;
 
-            pet.CurrentPetLifeForce = Math.Max(
-                0,
-                pet.CurrentPetLifeForce - elapsedMinutes * amount);
+            var floor = PercentOfMax(pet.PetLifeForce, floorPercent);
+            if (pet.CurrentPetLifeForce > floor)
+            {
+                var amountPerDay = PercentOfMax(pet.PetLifeForce, decayPercent);
+                pet.CurrentPetLifeForce = Math.Max(
+                    floor,
+                    (int)Math.Max(0L, (long)pet.CurrentPetLifeForce - amountPerDay * elapsedDays));
+            }
 
             pet.LifeForceUpdatedAt =
-                pet.LifeForceUpdatedAt.AddMinutes(elapsedMinutes);
+                pet.LifeForceUpdatedAt.AddDays(elapsedDays);
         }
+
+        private static int ParseSetting(
+            SystemSetting? setting,
+            string key,
+            int minimum,
+            int maximum)
+        {
+            if (setting == null ||
+                !int.TryParse(setting.SettingValue, out var value) ||
+                value < minimum ||
+                value > maximum)
+            {
+                throw new AppSystemException($"{key} is not configured correctly.");
+            }
+
+            return value;
+        }
+
+        private static int PercentOfMax(int max, int percent)
+        {
+            if (max < 0 || percent < 0 || percent > 100)
+                throw new AppSystemException("Pet stat configuration is not valid.");
+
+            return checked((int)Math.Ceiling(max * percent / 100d));
+        }
+
+        private static bool IsAllowedEvolutionPet(Pet pet) =>
+            pet.PvpAffinityCode is "dawn" or "moonlight" or "warm_sun";
         private static DateTime GetVietnamNow()
         {
             var timeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");

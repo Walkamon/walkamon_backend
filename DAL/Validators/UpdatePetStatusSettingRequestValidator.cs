@@ -14,8 +14,8 @@ namespace DAL.Validators
         public UpdatePetStatusSettingRequestValidator()
         {
             RuleFor(x => x.EnergyRecoverPerMinute)
-                .GreaterThanOrEqualTo(0)
-                .LessThanOrEqualTo(100);
+                .GreaterThanOrEqualTo(1)
+                .LessThanOrEqualTo(1440);
 
             RuleFor(x => x.BondDecreasePerMinute)
                 .GreaterThanOrEqualTo(0)

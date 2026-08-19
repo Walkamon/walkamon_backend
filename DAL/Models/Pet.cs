@@ -17,6 +17,7 @@ public partial class Pet
 
     public double BondRate { get; set; }
 
+    // Legacy compatibility field; progression uses PetExpIncreasePerLevel.
     public double ExpRate { get; set; }
 
     public int LifeForce { get; set; }

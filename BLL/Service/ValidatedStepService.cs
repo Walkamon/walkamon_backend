@@ -532,17 +532,15 @@ public sealed class ValidatedStepService : IValidatedStepService
                 purposeCode == "daily" &&
                 newlyAcceptedSteps > 0)
             {
-                var configuredExp = await _context.SystemSettings.AsNoTracking()
-                    .Where(x => x.SettingKey == "StepToExpRate")
-                    .Select(x => x.SettingValue)
-                    .SingleOrDefaultAsync(cancellationToken);
+                var progressionSettings = await LoadProgressionSettingsAsync(cancellationToken);
                 var rewardsCrossed = StepExperienceReward.CalculateRewardsCrossed(
                     previousDailyValidatedSteps, newlyAcceptedSteps);
                 if (rewardsCrossed > 0)
                 {
                     newPetLevel = await AwardPetExperienceAsync(
                         userId,
-                        checked(rewardsCrossed * StepExperienceReward.ParseExpPerReward(configuredExp)),
+                        checked(rewardsCrossed * progressionSettings.ExpPerMilestone),
+                        progressionSettings.ExpIncreasePerLevel,
                         now,
                         cancellationToken);
                 }
@@ -625,14 +623,13 @@ public sealed class ValidatedStepService : IValidatedStepService
             throw new ConflictException($"Expected sequence {session.LastSequence + 1}.");
 
         var expPerStepMilestone = 0;
+        var expIncreasePerLevel = 0;
         var previousDailyValidatedSteps = 0L;
         if (purposeCode == "daily")
         {
-            var configuredExp = await _context.SystemSettings.AsNoTracking()
-                .Where(x => x.SettingKey == "StepToExpRate")
-                .Select(x => x.SettingValue)
-                .SingleOrDefaultAsync(cancellationToken);
-            expPerStepMilestone = StepExperienceReward.ParseExpPerReward(configuredExp);
+            var progressionSettings = await LoadProgressionSettingsAsync(cancellationToken);
+            expPerStepMilestone = progressionSettings.ExpPerMilestone;
+            expIncreasePerLevel = progressionSettings.ExpIncreasePerLevel;
             previousDailyValidatedSteps = await GetTotalDailyValidatedStepsAsync(
                 userId,
                 cancellationToken);
@@ -891,6 +888,7 @@ public sealed class ValidatedStepService : IValidatedStepService
                 newPetLevel = await AwardPetExperienceAsync(
                     userId,
                     expToAdd,
+                    expIncreasePerLevel,
                     now,
                     cancellationToken);
             }
@@ -2980,6 +2978,7 @@ public sealed class ValidatedStepService : IValidatedStepService
     private async Task<int?> AwardPetExperienceAsync(
         Guid userId,
         int expToAdd,
+        int expIncreasePerLevel,
         DateTime now,
         CancellationToken cancellationToken)
     {
@@ -2990,15 +2989,31 @@ public sealed class ValidatedStepService : IValidatedStepService
             return null;
 
         var previousLevel = userPet.Level;
-        var adjustedExperience = StepExperienceReward.CalculateAdjustedExperience(
-            userPet,
-            expToAdd);
         StepExperienceReward.ApplyExperience(
             userPet,
             userPet.Pet,
-            adjustedExperience,
+            expToAdd,
+            expIncreasePerLevel,
             AsUtc(now));
         return userPet.Level > previousLevel ? userPet.Level : null;
+    }
+
+    private async Task<(int ExpPerMilestone, int ExpIncreasePerLevel)> LoadProgressionSettingsAsync(
+        CancellationToken cancellationToken)
+    {
+        var settings = await _context.SystemSettings
+            .AsNoTracking()
+            .Where(x => x.SettingKey == "StepToExpRate" ||
+                        x.SettingKey == "PetExpIncreasePerLevel")
+            .ToDictionaryAsync(x => x.SettingKey, x => x.SettingValue, cancellationToken);
+
+        if (!settings.TryGetValue("StepToExpRate", out var expPerMilestone) ||
+            !settings.TryGetValue("PetExpIncreasePerLevel", out var expIncreasePerLevel))
+            throw new AppSystemException("Pet progression settings are not configured correctly.");
+
+        return (
+            StepExperienceReward.ParseExpPerReward(expPerMilestone),
+            StepExperienceReward.ParseExpIncreasePerLevel(expIncreasePerLevel));
     }
 
     internal static async Task SyncAcceptedProgressAsync(

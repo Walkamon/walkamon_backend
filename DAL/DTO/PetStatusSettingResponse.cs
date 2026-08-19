@@ -15,12 +15,12 @@ namespace DAL.DTO
         public int LifeForceDecreasePerMinute { get; set; }
 
         public string EnergyDescription { get; set; } =
-            "Pet recovers this amount of Energy every 1 minute.";
+            "Legacy field: interval in minutes required to recover 1 Energy.";
 
         public string BondDescription { get; set; } =
-            "Pet loses this amount of Bond every 1 minute.";
+            "Legacy field: percentage of Max Bond lost every 24 hours.";
 
         public string LifeForceDescription { get; set; } =
-            "Pet loses this amount of Life Force every 1 minute.";
+            "Legacy field: percentage of Max Life Force lost every 24 hours.";
     }
 }

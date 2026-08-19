@@ -68,31 +68,34 @@ namespace BLL.Service
         public async Task<PetStatusSettingResponse> GetPetStatusSettingAsync()
         {
             var energy = await _systemSettingRepository
-                .GetByKeyAsync("EnergyRecoverPerMinute");
+                .GetByKeyAsync("EnergyRecoveryIntervalMinutes");
 
             var bond = await _systemSettingRepository
-                .GetByKeyAsync("BondDecreasePerMinute");
+                .GetByKeyAsync("BondDecayPercentPerDay");
 
             var lifeForce = await _systemSettingRepository
-                .GetByKeyAsync("LifeForceDecreasePerMinute");
+                .GetByKeyAsync("LifeForceDecayPercentPerDay");
+
+            if (energy == null || bond == null || lifeForce == null)
+                throw new NotFoundException("Pet status settings not found.");
 
             return new PetStatusSettingResponse
             {
-                EnergyRecoverPerMinute = int.Parse(energy!.SettingValue),
-                BondDecreasePerMinute = int.Parse(bond!.SettingValue),
-                LifeForceDecreasePerMinute = int.Parse(lifeForce!.SettingValue)
+                EnergyRecoverPerMinute = int.Parse(energy.SettingValue),
+                BondDecreasePerMinute = int.Parse(bond.SettingValue),
+                LifeForceDecreasePerMinute = int.Parse(lifeForce.SettingValue)
             };
         }
         public async Task UpdatePetStatusSettingAsync(UpdatePetStatusSettingRequest request)
         {
             var energy = await _systemSettingRepository
-                .GetByKeyAsync("EnergyRecoverPerMinute");
+                .GetByKeyAsync("EnergyRecoveryIntervalMinutes");
 
             var bond = await _systemSettingRepository
-                .GetByKeyAsync("BondDecreasePerMinute");
+                .GetByKeyAsync("BondDecayPercentPerDay");
 
             var lifeForce = await _systemSettingRepository
-                .GetByKeyAsync("LifeForceDecreasePerMinute");
+                .GetByKeyAsync("LifeForceDecayPercentPerDay");
 
             if (energy == null || bond == null || lifeForce == null)
                 throw new NotFoundException("Pet status settings not found.");
