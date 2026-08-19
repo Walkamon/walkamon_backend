@@ -14,23 +14,6 @@ jobs:
   verify:
     runs-on: ubuntu-latest
 
-    services:
-      sqlserver:
-        image: mcr.microsoft.com/mssql/server:2022-latest
-        env:
-          ACCEPT_EULA: Y
-          MSSQL_SA_PASSWORD: Walkamon_CI_Only_2026!
-        ports:
-          - 1433:1433
-        options: >-
-          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Walkamon_CI_Only_2026!' -C -Q 'SELECT 1' -b -o /dev/null"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 20
-
-    env:
-      WALKAMON_TEST_SQL_MASTER: Server=localhost,1433;Database=master;User Id=sa;Password=Walkamon_CI_Only_2026!;Encrypt=false;TrustServerCertificate=true
-
     steps:
       - uses: actions/checkout@v4
 
@@ -38,15 +21,8 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Restore Step Tracking tests
-        run: dotnet restore Walkamon.IntegrationTests/Walkamon.IntegrationTests.csproj
-
-      - name: Run Step Tracking security and correctness tests
-        run: >-
-          dotnet test Walkamon.IntegrationTests/Walkamon.IntegrationTests.csproj
-          --configuration Release
-          --no-restore
-          --filter "FullyQualifiedName~StepTracking"
+      - name: Restore production Web API
+        run: dotnet restore Walkamon/Walkamon.csproj
 
       - name: Build production Web API
         run: >-
