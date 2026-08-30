@@ -39,7 +39,9 @@ namespace BLL.Service
                 latestFeedback.CreatedAt.AddHours(24) > DateTime.UtcNow)
             {
                 throw new BadRequestException(
-                    "You can only submit feedback once every 24 hours."
+                    "You can only submit feedback once every 24 hours.",
+                    "FEEDBACK_COOLDOWN",
+                    new Dictionary<string, object?> { ["retryAfterHours"] = 24 }
                 );
             }
             var feedback = new UserFeedback

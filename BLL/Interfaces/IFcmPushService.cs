@@ -9,5 +9,6 @@ public interface IFcmPushService
     Task SendAsync(
         DeviceToken deviceToken,
         Notification notification,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, object?>? parameters = null);
 }

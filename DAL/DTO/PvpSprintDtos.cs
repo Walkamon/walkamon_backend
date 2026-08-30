@@ -246,12 +246,34 @@ public sealed class PvpMatchLoadoutSlotResponse
     public Guid ItemId { get; set; }
     public string ItemName { get; set; } = null!;
     public string EffectCode { get; set; } = null!;
+    public string? TargetCode { get; set; }
+    public int? MagnitudeBps { get; set; }
+    public int? DurationMs { get; set; }
+    public int? CooldownMs { get; set; }
     public string AssetKey { get; set; } = null!;
     public int Quantity { get; set; }
     public DateTime? UsedAt { get; set; }
 }
 
-public sealed class PvpLoadoutResponse { public List<PvpMatchLoadoutSlotResponse> Slots { get; set; } = []; }
+public sealed class PvpAvailableLoadoutItemResponse
+{
+    public Guid ItemId { get; set; }
+    public string ItemName { get; set; } = null!;
+    public string EffectCode { get; set; } = null!;
+    public string TargetCode { get; set; } = null!;
+    public int MagnitudeBps { get; set; }
+    public int DurationMs { get; set; }
+    public int CooldownMs { get; set; }
+    public string AssetKey { get; set; } = null!;
+    public int Quantity { get; set; }
+}
+
+public sealed class PvpLoadoutResponse
+{
+    public byte SlotLimit { get; set; } = 2;
+    public List<PvpMatchLoadoutSlotResponse> Slots { get; set; } = [];
+    public List<PvpAvailableLoadoutItemResponse> AvailableItems { get; set; } = [];
+}
 
 public sealed class PvpMatchEffectResponse
 {

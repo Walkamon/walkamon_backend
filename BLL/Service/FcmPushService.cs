@@ -7,6 +7,7 @@ using DAL.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text;
+using System.Text.Json;
 using DalNotification = DAL.Models.Notification;
 using FirebaseNotification = FirebaseAdmin.Messaging.Notification;
 
@@ -36,7 +37,8 @@ public class FcmPushService : IFcmPushService
     public async Task SendAsync(
         DeviceToken deviceToken,
         DalNotification notification,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, object?>? parameters = null)
     {
         var isDailyActivityReminder = notification.NotificationTypeCode ==
             DailyActivityReminderConstants.NotificationTypeCode;
@@ -77,6 +79,8 @@ public class FcmPushService : IFcmPushService
             {
                 ["notificationId"] = notification.NotificationId.ToString(),
                 ["typeCode"] = notification.NotificationTypeCode,
+                ["params"] = JsonSerializer.Serialize(
+                    parameters ?? new Dictionary<string, object?>()),
                 ["deliveryKey"] = notification.NotificationId.ToString("N")
             }
         };

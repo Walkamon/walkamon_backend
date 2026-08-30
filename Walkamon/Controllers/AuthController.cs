@@ -194,6 +194,8 @@ public class AuthController : BaseController
                 Success = false,
                 Status = StatusCodes.Status404NotFound,
                 Message = "User not found",
+                ErrorCode = "USER_NOT_FOUND",
+                TraceId = HttpContext.TraceIdentifier,
                 Data = null
             });
         }
@@ -386,6 +388,8 @@ public class AuthController : BaseController
                 Success = false,
                 Status = StatusCodes.Status404NotFound,
                 Message = "User not found",
+                ErrorCode = "USER_NOT_FOUND",
+                TraceId = HttpContext.TraceIdentifier,
                 Data = null
             });
         }

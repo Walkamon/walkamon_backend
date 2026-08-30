@@ -11,6 +11,8 @@ namespace DAL.DTO
         public bool Success { get; set; }
         public int Status { get; set; }
         public string Message { get; set; } = string.Empty;
+        public string? ErrorCode { get; set; }
+        public IReadOnlyDictionary<string, object?>? Params { get; set; }
         public T? Data { get; set; }
         public string? TraceId { get; set; }
     }

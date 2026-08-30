@@ -10,6 +10,7 @@ namespace BLL.Service;
 
 public sealed partial class PvpSprintService
 {
+    private const byte PlayerLoadoutSlotLimit = 2;
     private static readonly string[] RequiredEffectCodes =
         ["pvp_speed_up", "pvp_speed_down", "pvp_cleanse", "pvp_shield"];
 
@@ -23,26 +24,51 @@ public sealed partial class PvpSprintService
     public async Task<PvpLoadoutResponse> UpdateLoadoutAsync(Guid userId, UpdatePvpLoadoutRequest request)
     {
         EnsureRealtimeEnabled();
-        if (request.Slots.Count > 2 || request.Slots.Any(x => x.SlotNo is < 1 or > 2))
-            throw new BadRequestException("PvP loadout supports slot 1 and slot 2 only.");
+        if (request.Slots.Count > PlayerLoadoutSlotLimit ||
+            request.Slots.Any(x => x.SlotNo is < 1 or > PlayerLoadoutSlotLimit))
+            throw new BadRequestException(
+                "PvP loadout supports slot 1 and slot 2 only.",
+                "PVP_LOADOUT_INVALID_SLOT",
+                new Dictionary<string, object?> { ["slotLimit"] = PlayerLoadoutSlotLimit });
         if (request.Slots.Select(x => x.SlotNo).Distinct().Count() != request.Slots.Count ||
             request.Slots.Select(x => x.ItemId).Distinct().Count() != request.Slots.Count)
-            throw new BadRequestException("PvP loadout slots and items must be unique.");
+            throw new BadRequestException(
+                "PvP loadout slots and items must be unique.",
+                "PVP_LOADOUT_DUPLICATE_ITEM");
 
         await _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
         {
         await EnsureActiveUserAsync(userId);
+        var loadoutLocked = await _context.PvpPlayerActivities.AsNoTracking()
+            .AnyAsync(x =>
+                x.UserId == userId &&
+                (x.ActivityType == "queue_waiting" ||
+                 x.ActivityType == "match_countdown" ||
+                 x.ActivityType == "match_running" ||
+                 x.ActivityType == "match_settling"));
+        if (loadoutLocked)
+            throw new ConflictException(
+                "PvP loadout cannot be changed after matchmaking has started.",
+                "PVP_LOADOUT_LOCKED");
+
         var itemIds = request.Slots.Select(x => x.ItemId).ToList();
         var definitions = await _context.PvpItemEffectDefinitions
             .Where(x => itemIds.Contains(x.ItemId) && x.IsActive)
             .ToListAsync();
-        if (definitions.Count != itemIds.Count || definitions.Select(x => x.EffectCode).Distinct().Count() != definitions.Count)
-            throw new BadRequestException("Loadout contains an invalid or duplicate PvP effect.");
+        if (definitions.Count != itemIds.Count ||
+            definitions.Select(x => x.EffectCode).Distinct().Count() != definitions.Count ||
+            definitions.Any(x => !RequiredEffectCodes.Contains(x.EffectCode)))
+            throw new BadRequestException(
+                "Loadout contains an invalid or duplicate PvP effect.",
+                "PVP_LOADOUT_ITEM_INVALID");
         var owned = await _context.InventoryItems
             .Where(x => x.UserId == userId && itemIds.Contains(x.ItemId) && x.Quantity > 0)
             .Select(x => x.ItemId)
             .ToListAsync();
-        if (owned.Count != itemIds.Count) throw new ConflictException("Every loadout item must exist in inventory.");
+        if (owned.Count != itemIds.Count)
+            throw new ConflictException(
+                "Every loadout item must exist in inventory.",
+                "PVP_LOADOUT_ITEM_NOT_OWNED");
 
         var existing = await _context.PvpPlayerLoadoutSlots.Where(x => x.UserId == userId).ToListAsync();
         _context.PvpPlayerLoadoutSlots.RemoveRange(existing);
@@ -58,7 +84,9 @@ public sealed partial class PvpSprintService
     {
         EnsureRealtimeEnabled();
         if (request.SlotNo is < 1 or > 2 || request.ClientActionId == Guid.Empty)
-            throw new BadRequestException("SlotNo and ClientActionId are required.");
+            throw new BadRequestException(
+                "SlotNo and ClientActionId are required.",
+                "PVP_ITEM_ACTION_INVALID");
         return await _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
         {
         var duplicate = await _context.PvpMatchItemActions.AsNoTracking()
@@ -73,15 +101,26 @@ public sealed partial class PvpSprintService
             .Include(x => x.Effects)
             .Include(x => x.LoadoutSlots).ThenInclude(x => x.Item)
             .FirstOrDefaultAsync(x => x.MatchId == matchId)
-            ?? throw new NotFoundException("Sprint match not found.");
+            ?? throw new NotFoundException("Sprint match not found.", "PVP_MATCH_NOT_FOUND");
         var actor = match.PvpMatchPlayers.SingleOrDefault(x => x.UserId == userId)
-            ?? throw new ForbiddenException("You are not a participant in this sprint match.");
+            ?? throw new ForbiddenException(
+                "You are not a participant in this sprint match.",
+                "PVP_MATCH_NOT_PARTICIPANT");
         var now = DateTime.UtcNow;
         if (match.StatusCode != "running" || !match.EndedAt.HasValue || now >= match.EndedAt.Value)
-            throw new ConflictException("PvP items can only be used while the match is running.");
+            throw new ConflictException(
+                "PvP items can only be used while the match is running.",
+                "PVP_MATCH_NOT_RUNNING");
         var slot = match.LoadoutSlots.SingleOrDefault(x => x.MatchPlayerId == actor.MatchPlayerId && x.SlotNo == request.SlotNo)
-            ?? throw new NotFoundException("PvP loadout slot not found for this match.");
-        if (slot.UsedAt.HasValue) throw new ConflictException("This PvP loadout slot has already been used.");
+            ?? throw new NotFoundException(
+                "PvP loadout slot not found for this match.",
+                "PVP_ITEM_SLOT_NOT_FOUND",
+                new Dictionary<string, object?> { ["slotNo"] = request.SlotNo });
+        if (slot.UsedAt.HasValue)
+            throw new ConflictException(
+                "This PvP loadout slot has already been used.",
+                "PVP_ITEM_ALREADY_USED",
+                new Dictionary<string, object?> { ["slotNo"] = request.SlotNo });
         var target = slot.TargetCode == "opponent"
             ? match.PvpMatchPlayers.Single(x => x.MatchPlayerId != actor.MatchPlayerId)
             : actor;
@@ -92,13 +131,19 @@ public sealed partial class PvpSprintService
             target.MatchPlayerId,
             active);
         if (!resolution.CanApply)
-            throw new ConflictException(resolution.ConflictMessage ?? "PvP effect cannot be applied.");
+            throw new ConflictException(
+                resolution.ConflictMessage ?? "PvP effect cannot be applied.",
+                "PVP_EFFECT_CONFLICT",
+                new Dictionary<string, object?> { ["effectCode"] = slot.EffectCode });
 
         var decremented = await _context.InventoryItems
             .Where(x => x.UserId == userId && x.ItemId == slot.ItemId && x.Quantity > 0)
             .ExecuteUpdateAsync(update => update.SetProperty(x => x.Quantity, x => x.Quantity - 1));
         if (decremented != 1)
-            throw new ConflictException("PvP item is no longer available in inventory.");
+            throw new ConflictException(
+                "PvP item is no longer available in inventory.",
+                "PVP_ITEM_UNAVAILABLE",
+                new Dictionary<string, object?> { ["itemId"] = slot.ItemId });
         slot.UsedAt = now;
         var action = new PvpMatchItemAction
         {
@@ -225,9 +270,57 @@ public sealed partial class PvpSprintService
             .Join(_context.PvpItemEffectDefinitions, x => x.ItemId, x => x.ItemId, (slot, definition) => new { slot, definition })
             .Join(_context.Items, x => x.slot.ItemId, x => x.ItemId, (x, item) => new { x.slot, x.definition, item })
             .GroupJoin(_context.InventoryItems.Where(x => x.UserId == userId), x => x.slot.ItemId, x => x.ItemId, (x, inventory) => new { x, inventory })
-            .SelectMany(x => x.inventory.DefaultIfEmpty(), (x, inventory) => new PvpMatchLoadoutSlotResponse { SlotNo = x.x.slot.SlotNo, ItemId = x.x.item.ItemId, ItemName = x.x.item.ItemName, EffectCode = x.x.definition.EffectCode, AssetKey = x.x.definition.AssetKey, Quantity = inventory == null ? 0 : inventory.Quantity })
+            .SelectMany(x => x.inventory.DefaultIfEmpty(), (x, inventory) => new PvpMatchLoadoutSlotResponse
+            {
+                SlotNo = x.x.slot.SlotNo,
+                ItemId = x.x.item.ItemId,
+                ItemName = x.x.item.ItemName,
+                EffectCode = x.x.definition.EffectCode,
+                TargetCode = x.x.definition.TargetCode,
+                MagnitudeBps = x.x.definition.MagnitudeBps,
+                DurationMs = x.x.definition.DurationMs,
+                CooldownMs = x.x.definition.CooldownMs,
+                AssetKey = x.x.definition.AssetKey,
+                Quantity = inventory == null ? 0 : inventory.Quantity
+            })
             .OrderBy(x => x.SlotNo).ToListAsync();
-        return new PvpLoadoutResponse { Slots = slots };
+
+        var availableItems = await _context.PvpItemEffectDefinitions.AsNoTracking()
+            .Where(definition =>
+                definition.IsActive && RequiredEffectCodes.Contains(definition.EffectCode))
+            .Join(
+                _context.Items.AsNoTracking().Where(item => item.IsActive),
+                definition => definition.ItemId,
+                item => item.ItemId,
+                (definition, item) => new { definition, item })
+            .GroupJoin(
+                _context.InventoryItems.AsNoTracking().Where(inventory => inventory.UserId == userId),
+                value => value.item.ItemId,
+                inventory => inventory.ItemId,
+                (value, inventory) => new { value, inventory })
+            .SelectMany(
+                value => value.inventory.DefaultIfEmpty(),
+                (value, inventory) => new PvpAvailableLoadoutItemResponse
+                {
+                    ItemId = value.value.item.ItemId,
+                    ItemName = value.value.item.ItemName,
+                    EffectCode = value.value.definition.EffectCode,
+                    TargetCode = value.value.definition.TargetCode,
+                    MagnitudeBps = value.value.definition.MagnitudeBps,
+                    DurationMs = value.value.definition.DurationMs,
+                    CooldownMs = value.value.definition.CooldownMs,
+                    AssetKey = value.value.definition.AssetKey,
+                    Quantity = inventory == null ? 0 : inventory.Quantity
+                })
+            .OrderBy(item => item.EffectCode)
+            .ToListAsync();
+
+        return new PvpLoadoutResponse
+        {
+            SlotLimit = PlayerLoadoutSlotLimit,
+            Slots = slots,
+            AvailableItems = availableItems
+        };
     }
 
     private PvpMatchEffect CreateTimedEffect(PvpMatch match, PvpMatchPlayer actor, PvpMatchPlayer target, PvpMatchItemAction action, PvpMatchLoadoutSlot slot, string kind, DateTime now)

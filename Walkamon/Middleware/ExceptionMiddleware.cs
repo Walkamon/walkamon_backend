@@ -39,11 +39,15 @@ public class ExceptionMiddleware
     {
         int statusCode;
         string message;
+        string errorCode;
+        IReadOnlyDictionary<string, object?> parameters;
 
         if (ex is AppException appEx)
         {
             statusCode = appEx.StatusCode;
             message = appEx.Message;
+            errorCode = appEx.ErrorCode;
+            parameters = appEx.Parameters;
         }
         else if (ex is DbUpdateConcurrencyException ||
                  ex is DbUpdateException { InnerException: SqlException { Number: 2601 or 2627 or 1205 } } ||
@@ -51,11 +55,15 @@ public class ExceptionMiddleware
         {
             statusCode = StatusCodes.Status409Conflict;
             message = "The request conflicted with another operation. Refresh state and retry safely.";
+            errorCode = "CONCURRENCY_CONFLICT";
+            parameters = new Dictionary<string, object?>();
         }
         else
         {
             statusCode = 500;
             message = "Internal Server Error";
+            errorCode = "INTERNAL_ERROR";
+            parameters = new Dictionary<string, object?>();
         }
 
         context.Response.ContentType = "application/json";
@@ -80,6 +88,8 @@ public class ExceptionMiddleware
             Success = false,
             Status = statusCode,
             Message = message,
+            ErrorCode = errorCode,
+            Params = parameters,
             Data = data,
             TraceId = context.TraceIdentifier
         };

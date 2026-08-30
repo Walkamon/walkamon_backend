@@ -53,7 +53,7 @@ public partial class PvpMatchmakingPolicy
     public int PolicyVersion { get; set; }
     public bool IsActive { get; set; }
     public byte MatchDurationSeconds { get; set; } = 30;
-    public byte BotFallbackSeconds { get; set; } = 15;
+    public byte BotFallbackSeconds { get; set; } = 10;
     public short Stage1MmrGap { get; set; } = 75;
     public short Stage1PowerGapBps { get; set; } = 800;
     public short Stage1PaceRatioBps { get; set; } = 11000;

@@ -352,15 +352,15 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 _context.MatchmakingQueues.Add(new MatchmakingQueue
                 {
                     UserId = userId, MatchTypeCode = "ranked", StatusCode = "waiting",
-                    QueuedAt = now, BotFallbackAt = now.AddSeconds(15)
+                    QueuedAt = now, BotFallbackAt = now.AddSeconds(10)
                 });
-                AddActivity(userId, "queue_waiting", userId, now.AddSeconds(15), now);
+                AddActivity(userId, "queue_waiting", userId, now.AddSeconds(10), now);
                 AddOutbox("user", userId, "queue.waiting", new { queuedAt = now });
                 await _context.SaveChangesAsync();
                 return new PvpMatchmakingStatusResponse
                 {
                     ActivityType = "queue_waiting", StatusCode = "waiting", QueuedAt = now,
-                    BotFallbackAt = now.AddSeconds(15), ServerTime = now
+                    BotFallbackAt = now.AddSeconds(10), ServerTime = now
                 };
             }
             _context.MatchmakingQueues.Remove(candidate);
@@ -397,7 +397,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 ActivityType = activity.ActivityType,
                 StatusCode = "waiting",
                 QueuedAt = AsUtc(queue.QueuedAt),
-                BotFallbackAt = AsUtc(queue.BotFallbackAt ?? queue.QueuedAt.AddSeconds(15)),
+                BotFallbackAt = AsUtc(queue.BotFallbackAt ?? queue.QueuedAt.AddSeconds(10)),
                 ServerTime = now
             };
         }
@@ -983,7 +983,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
         {
             var now = DateTime.UtcNow;
             var queue = await _context.MatchmakingQueues
-                .FirstOrDefaultAsync(x => x.UserId == userId && x.StatusCode == "waiting" && x.QueuedAt <= now.AddSeconds(-15), cancellationToken);
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.StatusCode == "waiting" && x.QueuedAt <= now.AddSeconds(-10), cancellationToken);
             if (queue == null) return;
             if (!await IsActiveUserAsync(queue.UserId))
             {
@@ -1579,7 +1579,9 @@ public sealed partial class PvpSprintService : IPvpSprintService
             .Join(_context.Items, slot => slot.ItemId, item => item.ItemId, (slot, item) => new PvpMatchLoadoutSlotResponse
             {
                 MatchLoadoutSlotId = slot.PvpMatchLoadoutSlotId, SlotNo = slot.SlotNo, ItemId = slot.ItemId,
-                ItemName = item.ItemName, EffectCode = slot.EffectCode, AssetKey = slot.AssetKey, UsedAt = slot.UsedAt
+                ItemName = item.ItemName, EffectCode = slot.EffectCode, TargetCode = slot.TargetCode,
+                MagnitudeBps = slot.MagnitudeBps, DurationMs = slot.DurationMs, CooldownMs = slot.CooldownMs,
+                AssetKey = slot.AssetKey, UsedAt = slot.UsedAt
             }).OrderBy(x => x.SlotNo).ToListAsync();
         foreach (var slot in loadout)
         {

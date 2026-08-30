@@ -2,8 +2,11 @@
 {
     public class AppSystemException : AppException
     {
-        public AppSystemException(string message = "Internal server error")
-            : base(message, 500)
+        public AppSystemException(
+            string message = "Internal server error",
+            string errorCode = "INTERNAL_ERROR",
+            IReadOnlyDictionary<string, object?>? parameters = null)
+            : base(message, 500, errorCode, parameters)
         {
         }
     }

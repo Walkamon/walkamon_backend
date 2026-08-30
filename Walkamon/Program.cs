@@ -3,6 +3,7 @@ using BLL.Options;
 using BLL.Service;
 using BLL.Validations;
 using DAL.Data;
+using DAL.DTO;
 using DAL.GenericRepository;
 using DAL.Interfaces;
 using DAL.Repository;
@@ -16,6 +17,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Net;
@@ -44,6 +46,33 @@ builder.Services
         TimePresentationJson.Configure(options.JsonSerializerOptions, timePresentationOptions));
 builder.Services.ConfigureHttpJsonOptions(options =>
     TimePresentationJson.Configure(options.SerializerOptions, timePresentationOptions));
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var fields = context.ModelState
+            .Where(entry => entry.Value?.Errors.Count > 0)
+            .SelectMany(entry => entry.Value!.Errors.Select(error => new
+            {
+                field = entry.Key,
+                code = "INVALID_VALUE",
+                message = string.IsNullOrWhiteSpace(error.ErrorMessage)
+                    ? "The supplied value is invalid."
+                    : error.ErrorMessage
+            }))
+            .ToArray();
+
+        return new BadRequestObjectResult(new ApiResponse<object>
+        {
+            Success = false,
+            Status = StatusCodes.Status400BadRequest,
+            Message = "One or more validation errors occurred.",
+            ErrorCode = "VALIDATION_FAILED",
+            Params = new Dictionary<string, object?> { ["fields"] = fields },
+            TraceId = context.HttpContext.TraceIdentifier
+        });
+    };
+});
 builder.Services
     .AddSignalR()
     .AddJsonProtocol(options =>
@@ -138,6 +167,22 @@ var rateLimitWindowSeconds = builder.Configuration.GetValue("RateLimiting:Window
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        var response = context.HttpContext.Response;
+        response.ContentType = "application/json";
+        response.StatusCode = StatusCodes.Status429TooManyRequests;
+        var envelope = new ApiResponse<object>
+        {
+            Success = false,
+            Status = StatusCodes.Status429TooManyRequests,
+            Message = "Too many requests. Please try again later.",
+            ErrorCode = "TOO_MANY_REQUESTS",
+            Params = new Dictionary<string, object?>(),
+            TraceId = context.HttpContext.TraceIdentifier
+        };
+        await response.WriteAsJsonAsync(envelope, cancellationToken);
+    };
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     {
         var clientAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";

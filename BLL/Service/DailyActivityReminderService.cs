@@ -184,7 +184,13 @@ public sealed class DailyActivityReminderService : IDailyActivityReminderService
                 localContext.User.UserId,
                 claim.Notification,
                 now,
-                cancellationToken);
+                cancellationToken,
+                new Dictionary<string, object?>
+                {
+                    ["currentSteps"] = decision.CurrentAuthoritativeSteps,
+                    ["remainingSteps"] = decision.RemainingSteps,
+                    ["dailyGoal"] = decision.DailyGoal
+                });
 
             if (delivery.MissingDestination)
             {
@@ -376,7 +382,8 @@ public sealed class DailyActivityReminderService : IDailyActivityReminderService
         Guid userId,
         DalNotification notification,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, object?> parameters)
     {
         var tokens = await _context.DeviceTokens
             .Where(x => x.UserId == userId && x.IsActive)
@@ -400,7 +407,11 @@ public sealed class DailyActivityReminderService : IDailyActivityReminderService
 
             try
             {
-                await _fcmPushService.SendAsync(token, notification, cancellationToken);
+                await _fcmPushService.SendAsync(
+                    token,
+                    notification,
+                    cancellationToken,
+                    parameters);
                 successes++;
             }
             catch (FirebaseMessagingException ex) when (IsInvalidToken(ex))

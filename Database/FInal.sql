@@ -709,7 +709,7 @@ CREATE TABLE pvp_matchmaking_policies (
     policy_version INT NOT NULL PRIMARY KEY,
     is_active BIT NOT NULL,
     match_duration_seconds TINYINT NOT NULL CONSTRAINT DF_pvp_policy_duration DEFAULT 30,
-    bot_fallback_seconds TINYINT NOT NULL CONSTRAINT DF_pvp_policy_bot_fallback DEFAULT 15,
+    bot_fallback_seconds TINYINT NOT NULL CONSTRAINT DF_pvp_policy_bot_fallback DEFAULT 10,
     stage1_mmr_gap SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s1_mmr DEFAULT 75,
     stage1_power_gap_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s1_power DEFAULT 800,
     stage1_pace_ratio_bps SMALLINT NOT NULL CONSTRAINT DF_pvp_policy_s1_pace DEFAULT 11000,

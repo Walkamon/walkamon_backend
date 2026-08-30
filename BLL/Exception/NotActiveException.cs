@@ -12,7 +12,11 @@ namespace BLL.Exceptions
         public object DataObject { get; }
 
         public NotActiveException(Guid? requestCode)
-            : base("Account is not activated", 400)
+            : base(
+                "Account is not activated",
+                400,
+                "AUTH_ACCOUNT_NOT_ACTIVE",
+                new Dictionary<string, object?> { ["requestCode"] = requestCode })
         {
             DataObject = new
             {
