@@ -113,8 +113,8 @@ public sealed partial class PvpSprintService
                 "PVP_MATCH_NOT_RUNNING");
         var slot = match.LoadoutSlots.SingleOrDefault(x => x.MatchPlayerId == actor.MatchPlayerId && x.SlotNo == request.SlotNo)
             ?? throw new NotFoundException(
-                "PvP loadout slot not found for this match.",
-                "PVP_ITEM_SLOT_NOT_FOUND",
+                "PvP item is not present in the match snapshot.",
+                "PVP_ITEM_NOT_IN_SNAPSHOT",
                 new Dictionary<string, object?> { ["slotNo"] = request.SlotNo });
         if (slot.UsedAt.HasValue)
             throw new ConflictException(
