@@ -21,6 +21,7 @@ namespace DAL.Repository
         {
             return await _context.ShopItems
                 .Include(x => x.Item)
+                .ThenInclude(x => x.ItemType)
                 .ToListAsync();
         }
     }

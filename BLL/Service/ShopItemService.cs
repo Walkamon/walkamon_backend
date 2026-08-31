@@ -33,7 +33,12 @@ namespace BLL.Service
             return data.Select(x => new ShopItemResponse
             {
                 ShopItemId = x.ShopItemId,
+                ItemId = x.ItemId,
                 ItemName = x.Item.ItemName,
+                Image = x.Item.ImgUrl,
+                ItemTypeName = x.Item.ItemType.ItemTypeName,
+                EffectTypeCode = x.Item.EffectTypeCode,
+                Description = x.Item.Description,
                 PriceAmount = x.PriceAmount,
                 IsActive = x.IsActive
             }).ToList();
@@ -58,7 +63,11 @@ namespace BLL.Service
             return new ShopItemResponse
             {
                 ShopItemId = entity.ShopItemId,
+                ItemId = item.ItemId,
                 ItemName = item.ItemName,
+                Image = item.ImgUrl,
+                EffectTypeCode = item.EffectTypeCode,
+                Description = item.Description,
                 PriceAmount = entity.PriceAmount,
                 IsActive = entity.IsActive
             };
