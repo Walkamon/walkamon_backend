@@ -5,6 +5,7 @@ using DAL.Interfaces;
 using DAL.Models;
 using FirebaseAdmin.Messaging;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using DalNotification = DAL.Models.Notification;
 
 namespace BLL.Service;
@@ -32,15 +33,18 @@ public class NotificationService : INotificationService
     private readonly INotificationRepository _notificationRepository;
     private readonly IFcmPushService _fcmPushService;
     private readonly ILogger<NotificationService> _logger;
+    private readonly ITextTranslationService? _translationService;
 
     public NotificationService(
         INotificationRepository notificationRepository,
         IFcmPushService fcmPushService,
-        ILogger<NotificationService> logger)
+        ILogger<NotificationService> logger,
+        ITextTranslationService? translationService = null)
     {
         _notificationRepository = notificationRepository;
         _fcmPushService = fcmPushService;
         _logger = logger;
+        _translationService = translationService;
     }
 
     public async Task<NotificationSettingsResponse> UpdateSettingsAsync(
@@ -81,13 +85,15 @@ public class NotificationService : INotificationService
                 pageSize,
                 typeCode,
                 isRead);
+        var profile = await GetProfileOrThrowAsync(userId);
+        var useEnglish = profile.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase);
 
         return new NotificationListResponse
         {
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount,
-            Notifications = items.Select(ToListItemResponse).ToList()
+            Notifications = items.Select(item => ToListItemResponse(item, useEnglish)).ToList()
         };
     }
 
@@ -104,8 +110,10 @@ public class NotificationService : INotificationService
             _notificationRepository.UpdateUserNotification(userNotification);
             await _notificationRepository.SaveChangesAsync();
         }
-
-        return ToDetailResponse(userNotification);
+        var profile = await GetProfileOrThrowAsync(userId);
+        return ToDetailResponse(
+            userNotification,
+            profile.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase));
     }
 
     public async Task DeleteNotificationAsync(Guid userId, Guid notificationId)
@@ -193,6 +201,8 @@ public class NotificationService : INotificationService
             NotificationTypeCode = typeCode,
             Title = title.Trim(),
             Body = body.Trim(),
+            ContentCode = typeCode,
+            ParamsJson = "{}",
             ImageUrl = string.IsNullOrWhiteSpace(imageUrl) ? null : imageUrl.Trim(),
             TargetAudienceCode = "single_user",
             StatusCode = "sent",
@@ -201,6 +211,7 @@ public class NotificationService : INotificationService
             CreatedAt = now,
             UpdatedAt = now
         };
+        await ApplyTranslationAsync(notification, title, body);
 
         var userNotification = new UserNotification
         {
@@ -293,6 +304,8 @@ public class NotificationService : INotificationService
             NotificationTypeCode = typeCode,
             Title = request.Title.Trim(),
             Body = request.Content.Trim(),
+            ContentCode = typeCode,
+            ParamsJson = "{}",
             TargetAudienceCode = targetAudienceCode,
             StatusCode = sendNow ? "sent" : "scheduled",
             ImageUrl = NormalizeOptionalString(request.ImageUrl),
@@ -301,6 +314,7 @@ public class NotificationService : INotificationService
             CreatedAt = now,
             UpdatedAt = now
         };
+        await ApplyTranslationAsync(notification, request.Title, request.Content);
 
         await _notificationRepository.AddNotificationAsync(notification);
 
@@ -330,6 +344,9 @@ public class NotificationService : INotificationService
         {
             notification.NotificationTypeCode =
                 NormalizeRequiredTypeCode(request.TypeCode);
+            // System notifications use the stable type/content code as their
+            // localization key.  Keep it in sync when an admin edits type.
+            notification.ContentCode = notification.NotificationTypeCode;
         }
 
         if (request.Title != null)
@@ -340,6 +357,14 @@ public class NotificationService : INotificationService
         if (request.Content != null)
         {
             notification.Body = request.Content.Trim();
+        }
+
+        if (request.Title != null || request.Content != null)
+        {
+            await ApplyTranslationAsync(
+                notification,
+                request.Title ?? notification.Title,
+                request.Content ?? notification.Body);
         }
 
         if (request.ImageUrl != null)
@@ -474,7 +499,16 @@ public class NotificationService : INotificationService
 
         try
         {
-            await _fcmPushService.SendAsync(deviceToken, notification);
+            var profile = await _notificationRepository.GetUserProfileAsync(deviceToken.UserId);
+            var useEnglish = profile?.LanguageCode?.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true;
+            var title = useEnglish ? notification.TitleEn : notification.TitleVi;
+            var body = useEnglish ? notification.BodyEn : notification.BodyVi;
+            await _fcmPushService.SendLocalizedAsync(
+                deviceToken,
+                notification,
+                parameters: ParseParams(notification.ParamsJson),
+                titleOverride: string.IsNullOrWhiteSpace(title) ? null : title,
+                bodyOverride: string.IsNullOrWhiteSpace(body) ? null : body);
             return true;
         }
         catch (FirebaseMessagingException ex) when (IsInvalidToken(ex))
@@ -546,7 +580,8 @@ public class NotificationService : INotificationService
     }
 
     private static NotificationListItemResponse ToListItemResponse(
-        UserNotification userNotification)
+        UserNotification userNotification,
+        bool useEnglish)
     {
         var notification = userNotification.Notification;
 
@@ -554,31 +589,36 @@ public class NotificationService : INotificationService
         {
             NotificationId = notification.NotificationId,
             Icon = NotificationTypeCatalog.GetIcon(notification.NotificationTypeCode),
-            Title = notification.Title,
-            ShortBody = ToShortBody(notification.Body),
+            Title = Localized(notification.Title, notification.TitleVi, notification.TitleEn, useEnglish),
+            ShortBody = ToShortBody(Localized(notification.Body, notification.BodyVi, notification.BodyEn, useEnglish)),
             CreatedAt = notification.CreatedAt,
             IsRead = userNotification.ReadAt != null,
             ReadAt = userNotification.ReadAt,
             TypeCode = notification.NotificationTypeCode
+            ,ContentCode = notification.ContentCode
+            ,Params = ParseParams(notification.ParamsJson)
         };
     }
 
     private static NotificationDetailResponse ToDetailResponse(
-        UserNotification userNotification)
+        UserNotification userNotification,
+        bool useEnglish)
     {
         var notification = userNotification.Notification;
 
         return new NotificationDetailResponse
         {
             NotificationId = notification.NotificationId,
-            Title = notification.Title,
-            Body = notification.Body,
+            Title = Localized(notification.Title, notification.TitleVi, notification.TitleEn, useEnglish),
+            Body = Localized(notification.Body, notification.BodyVi, notification.BodyEn, useEnglish),
             CreatedAt = notification.CreatedAt,
             TypeCode = notification.NotificationTypeCode,
             Icon = NotificationTypeCatalog.GetIcon(notification.NotificationTypeCode),
             ImageUrl = notification.ImageUrl,
             IsRead = userNotification.ReadAt != null,
             ReadAt = userNotification.ReadAt
+            ,ContentCode = notification.ContentCode
+            ,Params = ParseParams(notification.ParamsJson)
         };
     }
 
@@ -628,8 +668,52 @@ public class NotificationService : INotificationService
             CreatedBy = GetCreatedByDisplay(notification.CreatedByUser),
             CreatedAt = notification.CreatedAt,
             UpdatedAt = notification.UpdatedAt
+            ,ContentCode = notification.ContentCode
+            ,SourceLanguageCode = notification.SourceLanguageCode
+            ,TitleVi = notification.TitleVi
+            ,TitleEn = notification.TitleEn
+            ,BodyVi = notification.BodyVi
+            ,BodyEn = notification.BodyEn
+            ,TranslationStatusCode = notification.TranslationStatusCode
         };
     }
+
+    private async Task ApplyTranslationAsync(DalNotification notification, string title, string body)
+    {
+        var titlePair = _translationService == null
+            ? new TranslatedTextPair("vi", title, title, title, "fallback", string.Empty, null)
+            : await _translationService.TranslateAsync(title);
+        var bodyPair = _translationService == null
+            ? new TranslatedTextPair("vi", body, body, body, "fallback", string.Empty, null)
+            : await _translationService.TranslateAsync(body);
+        notification.TitleVi = titlePair.Vietnamese;
+        notification.TitleEn = titlePair.English;
+        notification.BodyVi = bodyPair.Vietnamese;
+        notification.BodyEn = bodyPair.English;
+        notification.SourceLanguageCode = titlePair.SourceLanguageCode;
+        notification.TranslationStatusCode = titlePair.StatusCode == "translated" && bodyPair.StatusCode == "translated"
+            ? "translated"
+            : "fallback";
+        notification.TranslationSourceHash = titlePair.SourceHash;
+        notification.TranslatedAt = titlePair.TranslatedAt;
+    }
+
+    private static Dictionary<string, object?> ParseParams(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new Dictionary<string, object?>();
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, object?>>(json)
+                ?? new Dictionary<string, object?>();
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, object?>();
+        }
+    }
+
+    private static string Localized(string fallback, string? vi, string? en, bool useEnglish) =>
+        (useEnglish ? en : vi)?.Trim() is { Length: > 0 } value ? value : fallback;
 
     private static string? GetCreatedByDisplay(User? user)
     {

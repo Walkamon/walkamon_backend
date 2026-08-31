@@ -330,6 +330,7 @@ public sealed partial class PvpSprintService : IPvpSprintService
             await EnsureNoActivityAsync(userId);
             await EnsurePvpEnergyAvailableAsync(userId, now);
             var profile = await EnsureProfileAsync(userId, now);
+            var policy = await _matchmakingPolicyProvider.GetActivePolicyAsync();
             await EnsureRewardMatrixAsync("ranked");
             var waiting = await _context.MatchmakingQueues
                 .Where(x => x.StatusCode == "waiting" && x.UserId != userId)
@@ -352,15 +353,15 @@ public sealed partial class PvpSprintService : IPvpSprintService
                 _context.MatchmakingQueues.Add(new MatchmakingQueue
                 {
                     UserId = userId, MatchTypeCode = "ranked", StatusCode = "waiting",
-                    QueuedAt = now, BotFallbackAt = now.AddSeconds(10)
+                    QueuedAt = now, BotFallbackAt = now.AddSeconds(policy.BotFallbackSeconds)
                 });
-                AddActivity(userId, "queue_waiting", userId, now.AddSeconds(10), now);
+                AddActivity(userId, "queue_waiting", userId, now.AddSeconds(policy.BotFallbackSeconds), now);
                 AddOutbox("user", userId, "queue.waiting", new { queuedAt = now });
                 await _context.SaveChangesAsync();
                 return new PvpMatchmakingStatusResponse
                 {
                     ActivityType = "queue_waiting", StatusCode = "waiting", QueuedAt = now,
-                    BotFallbackAt = now.AddSeconds(10), ServerTime = now
+                    BotFallbackAt = now.AddSeconds(policy.BotFallbackSeconds), ServerTime = now
                 };
             }
             _context.MatchmakingQueues.Remove(candidate);
@@ -612,9 +613,13 @@ public sealed partial class PvpSprintService : IPvpSprintService
             EndedAt = response.EndedAt, SettlementEndsAt = response.SettlementEndsAt, Participants = response.Participants,
             ServerTime = response.ServerTime, RuleVersion = response.RuleVersion, LastEventSequence = response.LastEventSequence,
             ActiveEffects = response.ActiveEffects, Loadout = response.Loadout,
+            ProgressionModeCode = response.ProgressionModeCode,
+            RewardEligible = response.RewardEligible,
+            RatingEligible = response.RatingEligible,
+            RestrictionReasonCode = response.RestrictionReasonCode,
             MmrBefore = participant.MmrBefore, MmrDelta = participant.MmrDelta, MmrAfter = participant.MmrBefore + participant.MmrDelta,
             RankBefore = ToTierResponse(rankBefore), RankAfter = ToTierResponse(rankAfter), TierChanged = rankBefore.TierCode != rankAfter.TierCode,
-            CanClaimReward = entitlement is { ClaimedAt: null }, ClaimedAt = AsUtc(entitlement?.ClaimedAt)
+            CanClaimReward = response.RewardEligible && entitlement is { ClaimedAt: null }, ClaimedAt = AsUtc(entitlement?.ClaimedAt)
         };
     }
 
@@ -983,8 +988,11 @@ public sealed partial class PvpSprintService : IPvpSprintService
         {
             var now = DateTime.UtcNow;
             var queue = await _context.MatchmakingQueues
-                .FirstOrDefaultAsync(x => x.UserId == userId && x.StatusCode == "waiting" && x.QueuedAt <= now.AddSeconds(-10), cancellationToken);
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.StatusCode == "waiting", cancellationToken);
             if (queue == null) return;
+            var policy = await _matchmakingPolicyProvider.GetActivePolicyAsync(cancellationToken);
+            var fallbackAt = queue.BotFallbackAt ?? queue.QueuedAt.AddSeconds(policy.BotFallbackSeconds);
+            if (fallbackAt > now) return;
             if (!await IsActiveUserAsync(queue.UserId))
             {
                 _context.MatchmakingQueues.Remove(queue);
@@ -1003,12 +1011,17 @@ public sealed partial class PvpSprintService : IPvpSprintService
             }
 
             var playerProfile = await EnsureProfileAsync(queue.UserId, now);
-            var bot = await _context.PvpBotProfiles
-                .Where(x => x.IsActive)
-                .OrderBy(x => Math.Abs(x.Mmr - playerProfile.Mmr))
-                .ThenBy(x => x.BotProfileId)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (bot == null)
+            var playerPower = await BuildUserPowerAsync(queue.UserId, policy, now, cancellationToken);
+            var botDecision = await BuildBotDecisionAsync(
+                queue.UserId,
+                playerProfile,
+                playerPower,
+                policy,
+                queue.QueuedAt,
+                now,
+                queue.RequiresRelief,
+                cancellationToken);
+            if (botDecision?.BotProfile == null)
             {
                 await FailMatchmakingQueueAsync(queue, now, cancellationToken);
                 return;
@@ -1016,7 +1029,14 @@ public sealed partial class PvpSprintService : IPvpSprintService
 
             _context.MatchmakingQueues.Remove(queue);
             RemoveActivity(queue.UserId);
-            var match = await CreateMatchAsync(queue.UserId, null, bot, "ranked", "bot", now);
+            var match = await CreateMatchAsync(
+                queue.UserId,
+                null,
+                botDecision.BotProfile,
+                "ranked",
+                "bot",
+                now,
+                botDecision);
             AddMatchActivity(queue.UserId, match, now);
             AddMatchOutbox(match, "match.created");
             await _context.SaveChangesAsync(cancellationToken);
@@ -1251,6 +1271,17 @@ public sealed partial class PvpSprintService : IPvpSprintService
         DateTime now,
         CancellationToken cancellationToken)
     {
+        // Bot exposure-limit practice races exercise the complete authoritative
+        // match path but are progression neutral.  Keep this guard before both
+        // the bot-tier and player-vs-player rating calculators so a practice
+        // race can never leak an MMR delta through the normal ranked policy.
+        if (string.Equals(match.MatchmakingReasonCode, "bot_exposure_practice", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var player in players)
+                player.MmrDelta = 0;
+            return;
+        }
+
         var bot = players.SingleOrDefault(x => x.ParticipantTypeCode == "bot");
         if (bot != null && string.Equals(match.RatingPolicyCode, "bot_tier_v1", StringComparison.Ordinal))
         {
@@ -1307,6 +1338,15 @@ public sealed partial class PvpSprintService : IPvpSprintService
     {
         if (match.ProfileStateAppliedAt.HasValue) return;
 
+        // Exposure-limit practice races are deliberately progression-neutral:
+        // they still exercise the authoritative race/item path, but must not
+        // advance loss streaks, relief counters or bot-history policy.
+        if (string.Equals(match.MatchmakingReasonCode, "bot_exposure_practice", StringComparison.OrdinalIgnoreCase))
+        {
+            match.ProfileStateAppliedAt = now;
+            return;
+        }
+
         foreach (var player in players.Where(x => x.UserId.HasValue))
         {
             var profile = await EnsureProfileAsync(player.UserId!.Value, now);
@@ -1356,6 +1396,11 @@ public sealed partial class PvpSprintService : IPvpSprintService
         IReadOnlyCollection<PvpMatchRewardSnapshot> snapshots,
         DateTime now)
     {
+        // Practice races must not create zero-value reward rows.  The result
+        // still carries rewardEligible=false so clients can explain the mode.
+        if (string.Equals(match.MatchmakingReasonCode, "bot_exposure_practice", StringComparison.OrdinalIgnoreCase))
+            return Task.CompletedTask;
+
         var snapshot = snapshots.Single(x => x.ResultCode == player.ResultCode);
         if (snapshot.WalletAmount <= 0 && snapshot.Items.All(x => x.Quantity <= 0))
             return Task.CompletedTask;
@@ -1588,6 +1633,14 @@ public sealed partial class PvpSprintService : IPvpSprintService
             slot.UsedAt = AsUtc(slot.UsedAt);
             slot.Quantity = await _context.InventoryItems.AsNoTracking().Where(x => x.UserId == userId && x.ItemId == slot.ItemId).Select(x => (int?)x.Quantity).FirstOrDefaultAsync() ?? 0;
         }
+        var isPractice = string.Equals(
+            match.MatchmakingReasonCode,
+            "bot_exposure_practice",
+            StringComparison.OrdinalIgnoreCase);
+        var isFriendly = string.Equals(
+            match.MatchTypeCode,
+            "friendly",
+            StringComparison.OrdinalIgnoreCase);
         return new PvpMatchResponse
         {
             MatchId = match.MatchId, MatchTypeCode = match.MatchTypeCode, SourceCode = match.SourceCode,
@@ -1598,6 +1651,12 @@ public sealed partial class PvpSprintService : IPvpSprintService
             CountdownStartsAt = GetCountdownStartsAt(match.CountdownEndsAt),
             CountdownEndsAt = AsUtc(match.CountdownEndsAt), StartedAt = AsUtc(match.StartedAt), EndedAt = AsUtc(match.EndedAt), SettlementEndsAt = AsUtc(match.SettlementEndsAt), ResolvedAt = AsUtc(match.ResolvedAt),
             ServerTime = now, RuleVersion = match.RuleVersion, ScoringModeCode = match.ScoringModeCode,
+            ProgressionModeCode = isPractice ? "bot_practice" : "ranked",
+            RewardEligible = !isFriendly && !isPractice && match.BotRewardMultiplierBps > 0,
+            RatingEligible = !isFriendly && !isPractice,
+            RestrictionReasonCode = isPractice
+                ? "bot_exposure_limit"
+                : null,
             DailyStepPowerCap = match.DailyStepPowerCap, LastEventSequence = match.LastEventSequence,
             ActiveEffects = activeEffects.Select(ToEffectResponse).ToList(), Loadout = loadout,
             Participants = match.PvpMatchPlayers.Select(x =>

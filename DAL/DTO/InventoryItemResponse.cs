@@ -18,5 +18,15 @@ public class InventoryItemResponse
 
     public string? Description { get; set; }
 
+    public string UsageContextCode { get; set; } = "none";
+
+    public bool CanUseNow { get; set; }
+
+    public bool CanEquipForPvp { get; set; }
+    public string? ItemNameVi { get; set; }
+    public string? ItemNameEn { get; set; }
+    public string? DescriptionVi { get; set; }
+    public string? DescriptionEn { get; set; }
+
     public int Quantity { get; set; }
 }

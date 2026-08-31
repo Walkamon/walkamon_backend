@@ -17,4 +17,7 @@ public class NotificationListItemResponse
     public DateTime? ReadAt { get; set; }
 
     public string TypeCode { get; set; } = string.Empty;
+
+    public string? ContentCode { get; set; }
+    public Dictionary<string, object?> Params { get; set; } = new();
 }

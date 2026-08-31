@@ -19,4 +19,7 @@ public class NotificationDetailResponse
     public bool IsRead { get; set; }
 
     public DateTime? ReadAt { get; set; }
+
+    public string? ContentCode { get; set; }
+    public Dictionary<string, object?> Params { get; set; } = new();
 }

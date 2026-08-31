@@ -31,4 +31,11 @@ public class AdminNotificationDetailResponse
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+    public string? ContentCode { get; set; }
+    public string? SourceLanguageCode { get; set; }
+    public string? TitleVi { get; set; }
+    public string? TitleEn { get; set; }
+    public string? BodyVi { get; set; }
+    public string? BodyEn { get; set; }
+    public string? TranslationStatusCode { get; set; }
 }

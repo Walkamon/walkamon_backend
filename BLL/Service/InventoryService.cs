@@ -220,7 +220,22 @@ public class InventoryService : IInventoryService
             EffectTypeCode = item.EffectTypeCode,
             EffectValue = item.EffectValue,
             Description = item.Description,
+            UsageContextCode = ResolveUsageContext(item.EffectTypeCode),
+            CanUseNow = ResolveUsageContext(item.EffectTypeCode) == "home_pet",
+            CanEquipForPvp = ResolveUsageContext(item.EffectTypeCode) == "pvp_loadout",
+            ItemNameVi = item.ItemNameVi,
+            ItemNameEn = item.ItemNameEn,
+            DescriptionVi = item.DescriptionVi,
+            DescriptionEn = item.DescriptionEn,
             Quantity = inventoryItem.Quantity
         };
+    }
+
+    private static string ResolveUsageContext(string? effectTypeCode)
+    {
+        if (string.IsNullOrWhiteSpace(effectTypeCode)) return "none";
+        return effectTypeCode.Trim().StartsWith("pvp_", StringComparison.OrdinalIgnoreCase)
+            ? "pvp_loadout"
+            : "home_pet";
     }
 }

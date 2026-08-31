@@ -34,11 +34,26 @@ public class FcmPushService : IFcmPushService
             || (!string.IsNullOrWhiteSpace(_options.ServiceAccountPath)
                 && File.Exists(_options.ServiceAccountPath)));
 
+    public Task SendAsync(
+        DeviceToken deviceToken,
+        DalNotification notification,
+        CancellationToken cancellationToken = default)
+        => SendAsync(deviceToken, notification, cancellationToken, null);
+
     public async Task SendAsync(
         DeviceToken deviceToken,
         DalNotification notification,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, object?>? parameters)
+        => await SendLocalizedAsync(deviceToken, notification, cancellationToken, parameters);
+
+    public async Task SendLocalizedAsync(
+        DeviceToken deviceToken,
+        DalNotification notification,
         CancellationToken cancellationToken = default,
-        IReadOnlyDictionary<string, object?>? parameters = null)
+        IReadOnlyDictionary<string, object?>? parameters = null,
+        string? titleOverride = null,
+        string? bodyOverride = null)
     {
         var isDailyActivityReminder = notification.NotificationTypeCode ==
             DailyActivityReminderConstants.NotificationTypeCode;
@@ -56,8 +71,8 @@ public class FcmPushService : IFcmPushService
             Token = deviceToken.FcmToken,
             Notification = new FirebaseNotification
             {
-                Title = notification.Title,
-                Body = notification.Body,
+                Title = titleOverride ?? notification.Title,
+                Body = bodyOverride ?? notification.Body,
                 ImageUrl = NormalizeImageUrl(notification.ImageUrl)
             },
             Android = string.IsNullOrWhiteSpace(_options.AndroidChannelId)
@@ -79,8 +94,10 @@ public class FcmPushService : IFcmPushService
             {
                 ["notificationId"] = notification.NotificationId.ToString(),
                 ["typeCode"] = notification.NotificationTypeCode,
+                ["contentCode"] = notification.ContentCode ?? notification.NotificationTypeCode,
                 ["params"] = JsonSerializer.Serialize(
                     parameters ?? new Dictionary<string, object?>()),
+                ["schemaVersion"] = "2",
                 ["deliveryKey"] = notification.NotificationId.ToString("N")
             }
         };

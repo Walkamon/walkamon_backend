@@ -18,6 +18,12 @@ namespace DAL.DTO
         public bool IsActive { get; set; }
 
         public string? Image { get; set; }
+        public string? ContentCode { get; set; }
+        public string? ItemNameVi { get; set; }
+        public string? ItemNameEn { get; set; }
+        public string? DescriptionVi { get; set; }
+        public string? DescriptionEn { get; set; }
+        public string? TranslationStatusCode { get; set; }
     }
     
 

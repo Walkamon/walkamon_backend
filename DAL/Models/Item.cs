@@ -19,6 +19,18 @@ public partial class Item
 
     public string? Description { get; set; }
 
+    // Localized content is additive; ItemName/Description remain the legacy
+    // source fields for older clients and admin forms.
+    public string? ContentCode { get; set; }
+    public string? SourceLanguageCode { get; set; }
+    public string? ItemNameVi { get; set; }
+    public string? ItemNameEn { get; set; }
+    public string? DescriptionVi { get; set; }
+    public string? DescriptionEn { get; set; }
+    public string? TranslationStatusCode { get; set; }
+    public string? TranslationSourceHash { get; set; }
+    public DateTime? TranslatedAt { get; set; }
+
     public bool IsActive { get; set; }
 
     public virtual ICollection<InventoryItem> InventoryItems { get; set; } = new List<InventoryItem>();

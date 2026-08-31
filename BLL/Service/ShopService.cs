@@ -65,7 +65,18 @@ public class ShopService : IShopService
                     ItemName = item.ItemName,
                     ItemTypeName = itemType?.ItemTypeName ?? string.Empty,
                     Image = item.ImgUrl,
-                    PriceAmount = x.PriceAmount
+                    PriceAmount = x.PriceAmount,
+                    IsActive = item.IsActive && x.IsActive,
+                    EffectTypeCode = item.EffectTypeCode,
+                    EffectValue = item.EffectValue,
+                    Description = item.Description,
+                    UsageContextCode = ResolveUsageContext(item.EffectTypeCode),
+                    CanUseNow = ResolveUsageContext(item.EffectTypeCode) == "home_pet",
+                    CanEquipForPvp = ResolveUsageContext(item.EffectTypeCode) == "pvp_loadout"
+                    ,ItemNameVi = item.ItemNameVi
+                    ,ItemNameEn = item.ItemNameEn
+                    ,DescriptionVi = item.DescriptionVi
+                    ,DescriptionEn = item.DescriptionEn
                 };
             })
             .ToList();
@@ -86,7 +97,15 @@ public class ShopService : IShopService
             PriceAmount = shopItem.PriceAmount,
             EffectTypeCode = item.EffectTypeCode,
             EffectValue = item.EffectValue,
-            Description = item.Description
+            Description = item.Description,
+            IsActive = shopItem.IsActive && item.IsActive,
+            UsageContextCode = ResolveUsageContext(item.EffectTypeCode),
+            CanUseNow = ResolveUsageContext(item.EffectTypeCode) == "home_pet",
+            CanEquipForPvp = ResolveUsageContext(item.EffectTypeCode) == "pvp_loadout"
+            ,ItemNameVi = item.ItemNameVi
+            ,ItemNameEn = item.ItemNameEn
+            ,DescriptionVi = item.DescriptionVi
+            ,DescriptionEn = item.DescriptionEn
         };
     }
 
@@ -192,5 +211,13 @@ public class ShopService : IShopService
         }
 
         return (shopItem, item);
+    }
+
+    private static string ResolveUsageContext(string? effectTypeCode)
+    {
+        if (string.IsNullOrWhiteSpace(effectTypeCode)) return "none";
+        return effectTypeCode.StartsWith("pvp_", StringComparison.OrdinalIgnoreCase)
+            ? "pvp_loadout"
+            : "home_pet";
     }
 }

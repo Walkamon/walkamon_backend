@@ -140,6 +140,10 @@ public class PvpMatchResponse
     public DateTime ServerTime { get; set; }
     public int RuleVersion { get; set; }
     public string ScoringModeCode { get; set; } = "daily_power_v1";
+    public string ProgressionModeCode { get; set; } = "ranked";
+    public bool RewardEligible { get; set; } = true;
+    public bool RatingEligible { get; set; } = true;
+    public string? RestrictionReasonCode { get; set; }
     public int DailyStepPowerCap { get; set; }
     public long LastEventSequence { get; set; }
     public List<PvpMatchEffectResponse> ActiveEffects { get; set; } = [];
@@ -245,6 +249,10 @@ public sealed class PvpMatchLoadoutSlotResponse
     public byte SlotNo { get; set; }
     public Guid ItemId { get; set; }
     public string ItemName { get; set; } = null!;
+    public string? ItemNameVi { get; set; }
+    public string? ItemNameEn { get; set; }
+    public string? DescriptionVi { get; set; }
+    public string? DescriptionEn { get; set; }
     public string EffectCode { get; set; } = null!;
     public string? TargetCode { get; set; }
     public int? MagnitudeBps { get; set; }
@@ -259,6 +267,10 @@ public sealed class PvpAvailableLoadoutItemResponse
 {
     public Guid ItemId { get; set; }
     public string ItemName { get; set; } = null!;
+    public string? ItemNameVi { get; set; }
+    public string? ItemNameEn { get; set; }
+    public string? DescriptionVi { get; set; }
+    public string? DescriptionEn { get; set; }
     public string EffectCode { get; set; } = null!;
     public string TargetCode { get; set; } = null!;
     public int MagnitudeBps { get; set; }

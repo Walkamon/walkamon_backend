@@ -23,9 +23,6 @@ public static class PvpBotDifficultySelector
         if (validLossStreak >= policy.ReliefLossThreshold)
             return new("relief", true, selectionRollBps, policy.ReliefTargetUserWinBps, "loss_streak_relief");
 
-        if (recentBotMatches >= policy.MaxBotMatchesInWindow)
-            return null;
-
         var (easy, fair, hard) = validLossStreak switch
         {
             <= 1 => (policy.Streak01EasyWeightBps, policy.Streak01FairWeightBps, policy.Streak01HardWeightBps),

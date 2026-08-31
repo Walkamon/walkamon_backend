@@ -26,7 +26,11 @@ public sealed partial class PvpSprintService
         short RewardMultiplierBps = 10000,
         short BotWinMmrDelta = 0,
         short BotDrawMmrDelta = 0,
-        short BotLossMmrDelta = 0);
+        short BotLossMmrDelta = 0,
+        string ProgressionModeCode = "ranked",
+        bool RewardEligible = true,
+        bool RatingEligible = true,
+        string? RestrictionReasonCode = null);
 
     private async Task<ParticipantPowerSnapshot> BuildUserPowerAsync(
         Guid userId,
@@ -112,10 +116,11 @@ public sealed partial class PvpSprintService
         if (tier == null)
         {
             _logger.LogWarning(
-                "PvP bot selection skipped because no difficulty tier was selected. UserId={UserId} QueueAt={QueuedAt} PolicyVersion={PolicyVersion}",
+                "PvP bot selection skipped because no difficulty tier was selected. UserId={UserId} QueueAt={QueuedAt} PolicyVersion={PolicyVersion} RecentBotMatches={RecentBotMatches}",
                 userId,
                 queuedAt,
-                policy.PolicyVersion);
+                policy.PolicyVersion,
+                recentBotMatches);
             return null;
         }
 
@@ -197,20 +202,31 @@ public sealed partial class PvpSprintService
                     ExpectedDistanceUnits = calibration.Value.ExpectedDistanceUnits
                 }
             };
-            var rewardMultiplier = GetRewardMultiplier(policy, tier.Value.DifficultyCode);
-            var (win, draw, loss) = GetBotRatingDeltas(policy, tier.Value.DifficultyCode);
+            // The exposure cap only limits ranked progression; it must never
+            // strand the player in the queue. Once the cap is reached every
+            // bot fallback (including a relief-tier fallback) is explicitly a
+            // practice race with zero rating/reward impact.
+            var isPractice = recentBotMatches >= policy.MaxBotMatchesInWindow;
+            var rewardMultiplier = isPractice ? (short)0 : GetRewardMultiplier(policy, tier.Value.DifficultyCode);
+            var (win, draw, loss) = isPractice
+                ? ((short)0, (short)0, (short)0)
+                : GetBotRatingDeltas(policy, tier.Value.DifficultyCode);
             return new PvpMatchmakingDecision(
                 policy,
                 userPower,
                 calibratedPower,
-                tier.Value.IsRelief ? "loss_streak_relief" : "bot_fallback",
+                isPractice ? "bot_exposure_practice" : tier.Value.IsRelief ? "loss_streak_relief" : "bot_fallback",
                 BotDifficulty: tier,
                 BotCalibration: calibration,
                 BotProfile: bot,
                 RewardMultiplierBps: rewardMultiplier,
                 BotWinMmrDelta: win,
                 BotDrawMmrDelta: draw,
-                BotLossMmrDelta: loss);
+                BotLossMmrDelta: loss,
+                ProgressionModeCode: isPractice ? "bot_practice" : "ranked",
+                RewardEligible: !isPractice,
+                RatingEligible: !isPractice,
+                RestrictionReasonCode: isPractice ? "bot_exposure_limit" : null);
         }
 
         _logger.LogWarning(

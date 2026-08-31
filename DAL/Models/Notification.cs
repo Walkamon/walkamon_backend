@@ -13,6 +13,17 @@ public partial class Notification
 
     public string Body { get; set; } = null!;
 
+    public string? ContentCode { get; set; }
+    public string? ParamsJson { get; set; }
+    public string? SourceLanguageCode { get; set; }
+    public string? TitleVi { get; set; }
+    public string? TitleEn { get; set; }
+    public string? BodyVi { get; set; }
+    public string? BodyEn { get; set; }
+    public string? TranslationStatusCode { get; set; }
+    public string? TranslationSourceHash { get; set; }
+    public DateTime? TranslatedAt { get; set; }
+
     public string? ImageUrl { get; set; }
 
     public string TargetAudienceCode { get; set; } = null!;

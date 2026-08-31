@@ -228,6 +228,9 @@ builder.Services.Configure<FirebaseOptions>(
 
 builder.Services.Configure<DailyLoginRewardOptions>(
     builder.Configuration.GetSection(DailyLoginRewardOptions.SectionName));
+builder.Services.Configure<TranslationOptions>(
+    builder.Configuration.GetSection(TranslationOptions.SectionName));
+builder.Services.AddHttpClient<ITextTranslationService, GoogleCloudTextTranslationService>();
 
 builder.Services.AddScoped<IEmailSender, GmailSmtpEmailSender>();
 

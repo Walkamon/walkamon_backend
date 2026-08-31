@@ -423,6 +423,21 @@ public partial class WalkamonContext : DbContext
             entity.Property(e => e.Description)
                 .HasMaxLength(300)
                 .HasColumnName("description");
+            entity.Property(e => e.ContentCode)
+                .HasMaxLength(80)
+                .IsUnicode(false)
+                .HasColumnName("content_code");
+            entity.Property(e => e.SourceLanguageCode)
+                .HasMaxLength(5)
+                .IsUnicode(false)
+                .HasColumnName("source_language_code");
+            entity.Property(e => e.ItemNameVi).HasMaxLength(80).HasColumnName("item_name_vi");
+            entity.Property(e => e.ItemNameEn).HasMaxLength(80).HasColumnName("item_name_en");
+            entity.Property(e => e.DescriptionVi).HasMaxLength(300).HasColumnName("description_vi");
+            entity.Property(e => e.DescriptionEn).HasMaxLength(300).HasColumnName("description_en");
+            entity.Property(e => e.TranslationStatusCode).HasMaxLength(20).IsUnicode(false).HasColumnName("translation_status_code");
+            entity.Property(e => e.TranslationSourceHash).HasMaxLength(64).IsUnicode(false).HasColumnName("translation_source_hash");
+            entity.Property(e => e.TranslatedAt).HasPrecision(0).HasColumnName("translated_at");
             entity.Property(e => e.EffectTypeCode)
                 .HasMaxLength(30)
                 .IsUnicode(false)
@@ -598,6 +613,16 @@ public partial class WalkamonContext : DbContext
             entity.Property(e => e.Body)
                 .HasMaxLength(500)
                 .HasColumnName("body");
+            entity.Property(e => e.ContentCode).HasMaxLength(80).IsUnicode(false).HasColumnName("content_code");
+            entity.Property(e => e.ParamsJson).HasColumnName("params_json");
+            entity.Property(e => e.SourceLanguageCode).HasMaxLength(5).IsUnicode(false).HasColumnName("source_language_code");
+            entity.Property(e => e.TitleVi).HasMaxLength(120).HasColumnName("title_vi");
+            entity.Property(e => e.TitleEn).HasMaxLength(120).HasColumnName("title_en");
+            entity.Property(e => e.BodyVi).HasMaxLength(500).HasColumnName("body_vi");
+            entity.Property(e => e.BodyEn).HasMaxLength(500).HasColumnName("body_en");
+            entity.Property(e => e.TranslationStatusCode).HasMaxLength(20).IsUnicode(false).HasColumnName("translation_status_code");
+            entity.Property(e => e.TranslationSourceHash).HasMaxLength(64).IsUnicode(false).HasColumnName("translation_source_hash");
+            entity.Property(e => e.TranslatedAt).HasPrecision(0).HasColumnName("translated_at");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(sysutcdatetime())")
