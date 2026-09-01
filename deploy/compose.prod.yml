@@ -31,6 +31,12 @@ x-api-environment: &api-environment
   Firebase__ProjectId: ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID is required}
   Firebase__ServiceAccountPath: /run/secrets/firebase-service-account.json
   Firebase__AndroidChannelId: high_importance_channel
+  Translation__Enabled: ${TRANSLATION_ENABLED:-true}
+  Translation__ProjectId: ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID is required}
+  Translation__CredentialsPath: /run/secrets/firebase-service-account.json
+  Translation__Location: ${TRANSLATION_LOCATION:-global}
+  Translation__TimeoutSeconds: ${TRANSLATION_TIMEOUT_SECONDS:-5}
+  Translation__MaxRetries: ${TRANSLATION_MAX_RETRIES:-2}
   PvpRealtime__Enabled: "true"
   StepValidation__StrictAttestation: "true"
   StepValidation__AndroidPackageName: ${ANDROID_PACKAGE_NAME:?ANDROID_PACKAGE_NAME is required}
