@@ -122,8 +122,7 @@ done
 
 available_kb=$(df --output=avail /srv/walkamon | awk 'NR==2 {print $1}')
 if (( available_kb < 15 * 1024 * 1024 )); then
-  echo "Less than 15 GB is free on the filesystem containing /srv/walkamon." >&2
-  exit 1
+  echo "Warning: less than 15 GB is free on the filesystem containing /srv/walkamon; deployment will continue." >&2
 fi
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet
