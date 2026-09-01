@@ -24,22 +24,27 @@ IF COL_LENGTH('dbo.notifications', 'translated_at') IS NULL ALTER TABLE dbo.noti
 
 -- Preserve all existing content for old clients and give the new fields a
 -- deterministic source/fallback until the translation worker backfills rows.
+-- Dynamic SQL is intentional: SQL Server compiles a batch before executing
+-- the ALTER TABLE statements above, so static references to newly-added
+-- columns would fail with "Invalid column name" on first application.
+EXEC sys.sp_executesql N'
 UPDATE dbo.items
 SET item_name_vi = COALESCE(item_name_vi, item_name),
     item_name_en = COALESCE(item_name_en, item_name),
     description_vi = COALESCE(description_vi, description),
     description_en = COALESCE(description_en, description),
-    source_language_code = COALESCE(source_language_code, 'vi'),
-    translation_status_code = COALESCE(translation_status_code, 'fallback')
-WHERE item_name_vi IS NULL OR item_name_en IS NULL OR description_vi IS NULL OR description_en IS NULL;
+    source_language_code = COALESCE(source_language_code, ''vi''),
+    translation_status_code = COALESCE(translation_status_code, ''fallback'')
+WHERE item_name_vi IS NULL OR item_name_en IS NULL OR description_vi IS NULL OR description_en IS NULL;';
 
+EXEC sys.sp_executesql N'
 UPDATE dbo.notifications
 SET title_vi = COALESCE(title_vi, title),
     title_en = COALESCE(title_en, title),
     body_vi = COALESCE(body_vi, body),
     body_en = COALESCE(body_en, body),
-    source_language_code = COALESCE(source_language_code, 'vi'),
-    translation_status_code = COALESCE(translation_status_code, 'fallback')
-WHERE title_vi IS NULL OR title_en IS NULL OR body_vi IS NULL OR body_en IS NULL;
+    source_language_code = COALESCE(source_language_code, ''vi''),
+    translation_status_code = COALESCE(translation_status_code, ''fallback'')
+WHERE title_vi IS NULL OR title_en IS NULL OR body_vi IS NULL OR body_en IS NULL;';
 
 COMMIT TRANSACTION;
