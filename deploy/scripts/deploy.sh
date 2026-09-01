@@ -136,12 +136,13 @@ if [[ -n "${GHCR_USERNAME:-}" && -n "${GHCR_TOKEN:-}" ]]; then
     | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin >/dev/null
 fi
 
-"${compose[@]}" pull "$inactive_service" worker api
+"${compose[@]}" pull "$inactive_service" worker api libretranslate
+"${compose[@]}" up -d libretranslate
 new_image_id=$(docker image inspect "$API_IMAGE" --format '{{.Id}}')
 active_image_id=$(docker inspect --format '{{.Image}}' "$active_container" 2>/dev/null || true)
 
 if [[ "$force_slot_swap" != true && "$active_image_id" == "$new_image_id" ]]; then
-  "${compose[@]}" up -d db "$active_service" api worker cloudflared dozzle dbgate
+  "${compose[@]}" up -d db libretranslate "$active_service" api worker cloudflared dozzle dbgate
   echo "No API update: $active_slot already runs $new_image_id"
   exit 0
 fi

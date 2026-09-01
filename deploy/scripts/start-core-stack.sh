@@ -29,7 +29,7 @@ esac
 compose=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 active_service="api-$active_slot"
 
-"${compose[@]}" up -d db "$active_service"
+"${compose[@]}" up -d db libretranslate "$active_service"
 for _ in {1..60}; do
   status=$(docker inspect \
     --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \

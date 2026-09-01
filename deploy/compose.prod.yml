@@ -32,9 +32,8 @@ x-api-environment: &api-environment
   Firebase__ServiceAccountPath: /run/secrets/firebase-service-account.json
   Firebase__AndroidChannelId: high_importance_channel
   Translation__Enabled: ${TRANSLATION_ENABLED:-true}
-  Translation__ProjectId: ${FIREBASE_PROJECT_ID:?FIREBASE_PROJECT_ID is required}
-  Translation__CredentialsPath: /run/secrets/firebase-service-account.json
-  Translation__Location: ${TRANSLATION_LOCATION:-global}
+  Translation__Provider: ${TRANSLATION_PROVIDER:-libretranslate}
+  Translation__BaseUrl: ${TRANSLATION_BASE_URL:-http://libretranslate:5000}
   Translation__TimeoutSeconds: ${TRANSLATION_TIMEOUT_SECONDS:-5}
   Translation__MaxRetries: ${TRANSLATION_MAX_RETRIES:-2}
   PvpRealtime__Enabled: "true"
@@ -117,6 +116,36 @@ services:
       timeout: 5s
       retries: 20
       start_period: 30s
+    logging: *default-logging
+
+  libretranslate:
+    image: libretranslate/libretranslate:v1.8.4
+    container_name: walkamon-libretranslate
+    restart: unless-stopped
+    environment:
+      LT_LOAD_ONLY: en,vi
+      LT_UPDATE_MODELS: "true"
+      LT_DISABLE_WEB_UI: "true"
+      LT_CHAR_LIMIT: "5000"
+      LT_REQ_LIMIT: "60"
+      LT_THREADS: "1"
+      ARGOS_CHUNK_TYPE: MINISBD
+    volumes:
+      - libretranslate-models:/home/libretranslate/.local:rw
+    networks:
+      edge:
+        ipv4_address: 172.30.0.8
+      data:
+        ipv4_address: 172.31.0.8
+    mem_limit: 1g
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "./venv/bin/python scripts/healthcheck.py"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 90s
     logging: *default-logging
 
   api-blue:
@@ -279,6 +308,7 @@ volumes:
   caddy-data:
   caddy-config:
   dbgate-data:
+  libretranslate-models:
 
 networks:
   management:

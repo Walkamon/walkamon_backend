@@ -230,7 +230,18 @@ builder.Services.Configure<DailyLoginRewardOptions>(
     builder.Configuration.GetSection(DailyLoginRewardOptions.SectionName));
 builder.Services.Configure<TranslationOptions>(
     builder.Configuration.GetSection(TranslationOptions.SectionName));
-builder.Services.AddHttpClient<ITextTranslationService, GoogleCloudTextTranslationService>();
+var translationProvider = builder.Configuration
+    .GetValue<string>("Translation:Provider")?
+    .Trim()
+    .ToLowerInvariant();
+if (translationProvider == "google")
+{
+    builder.Services.AddHttpClient<ITextTranslationService, GoogleCloudTextTranslationService>();
+}
+else
+{
+    builder.Services.AddHttpClient<ITextTranslationService, LibreTranslateTextTranslationService>();
+}
 
 builder.Services.AddScoped<IEmailSender, GmailSmtpEmailSender>();
 
