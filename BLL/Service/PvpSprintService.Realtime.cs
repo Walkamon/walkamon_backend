@@ -335,7 +335,7 @@ public sealed partial class PvpSprintService
     {
         var endsAt = now.AddMilliseconds(slot.DurationMs);
         if (match.EndedAt.HasValue && endsAt > match.EndedAt.Value) endsAt = match.EndedAt.Value;
-        var effect = new PvpMatchEffect { PvpMatchEffectId = Guid.NewGuid(), MatchId = match.MatchId, TargetMatchPlayerId = target.MatchPlayerId, SourceMatchPlayerId = actor.MatchPlayerId, SourceItemActionId = action.PvpMatchItemActionId, EffectCode = slot.EffectCode, EffectKindCode = kind, MagnitudeBps = slot.MagnitudeBps, StatusCode = "active", StartsAt = now, EndsAt = endsAt, CreatedAt = now };
+        var effect = new PvpMatchEffect { PvpMatchEffectId = Guid.NewGuid(), MatchId = match.MatchId, TargetMatchPlayerId = target.MatchPlayerId, SourceMatchPlayerId = actor.MatchPlayerId, SourceItemActionId = action.PvpMatchItemActionId, SourceItemAction = action, EffectCode = slot.EffectCode, EffectKindCode = kind, MagnitudeBps = slot.MagnitudeBps, StatusCode = "active", StartsAt = now, EndsAt = endsAt, CreatedAt = now };
         _context.PvpMatchEffects.Add(effect);
         return effect;
     }

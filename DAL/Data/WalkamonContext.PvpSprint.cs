@@ -566,6 +566,10 @@ public partial class WalkamonContext
             entity.HasIndex(x => new { x.MatchId, x.TargetMatchPlayerId, x.StatusCode, x.EndsAt });
             entity.HasOne(x => x.Match).WithMany(x => x.Effects).HasForeignKey(x => x.MatchId);
             entity.HasOne(x => x.Target).WithMany(x => x.EffectsReceived).HasForeignKey(x => x.TargetMatchPlayerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.SourceItemAction)
+                .WithMany(x => x.Effects)
+                .HasForeignKey(x => x.SourceItemActionId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<PvpSpiritSpeedRule>(entity =>

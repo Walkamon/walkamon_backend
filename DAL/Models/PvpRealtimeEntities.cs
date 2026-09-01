@@ -68,6 +68,7 @@ public sealed class PvpMatchItemAction
     public PvpMatchPlayer Actor { get; set; } = null!;
     public PvpMatchPlayer? Target { get; set; }
     public PvpMatchLoadoutSlot MatchLoadoutSlot { get; set; } = null!;
+    public ICollection<PvpMatchEffect> Effects { get; set; } = [];
 }
 
 public sealed class PvpMatchEffect
@@ -87,6 +88,7 @@ public sealed class PvpMatchEffect
     public DateTime CreatedAt { get; set; }
     public PvpMatch Match { get; set; } = null!;
     public PvpMatchPlayer Target { get; set; } = null!;
+    public PvpMatchItemAction? SourceItemAction { get; set; }
 }
 
 public sealed class PvpSpiritSpeedRule
