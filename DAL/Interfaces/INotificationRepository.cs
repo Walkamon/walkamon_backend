@@ -40,6 +40,8 @@ public interface INotificationRepository
         DateTime now,
         int take);
 
+    Task<List<Notification>> GetNotificationsPendingTranslationAsync(int take);
+
     Task<DeviceToken?> GetDeviceTokenByTokenAsync(string fcmToken);
 
     Task<List<DeviceToken>> GetActiveDeviceTokensForUserAsync(Guid userId);

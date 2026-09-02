@@ -184,6 +184,24 @@ public class NotificationRepository : INotificationRepository
             .ToListAsync();
     }
 
+    public Task<List<Notification>> GetNotificationsPendingTranslationAsync(int take)
+    {
+        var retryBefore = DateTime.UtcNow.AddMinutes(-15);
+        return _context.Notifications
+            .Where(x =>
+                ((x.TranslationStatusCode == null
+                  || x.TranslationStatusCode != "translated")
+                 && (x.TranslatedAt == null || x.TranslatedAt < retryBefore))
+                || x.TitleVi == null
+                || x.TitleEn == null
+                || x.BodyVi == null
+                || x.BodyEn == null)
+            .OrderBy(x => x.TranslatedAt ?? DateTime.MinValue)
+            .ThenBy(x => x.CreatedAt)
+            .Take(take)
+            .ToListAsync();
+    }
+
     public Task<DeviceToken?> GetDeviceTokenByTokenAsync(string fcmToken)
     {
         return _context.DeviceTokens

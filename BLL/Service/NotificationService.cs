@@ -72,7 +72,8 @@ public class NotificationService : INotificationService
         int page,
         int pageSize,
         string? typeCode,
-        bool? isRead)
+        bool? isRead,
+        string? acceptLanguage = null)
     {
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
@@ -86,7 +87,7 @@ public class NotificationService : INotificationService
                 typeCode,
                 isRead);
         var profile = await GetProfileOrThrowAsync(userId);
-        var useEnglish = profile.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase);
+        var useEnglish = ResolveUseEnglish(acceptLanguage, profile.LanguageCode);
 
         return new NotificationListResponse
         {
@@ -99,7 +100,8 @@ public class NotificationService : INotificationService
 
     public async Task<NotificationDetailResponse> GetNotificationDetailAsync(
         Guid userId,
-        Guid notificationId)
+        Guid notificationId,
+        string? acceptLanguage = null)
     {
         var userNotification =
             await GetOwnedNotificationOrThrowAsync(userId, notificationId);
@@ -113,7 +115,7 @@ public class NotificationService : INotificationService
         var profile = await GetProfileOrThrowAsync(userId);
         return ToDetailResponse(
             userNotification,
-            profile.LanguageCode.StartsWith("en", StringComparison.OrdinalIgnoreCase));
+            ResolveUseEnglish(acceptLanguage, profile.LanguageCode));
     }
 
     public async Task DeleteNotificationAsync(Guid userId, Guid notificationId)
@@ -714,6 +716,28 @@ public class NotificationService : INotificationService
 
     private static string Localized(string fallback, string? vi, string? en, bool useEnglish) =>
         (useEnglish ? en : vi)?.Trim() is { Length: > 0 } value ? value : fallback;
+
+    private static bool ResolveUseEnglish(
+        string? acceptLanguage,
+        string? profileLanguageCode)
+    {
+        // The first supported language in Accept-Language wins.  Quality
+        // weights do not change the order here because clients send their
+        // selected locale first; unsupported entries are skipped.
+        if (!string.IsNullOrWhiteSpace(acceptLanguage))
+        {
+            foreach (var preference in acceptLanguage.Split(','))
+            {
+                var language = preference.Split(';', 2)[0].Trim();
+                if (language.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (language.StartsWith("vi", StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+        }
+
+        return profileLanguageCode?.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true;
+    }
 
     private static string? GetCreatedByDisplay(User? user)
     {

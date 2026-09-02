@@ -13,11 +13,13 @@ public interface INotificationService
         int page,
         int pageSize,
         string? typeCode,
-        bool? isRead);
+        bool? isRead,
+        string? acceptLanguage = null);
 
     Task<NotificationDetailResponse> GetNotificationDetailAsync(
         Guid userId,
-        Guid notificationId);
+        Guid notificationId,
+        string? acceptLanguage = null);
 
     Task DeleteNotificationAsync(Guid userId, Guid notificationId);
 

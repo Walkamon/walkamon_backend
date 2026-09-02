@@ -352,6 +352,9 @@ var backgroundServicesEnabled = builder.Configuration.GetValue(
 var notificationSchedulerEnabled = builder.Configuration.GetValue(
     "BackgroundServices:NotificationSchedulerEnabled",
     backgroundServicesEnabled);
+var notificationTranslationBackfillEnabled = builder.Configuration.GetValue(
+    "BackgroundServices:NotificationTranslationBackfillEnabled",
+    backgroundServicesEnabled);
 var pvpLifecycleEnabled = builder.Configuration.GetValue(
     "BackgroundServices:PvpLifecycleEnabled",
     backgroundServicesEnabled);
@@ -360,6 +363,8 @@ var pvpOutboxDispatcherEnabled = builder.Configuration.GetValue(
     backgroundServicesEnabled);
 if (notificationSchedulerEnabled)
     builder.Services.AddHostedService<NotificationSchedulerService>();
+if (notificationTranslationBackfillEnabled)
+    builder.Services.AddHostedService<NotificationTranslationBackfillService>();
 if (pvpLifecycleEnabled)
     builder.Services.AddHostedService<PvpSprintLifecycleService>();
 if (pvpOutboxDispatcherEnabled)

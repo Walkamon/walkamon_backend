@@ -54,7 +54,8 @@ public class NotificationController : BaseController
             page,
             pageSize,
             typeCode,
-            isRead);
+            isRead,
+            Request.Headers.AcceptLanguage.ToString());
 
         return Ok(new ApiResponse<NotificationListResponse>
         {
@@ -74,7 +75,8 @@ public class NotificationController : BaseController
     {
         var result = await _notificationService.GetNotificationDetailAsync(
             CurrentUserId,
-            notificationId);
+            notificationId,
+            Request.Headers.AcceptLanguage.ToString());
 
         return Ok(new ApiResponse<NotificationDetailResponse>
         {
