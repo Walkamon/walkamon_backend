@@ -151,14 +151,15 @@ namespace BLL.Service
             int? nextEvolutionLevel;
             if (isStarter)
             {
-                nextEvolutionLevel = 5;
+                nextEvolutionLevel = PetEvolutionPolicy.FirstEvolutionLevel;
             }
             else if (stage != null)
             {
                 var nextStage = await _petRepository.GetNextStageAsync(
                     userPet.PetId,
                     stage.StageNo);
-                nextEvolutionLevel = nextStage?.RequiredLevel;
+                nextEvolutionLevel = nextStage == null ? null : PetEvolutionPolicy.RequiredLevel(
+                    ResolveAffinityCode(userPet.Pet), nextStage.StageNo, nextStage.RequiredLevel);
             }
             else
             {
@@ -385,10 +386,10 @@ namespace BLL.Service
             }
 
             
-            if (userPet.Level < 5)
+            if (userPet.Level < PetEvolutionPolicy.FirstEvolutionLevel)
             {
                 throw new BadRequestException(
-                    "Pet must reach level 5.");
+                    $"Pet must reach level {PetEvolutionPolicy.FirstEvolutionLevel}.");
             }
 
             var pets = await _petRepository.GetEvolutionOptionsAsync();
@@ -403,7 +404,7 @@ namespace BLL.Service
                 {
                     PetId = pet.PetId,
                     PetName = pet.PetName,
-                    RequiredLevel = stage?.RequiredLevel ?? 1,
+                    RequiredLevel = PetEvolutionPolicy.FirstEvolutionLevel,
                     StateUrl = stage?.StateUrl
                 });
             }
@@ -426,9 +427,9 @@ namespace BLL.Service
                     "Pet has already evolved.");
             }
 
-            if (userPet.Level < 5)
+            if (userPet.Level < PetEvolutionPolicy.FirstEvolutionLevel)
                 throw new BadRequestException(
-                    "Pet must reach level 5.");
+                    $"Pet must reach level {PetEvolutionPolicy.FirstEvolutionLevel}.");
 
             var pet = await _Pet.GetByIdAsync(petId);
 
@@ -552,11 +553,11 @@ namespace BLL.Service
 
                     StateUrl = stage.StateUrl,
 
-                    RequiredLevel = stage.RequiredLevel,
+                    RequiredLevel = PetEvolutionPolicy.RequiredLevel(ResolveAffinityCode(userPet.Pet), stage.StageNo, stage.RequiredLevel),
 
                     IsCurrent = stage.StageNo == currentStageNo,
 
-                    IsUnlocked = userPet.Level >= stage.RequiredLevel,
+                    IsUnlocked = stage.StageNo <= currentStageNo || userPet.Level >= PetEvolutionPolicy.RequiredLevel(ResolveAffinityCode(userPet.Pet), stage.StageNo, stage.RequiredLevel),
 
                     Animations = animations
                         .Select(a => new PetAnimationResponse
@@ -588,9 +589,11 @@ namespace BLL.Service
             if (nextStage == null)
                 throw new BadRequestException("Pet is already at the final evolution stage.");
 
-            if (userPet.Level < nextStage.RequiredLevel)
+            var requiredLevel = PetEvolutionPolicy.RequiredLevel(
+                ResolveAffinityCode(userPet.Pet), nextStage.StageNo, nextStage.RequiredLevel);
+            if (userPet.Level < requiredLevel)
                 throw new BadRequestException(
-                    $"Pet must reach level {nextStage.RequiredLevel}.");
+                    $"Pet must reach level {requiredLevel}.");
 
             var history = new PetEvolutionHistory
             {
@@ -614,7 +617,7 @@ namespace BLL.Service
                 StageNo = nextStage.StageNo,
                 StageName = nextStage.StageName,
                 StateUrl = nextStage.StateUrl,
-                RequiredLevel = nextStage.RequiredLevel,
+                RequiredLevel = requiredLevel,
                 IsCurrent = true,
                 IsUnlocked = true,
                 Animations = animations.Select(x => new PetAnimationResponse
@@ -887,7 +890,7 @@ GetEvolutionPreviewAsync()
 
                         StageImage = stage.StateUrl,
 
-                        RequiredLevel = stage.RequiredLevel,
+                        RequiredLevel = PetEvolutionPolicy.RequiredLevel(ResolveAffinityCode(pet), stage.StageNo, stage.RequiredLevel),
 
                         Animations = animations
                             .Select(x => new PetAnimationInfoResponse
@@ -1016,7 +1019,7 @@ GetEvolutionPreviewAsync()
                         StageId = x.StageId,
                         StageNo = x.StageNo,
                         StageName = x.StageName,
-                        RequiredLevel = x.RequiredLevel,
+                        RequiredLevel = PetEvolutionPolicy.RequiredLevel(ResolveAffinityCode(pet), x.StageNo, x.RequiredLevel),
                         StateUrl = x.StateUrl,
                         IsActive = x.IsActive
                     }).ToList(),
