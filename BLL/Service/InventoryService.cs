@@ -100,6 +100,11 @@ public class InventoryService : IInventoryService
             throw new NotFoundException("Pet not found");
         }
 
+        if (IsAtMaximum(userPet, effectTypeCode))
+        {
+            throw new ConflictException("Pet stat is already full");
+        }
+
         ApplyItemEffect(userPet, effectTypeCode, effectValue);
 
         inventoryItem.Quantity--;
@@ -203,6 +208,15 @@ public class InventoryService : IInventoryService
 
         return (int)Math.Min(maximum, (long)Math.Max(0, current) + amount);
     }
+
+    private static bool IsAtMaximum(UserPet userPet, string effectTypeCode) =>
+        effectTypeCode switch
+        {
+            "life_force" or "sml" => userPet.CurrentPetLifeForce >= userPet.PetLifeForce,
+            "energy" => userPet.CurrentPetEnergy >= userPet.PetEnergy,
+            "bond" => userPet.CurrentPetBond >= userPet.PetBond,
+            _ => false
+        };
 
     private static InventoryItemResponse ToInventoryItemResponse(
         InventoryItem inventoryItem,
