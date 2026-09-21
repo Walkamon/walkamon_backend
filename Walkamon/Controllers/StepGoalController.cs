@@ -86,10 +86,8 @@ namespace Walkamon.Controllers
         public async Task<IActionResult> ClaimReward()
         {
 
-            var streak = await _stepGoalService.GetCurrentStreakAsync(CurrentUserId);
-
             var result = await _streakRewardService
-                .ClaimRewardAsync(CurrentUserId,streak);
+                .ClaimRewardAsync(CurrentUserId);
 
             return Ok(new 
             {

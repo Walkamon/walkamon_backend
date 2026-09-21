@@ -51,7 +51,7 @@ namespace DAL.Repository
         public async Task<List<PetStage>> GetStagesByPetIdAsync(Guid petId)
         {
             return await _context.PetStages
-                .Where(x => x.PetId == petId)
+                .Where(x => x.PetId == petId && x.IsActive)
                 .OrderBy(x => x.StageNo)
                 .ToListAsync();
         }
@@ -64,10 +64,11 @@ namespace DAL.Repository
         }
         public async Task<PetStage?> GetFirstStageAsync(Guid petId)
         {
-            return await _context.PetStages
+            var stage = await _context.PetStages
                 .Where(x => x.PetId == petId)
                 .OrderBy(x => x.StageNo)
                 .FirstOrDefaultAsync();
+            return stage?.IsActive == true ? stage : null;
         }
         public async Task<List<PetAnimation>> GetAnimationsAsync(
     Guid petId,
@@ -85,11 +86,12 @@ namespace DAL.Repository
             return await _context.PetStages
                 .FirstOrDefaultAsync(x =>
                     x.PetId == petId &&
-                    x.StageNo == currentStageNo + 1);
+                    x.StageNo == currentStageNo + 1 && x.IsActive);
         }
         public async Task<List<UserPet>> GetLeaderboardAsync()
         {
             return await _context.UserPets
+                .Where(x => x.User.StatusCode == "active" && x.User.DeletedAt == null)
                 .Include(x => x.Pet)
                 .Include(x => x.User)
                     .ThenInclude(x => x.UserProfile)

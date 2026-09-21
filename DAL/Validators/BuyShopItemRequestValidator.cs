@@ -7,6 +7,10 @@ public class BuyShopItemRequestValidator : AbstractValidator<BuyShopItemRequest>
 {
     public BuyShopItemRequestValidator()
     {
+        RuleFor(x => x.RequestId)
+            .NotEqual(Guid.Empty)
+            .When(x => x.RequestId.HasValue);
+
         RuleFor(x => x.ShopItemId)
             .NotEmpty()
             .WithMessage("ShopItemId is required.");

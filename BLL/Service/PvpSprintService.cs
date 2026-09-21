@@ -1813,6 +1813,9 @@ public sealed partial class PvpSprintService : IPvpSprintService
     }
     private async Task EnsureInviteCanBeAcceptedAsync(PvpSprintInvite invite)
     {
+        if (!await IsActiveUserAsync(invite.InviterUserId) ||
+            !await IsActiveUserAsync(invite.InviteeUserId))
+            throw new ConflictException("Both players must have active accounts.");
         EnsureOnline(invite.InviterUserId, "The inviter is offline. This Sprint invite cannot be accepted.");
         EnsureOnline(invite.InviteeUserId, "Connect to the realtime presence hub before accepting this invite.");
         await EnsurePvpEnergyAvailableAsync(invite.InviterUserId);

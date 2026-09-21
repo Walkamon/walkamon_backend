@@ -502,6 +502,8 @@ public class NotificationService : INotificationService
         try
         {
             var profile = await _notificationRepository.GetUserProfileAsync(deviceToken.UserId);
+            if (profile?.NotificationsEnabled != true)
+                return false;
             var useEnglish = profile?.LanguageCode?.StartsWith("en", StringComparison.OrdinalIgnoreCase) == true;
             var title = useEnglish ? notification.TitleEn : notification.TitleVi;
             var body = useEnglish ? notification.BodyEn : notification.BodyVi;

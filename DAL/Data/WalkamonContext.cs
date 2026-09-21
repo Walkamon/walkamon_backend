@@ -1533,24 +1533,27 @@ public partial class WalkamonContext : DbContext
             }
 
             var primaryKey = entry.Properties
-                .FirstOrDefault(p => p.Metadata.IsPrimaryKey());
+                .Where(p => p.Metadata.IsPrimaryKey()).ToList();
 
-            if (primaryKey != null)
+            if (primaryKey.Count > 0)
             {
-                audit.RecordId = primaryKey.CurrentValue?.ToString();
+                audit.RecordId = string.Join("/", primaryKey.Select(p => p.CurrentValue?.ToString()));
             }
 
             auditLogs.Add(audit);
         }
 
-        var result = await base.SaveChangesAsync(cancellationToken);
-
-        if (auditLogs.Count > 0)
+        // Business changes and their audit records share the same atomic save.
+        AuditLogs.AddRange(auditLogs);
+        try
         {
-            AuditLogs.AddRange(auditLogs);
-            await base.SaveChangesAsync(cancellationToken);
+            return await base.SaveChangesAsync(cancellationToken);
         }
-
-        return result;
+        catch
+        {
+            foreach (var audit in auditLogs)
+                Entry(audit).State = EntityState.Detached;
+            throw;
+        }
     }
 }

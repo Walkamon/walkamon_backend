@@ -9,6 +9,6 @@ namespace BLL.Interfaces
 {
     public interface IStreakRewardService
     {
-        Task<ClaimRewardResponse> ClaimRewardAsync(Guid currentUserId,CurrentStreakResponse currentStreak);
+        Task<ClaimRewardResponse> ClaimRewardAsync(Guid currentUserId);
     }
 }

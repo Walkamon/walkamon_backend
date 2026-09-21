@@ -1,13 +1,18 @@
 using BLL.Exceptions;
 using BLL.Interfaces;
+using DAL.Data;
 using DAL.DTO;
+using DAL.Extensions;
 using DAL.Interfaces;
 using DAL.Models;
+using Microsoft.EntityFrameworkCore;
+using System.Data;
 
 namespace BLL.Service;
 
 public class ShopService : IShopService
 {
+    private readonly WalkamonContext _context;
     private readonly IGenericRepository<ShopItem> _shopItemRepository;
     private readonly IGenericRepository<Item> _itemRepository;
     private readonly IGenericRepository<ItemType> _itemTypeRepository;
@@ -21,8 +26,10 @@ public class ShopService : IShopService
         IGenericRepository<ItemType> itemTypeRepository,
         IGenericRepository<Wallet> walletRepository,
         IGenericRepository<InventoryItem> inventoryRepository,
-        IGenericRepository<ShopPurchase> shopPurchaseRepository)
+        IGenericRepository<ShopPurchase> shopPurchaseRepository,
+        WalkamonContext context)
     {
+        _context = context;
         _shopItemRepository = shopItemRepository;
         _itemRepository = itemRepository;
         _itemTypeRepository = itemTypeRepository;
@@ -113,84 +120,121 @@ public class ShopService : IShopService
         Guid userId,
         BuyShopItemRequest request)
     {
-        if (request.Quantity <= 0)
+        if (request.Quantity <= 0 || request.ShopItemId == Guid.Empty || request.RequestId == Guid.Empty)
         {
-            throw new BadRequestException("Quantity must be greater than 0");
+            throw new BadRequestException("A valid item, positive quantity and non-empty request ID are required.");
         }
 
-        var (shopItem, item) = await GetActiveShopItemWithItemAsync(request.ShopItemId);
-        var wallet = await _walletRepository.GetByIdAsync(userId);
-
-        if (wallet == null)
+        var purchaseId = request.RequestId ?? Guid.NewGuid();
+        return await _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
         {
-            throw new NotFoundException("Wallet not found");
-        }
+            var wallet = await _context.Wallets
+                .FromSqlInterpolated($"SELECT * FROM wallets WITH (UPDLOCK, HOLDLOCK) WHERE user_id = {userId}")
+                .SingleOrDefaultAsync();
 
-        var totalPriceLong = (long)shopItem.PriceAmount * request.Quantity;
-        if (totalPriceLong > int.MaxValue)
-        {
-            throw new BadRequestException("Total price amount is too large");
-        }
-
-        var totalPriceAmount = (int)totalPriceLong;
-
-        if (wallet.Balance < totalPriceAmount)
-        {
-            throw new BadRequestException("Insufficient wallet balance");
-        }
-
-        var inventoryItem = await _inventoryRepository.FirstOrDefaultAsync(x =>
-            x.UserId == userId && x.ItemId == shopItem.ItemId);
-
-        if (inventoryItem == null)
-        {
-            inventoryItem = new InventoryItem
+            if (wallet == null)
             {
-                UserId = userId,
-                ItemId = shopItem.ItemId,
-                Quantity = request.Quantity
-            };
-
-            await _inventoryRepository.AddAsync(inventoryItem);
-        }
-        else
-        {
-            if (inventoryItem.Quantity > int.MaxValue - request.Quantity)
-            {
-                throw new BadRequestException("Inventory quantity is too large");
+                throw new NotFoundException("Wallet not found");
             }
 
-            inventoryItem.Quantity += request.Quantity;
-            _inventoryRepository.Update(inventoryItem);
-        }
+            // The existing purchase primary key is also the retry key; no schema change.
+            var previous = await _context.ShopPurchases.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.PurchaseId == purchaseId);
+            if (previous != null)
+            {
+                if (previous.UserId != userId || previous.ShopItemId != request.ShopItemId ||
+                    previous.Quantity != request.Quantity)
+                    throw new ConflictException("Request ID has already been used for another purchase.");
+                var previousShopItem = await _shopItemRepository.GetByIdAsync(previous.ShopItemId);
+                var previousItem = await _itemRepository.GetByIdAsync(previousShopItem.ItemId);
+                var quantity = await _context.InventoryItems.AsNoTracking()
+                    .Where(x => x.UserId == userId && x.ItemId == previousItem.ItemId)
+                    .Select(x => x.Quantity).SingleOrDefaultAsync();
+                return new BuyShopItemResponse
+                {
+                    PurchaseId = previous.PurchaseId,
+                    ShopItemId = previous.ShopItemId,
+                    ItemId = previousItem.ItemId,
+                    ItemName = previousItem.ItemName,
+                    Quantity = previous.Quantity,
+                    UnitPriceAmount = previous.UnitPriceAmount,
+                    TotalPriceAmount = checked(previous.UnitPriceAmount * previous.Quantity),
+                    WalletBalance = wallet.Balance,
+                    InventoryQuantity = quantity
+                };
+            }
 
-        wallet.Balance -= totalPriceAmount;
-        _walletRepository.Update(wallet);
+            var (shopItem, item) = await GetActiveShopItemWithItemAsync(request.ShopItemId);
+            if (shopItem.PriceAmount < 0)
+                throw new ConflictException("Shop item price is invalid.");
+            var totalPriceLong = (long)shopItem.PriceAmount * request.Quantity;
+            if (totalPriceLong > int.MaxValue)
+            {
+                throw new BadRequestException("Total price amount is too large");
+            }
 
-        var purchase = new ShopPurchase
-        {
-            PurchaseId = Guid.NewGuid(),
-            UserId = userId,
-            ShopItemId = shopItem.ShopItemId,
-            Quantity = request.Quantity,
-            UnitPriceAmount = shopItem.PriceAmount,
-            PurchasedAt = DateTime.UtcNow
-        };
+            var totalPriceAmount = (int)totalPriceLong;
 
-        await _shopPurchaseRepository.AddAsync(purchase);
-        await _shopPurchaseRepository.SaveAsync();
+            if (wallet.Balance < totalPriceAmount)
+            {
+                throw new BadRequestException("Insufficient wallet balance");
+            }
 
-        return new BuyShopItemResponse
-        {
-            ShopItemId = shopItem.ShopItemId,
-            ItemId = item.ItemId,
-            ItemName = item.ItemName,
-            Quantity = request.Quantity,
-            UnitPriceAmount = shopItem.PriceAmount,
-            TotalPriceAmount = totalPriceAmount,
-            WalletBalance = wallet.Balance,
-            InventoryQuantity = inventoryItem.Quantity
-        };
+            var inventoryItem = await _context.InventoryItems
+                .FromSqlInterpolated($"SELECT * FROM inventory_items WITH (UPDLOCK, HOLDLOCK) WHERE user_id = {userId} AND item_id = {shopItem.ItemId}")
+                .SingleOrDefaultAsync();
+
+            if (inventoryItem == null)
+            {
+                inventoryItem = new InventoryItem
+                {
+                    UserId = userId,
+                    ItemId = shopItem.ItemId,
+                    Quantity = request.Quantity
+                };
+
+                await _inventoryRepository.AddAsync(inventoryItem);
+            }
+            else
+            {
+                if (inventoryItem.Quantity > int.MaxValue - request.Quantity)
+                {
+                    throw new BadRequestException("Inventory quantity is too large");
+                }
+
+                inventoryItem.Quantity += request.Quantity;
+                _inventoryRepository.Update(inventoryItem);
+            }
+
+            wallet.Balance -= totalPriceAmount;
+            _walletRepository.Update(wallet);
+
+            var purchase = new ShopPurchase
+            {
+                PurchaseId = purchaseId,
+                UserId = userId,
+                ShopItemId = shopItem.ShopItemId,
+                Quantity = request.Quantity,
+                UnitPriceAmount = shopItem.PriceAmount,
+                PurchasedAt = DateTime.UtcNow
+            };
+
+            await _shopPurchaseRepository.AddAsync(purchase);
+            await _shopPurchaseRepository.SaveAsync();
+
+            return new BuyShopItemResponse
+            {
+                PurchaseId = purchaseId,
+                ShopItemId = shopItem.ShopItemId,
+                ItemId = item.ItemId,
+                ItemName = item.ItemName,
+                Quantity = request.Quantity,
+                UnitPriceAmount = shopItem.PriceAmount,
+                TotalPriceAmount = totalPriceAmount,
+                WalletBalance = wallet.Balance,
+                InventoryQuantity = inventoryItem.Quantity
+            };
+        });
     }
 
     private async Task<(ShopItem ShopItem, Item Item)> GetActiveShopItemWithItemAsync(

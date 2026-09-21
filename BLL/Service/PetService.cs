@@ -399,6 +399,7 @@ namespace BLL.Service
             foreach (var pet in pets.Where(IsAllowedEvolutionPet))
             {
                 var stage = await _petRepository.GetFirstStageAsync(pet.PetId);
+                if (stage == null) continue;
 
                 result.Add(new EvolutionOptionResponse
                 {

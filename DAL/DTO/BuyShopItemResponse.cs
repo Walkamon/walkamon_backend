@@ -4,6 +4,8 @@ namespace DAL.DTO;
 
 public class BuyShopItemResponse
 {
+    public Guid PurchaseId { get; set; }
+
     public Guid ShopItemId { get; set; }
 
     public Guid ItemId { get; set; }

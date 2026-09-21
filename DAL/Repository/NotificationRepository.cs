@@ -165,7 +165,9 @@ public class NotificationRepository : INotificationRepository
         IReadOnlyCollection<Guid> userIds)
     {
         return _context.DeviceTokens
-            .Where(x => userIds.Contains(x.UserId) && x.IsActive)
+            .Where(x => userIds.Contains(x.UserId) && x.IsActive
+                && x.User.StatusCode == "active" && x.User.DeletedAt == null
+                && x.User.UserProfile != null && x.User.UserProfile.NotificationsEnabled)
             .ToListAsync();
     }
 

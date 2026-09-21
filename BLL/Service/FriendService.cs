@@ -1,4 +1,4 @@
-﻿using BLL.Interfaces;
+using BLL.Interfaces;
 using DAL.DTO;
 using DAL.Interfaces;
 using DAL.Models;
@@ -8,10 +8,15 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using BLL.Exceptions;
+using DAL.Data;
+using DAL.Extensions;
+using Microsoft.EntityFrameworkCore;
+using System.Data;
 namespace BLL.Service
 {
     public class FriendService : IFriendService
     {
+        private readonly WalkamonContext _context;
         private readonly IGenericRepository<FriendRequest> _friendRequestRepository;
         private readonly IGenericRepository<Friendship> _friendshipRepository;
         private readonly IFriendRepository _friendRepository;
@@ -20,8 +25,10 @@ namespace BLL.Service
      IGenericRepository<FriendRequest> friendRequestRepository,
      IGenericRepository<Friendship> friendshipRepository,
      IFriendRepository friendRepository,
+     WalkamonContext context,
      IPvpPresenceTracker? presenceTracker = null)
         {
+            _context = context;
             _friendRequestRepository = friendRequestRepository;
             _friendshipRepository = friendshipRepository;
             _friendRepository = friendRepository;
@@ -35,66 +42,80 @@ namespace BLL.Service
             if (currentUserId == request.ReceiverUserId)
                 throw new BadRequestException("Cannot send friend request to yourself.");
 
-            var existedRequest = await _friendRequestRepository.AnyAsync(x =>
-     (
-         (x.SenderUserId == currentUserId &&
-          x.ReceiverUserId == request.ReceiverUserId)
-         ||
-         (x.SenderUserId == request.ReceiverUserId &&
-          x.ReceiverUserId == currentUserId)
-     )
-     && x.StatusCode == "pending");
-
-            if (existedRequest)
-                throw new BadRequestException("Friend request already exists.");
-
-            var lowId = currentUserId.CompareTo(request.ReceiverUserId) < 0
-                ? currentUserId
-                : request.ReceiverUserId;
-
-            var highId = currentUserId.CompareTo(request.ReceiverUserId) > 0
-                ? currentUserId
-                : request.ReceiverUserId;
-
-            var isFriend =
-                await _friendshipRepository.AnyAsync(x =>
-                    x.UserLowId == lowId &&
-                    x.UserHighId == highId);
-
-            if (isFriend)
-                throw new BadRequestException("Already friends.");
-
-            var entity = new FriendRequest
+            await WithFriendPairAsync(currentUserId, request.ReceiverUserId, async () =>
             {
-                RequestId = Guid.NewGuid(),
-                SenderUserId = currentUserId,
-                ReceiverUserId = request.ReceiverUserId,
-                StatusCode = "pending",
-                CreatedAt = DateTime.UtcNow
-            };
+                var existedRequest = await _friendRequestRepository.AnyAsync(x =>
+         (
+             (x.SenderUserId == currentUserId &&
+              x.ReceiverUserId == request.ReceiverUserId)
+             ||
+             (x.SenderUserId == request.ReceiverUserId &&
+              x.ReceiverUserId == currentUserId)
+         )
+         && x.StatusCode == "pending");
 
-            await _friendRequestRepository.AddAsync(entity);
-            await _friendRequestRepository.SaveAsync();
+                if (existedRequest)
+                    throw new BadRequestException("Friend request already exists.");
+
+                var lowId = currentUserId.CompareTo(request.ReceiverUserId) < 0
+                    ? currentUserId
+                    : request.ReceiverUserId;
+
+                var highId = currentUserId.CompareTo(request.ReceiverUserId) > 0
+                    ? currentUserId
+                    : request.ReceiverUserId;
+
+                var isFriend =
+                    await _friendshipRepository.AnyAsync(x =>
+                        x.UserLowId == lowId &&
+                        x.UserHighId == highId);
+
+                if (isFriend)
+                    throw new BadRequestException("Already friends.");
+
+                var entity = new FriendRequest
+                {
+                    RequestId = Guid.NewGuid(),
+                    SenderUserId = currentUserId,
+                    ReceiverUserId = request.ReceiverUserId,
+                    StatusCode = "pending",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _friendRequestRepository.AddAsync(entity);
+                await _friendRequestRepository.SaveAsync();
+            });
         }
 
         public async Task CancelFriendRequestAsync(
             Guid currentUserId,
             Guid requestId)
         {
-            var request =
-                await _friendRequestRepository.GetByIdAsync(requestId);
-
-            if (request == null)
-                throw new NotFoundException("Request not found.");
-
-            if (request.SenderUserId != currentUserId)
+            var pair = await _context.FriendRequests.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.RequestId == requestId)
+                ?? throw new NotFoundException("Request not found.");
+            if (pair.SenderUserId != currentUserId)
                 throw new BadRequestException("Not allowed.");
+            await WithFriendPairAsync(pair.SenderUserId, pair.ReceiverUserId, async () =>
+            {
+                var request =
+                    await _friendRequestRepository.GetByIdAsync(requestId);
 
-            request.StatusCode = "cancelled";
+                if (request == null)
+                    throw new NotFoundException("Request not found.");
 
-            _friendRequestRepository.Update(request);
+                if (request.SenderUserId != currentUserId)
+                    throw new BadRequestException("Not allowed.");
 
-            await _friendRequestRepository.SaveAsync();
+                if (request.StatusCode != "pending")
+                    throw new ConflictException("Friend request has already been processed.");
+                request.StatusCode = "cancelled";
+                request.RespondedAt = DateTime.UtcNow;
+
+                _friendRequestRepository.Update(request);
+
+                await _friendRequestRepository.SaveAsync();
+            });
         }
 
         public async Task RespondFriendRequestAsync(
@@ -102,51 +123,60 @@ namespace BLL.Service
             Guid requestId,
             RespondFriendRequestRequest request)
         {
-            var friendRequest =
-                await _friendRequestRepository.GetByIdAsync(requestId);
-
-            if (friendRequest == null)
-                throw new NotFoundException("Request not found.");
-
-            if (friendRequest.ReceiverUserId != currentUserId)
+            var pair = await _context.FriendRequests.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.RequestId == requestId)
+                ?? throw new NotFoundException("Request not found.");
+            if (pair.ReceiverUserId != currentUserId)
                 throw new NotFoundException("Not allowed.");
-
-            friendRequest.RespondedAt = DateTime.UtcNow;
-
-            if (request.IsAccepted)
+            await WithFriendPairAsync(pair.SenderUserId, pair.ReceiverUserId, async () =>
             {
-                friendRequest.StatusCode = "accepted";
+                var friendRequest =
+                    await _friendRequestRepository.GetByIdAsync(requestId);
 
-                var lowId =
-                    friendRequest.SenderUserId.CompareTo(
-                        friendRequest.ReceiverUserId) < 0
-                        ? friendRequest.SenderUserId
-                        : friendRequest.ReceiverUserId;
+                if (friendRequest == null)
+                    throw new NotFoundException("Request not found.");
 
-                var highId =
-                    friendRequest.SenderUserId.CompareTo(
-                        friendRequest.ReceiverUserId) > 0
-                        ? friendRequest.SenderUserId
-                        : friendRequest.ReceiverUserId;
+                if (friendRequest.ReceiverUserId != currentUserId)
+                    throw new NotFoundException("Not allowed.");
 
-                var friendship = new Friendship
+                if (friendRequest.StatusCode != "pending")
+                    throw new ConflictException("Friend request has already been processed.");
+                friendRequest.RespondedAt = DateTime.UtcNow;
+
+                if (request.IsAccepted)
                 {
-                    UserLowId = lowId,
-                    UserHighId = highId,
-                    CreatedAt = DateTime.UtcNow
-                };
+                    friendRequest.StatusCode = "accepted";
 
-                await _friendshipRepository.AddAsync(friendship);
-                await _friendshipRepository.SaveAsync();
-            }
-            else
-            {
-                friendRequest.StatusCode = "rejected";
-            }
+                    var lowId =
+                        friendRequest.SenderUserId.CompareTo(
+                            friendRequest.ReceiverUserId) < 0
+                            ? friendRequest.SenderUserId
+                            : friendRequest.ReceiverUserId;
 
-            _friendRequestRepository.Update(friendRequest);
+                    var highId =
+                        friendRequest.SenderUserId.CompareTo(
+                            friendRequest.ReceiverUserId) > 0
+                            ? friendRequest.SenderUserId
+                            : friendRequest.ReceiverUserId;
 
-            await _friendRequestRepository.SaveAsync();
+                    var friendship = new Friendship
+                    {
+                        UserLowId = lowId,
+                        UserHighId = highId,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    await _friendshipRepository.AddAsync(friendship);
+                }
+                else
+                {
+                    friendRequest.StatusCode = "rejected";
+                }
+
+                _friendRequestRepository.Update(friendRequest);
+
+                await _friendRequestRepository.SaveAsync();
+            });
         }
 
         public async Task<IEnumerable<FriendRequestResponse>>
@@ -221,20 +251,39 @@ GetAvailableUsersAsync(Guid currentUserId)
     Guid currentUserId,
     Guid friendId)
         {
-            var friendship =
-                await _friendshipRepository.FirstOrDefaultAsync(x =>
-                    (x.UserLowId == currentUserId &&
-                     x.UserHighId == friendId)
-                     ||
-                    (x.UserLowId == friendId &&
-                     x.UserHighId == currentUserId));
+            await WithFriendPairAsync(currentUserId, friendId, async () =>
+            {
+                var friendship =
+                    await _friendshipRepository.FirstOrDefaultAsync(x =>
+                        (x.UserLowId == currentUserId &&
+                         x.UserHighId == friendId)
+                         ||
+                        (x.UserLowId == friendId &&
+                         x.UserHighId == currentUserId));
 
-            if (friendship == null)
-                throw new NotFoundException("Friendship not found.");
+                if (friendship == null)
+                    throw new NotFoundException("Friendship not found.");
 
-            _friendshipRepository.Delete(friendship);
+                _friendshipRepository.Delete(friendship);
 
-            await _friendshipRepository.SaveAsync();
+                await _friendshipRepository.SaveAsync();
+            });
+        }
+
+        private Task WithFriendPairAsync(Guid first, Guid second, Func<Task> action)
+        {
+            return _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+            {
+                // ponytail: lock user rows in a fixed order; use pair locks if contention grows.
+                foreach (var id in new[] { first, second }.Distinct().OrderBy(x => x))
+                {
+                    if (!await _context.Users.FromSqlInterpolated(
+                        $"SELECT * FROM users WITH (UPDLOCK, HOLDLOCK) WHERE user_id = {id}")
+                        .AsNoTracking().AnyAsync())
+                        throw new NotFoundException("User not found.");
+                }
+                await action();
+            });
         }
     }
 }

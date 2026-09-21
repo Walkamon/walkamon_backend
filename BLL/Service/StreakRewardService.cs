@@ -2,79 +2,76 @@
 using BLL.Interfaces;
 using DAL.Data;
 using DAL.DTO;
+using DAL.Extensions;
 using DAL.Interfaces;
 using DAL.Models;
-using DAL.Repository;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Data;
 
 namespace BLL.Service
 {
     public class StreakRewardService : IStreakRewardService
     {
-        private readonly IStreakRewardRepository _claimRepository;
-        private readonly IGenericRepository<Wallet> _walletRepository;
+        private readonly WalkamonContext _context;
         private readonly IStepGoalRepository _stepGoalRepository;
-        private readonly IGenericRepository<StreakRewardClaim> _streakRepository;
         public StreakRewardService(
-    IStreakRewardRepository claimRepository,
-    IGenericRepository<Wallet> walletRepository,
-     IStepGoalRepository stepGoalRepository,
-     IGenericRepository<StreakRewardClaim> streakRepository)
+            WalkamonContext context, IStepGoalRepository stepGoalRepository)
         {
             _stepGoalRepository = stepGoalRepository;
-            _claimRepository = claimRepository;
-            _walletRepository = walletRepository;
-            _streakRepository = streakRepository;
+            _context = context;
         }
-        public async Task<ClaimRewardResponse> ClaimRewardAsync(Guid currentUserId, CurrentStreakResponse currentStreak)
+        public Task<ClaimRewardResponse> ClaimRewardAsync(Guid currentUserId)
         {
-            var today = GetToday();
-            var claimed = await _claimRepository
-          .HasClaimedTodayAsync(currentUserId, today);
+            return _context.ExecuteInTransactionAsync(IsolationLevel.Serializable, async () =>
+            {
+                var today = GetToday();
+                var wallet = await _context.Wallets
+                    .FromSqlInterpolated($"SELECT * FROM wallets WITH (UPDLOCK, HOLDLOCK) WHERE user_id = {currentUserId}")
+                    .SingleOrDefaultAsync()
+                    ?? throw new NotFoundException("Wallet not found.");
+                var claimed = await _context.StreakRewardClaims
+                    .AnyAsync(x => x.UserId == currentUserId && x.ClaimDate == today);
 
-            if (claimed)
-                throw new BadRequestException("Reward has already been claimed today.");
+                if (claimed)
+                    throw new BadRequestException("Reward has already been claimed today.");
 
-            var reward = currentStreak.CurrentStreak * 10;
+                var goal = await _stepGoalRepository.GetCurrentGoalAsync(currentUserId, today);
+                var steps = await _stepGoalRepository.GetDailyStepAsync(currentUserId, today);
+                if (goal == null || goal.TargetSteps <= 0 || steps == null || steps.EligibleStepCount < goal.TargetSteps)
+                    throw new BadRequestException("Complete today's walking goal before claiming the streak reward.");
 
-                var wallet = await _walletRepository.GetByIdAsync(currentUserId);
-                    
-
-                if (wallet == null)
-                    throw new NotFoundException("Wallet not found.");
-
-                wallet.Balance += reward;
-
-                _walletRepository.Update(wallet);
-
-                await _streakRepository.AddAsync(new StreakRewardClaim
+                var history = await _stepGoalRepository.GetCompletedGoalHistoryAsync(currentUserId);
+                var streak = 0;
+                var expected = today;
+                foreach (var day in history.Where(x => x.StepDate <= today).OrderByDescending(x => x.StepDate))
+                {
+                    if (day.StepDate != expected) break;
+                    streak++;
+                    expected = expected.AddDays(-1);
+                }
+                if (streak == 0)
+                    throw new BadRequestException("No completed walking streak is available.");
+                var reward = checked(streak * 10);
+                wallet.Balance = checked(wallet.Balance + reward);
+                _context.StreakRewardClaims.Add(new StreakRewardClaim
                 {
                     UserId = currentUserId,
                     ClaimDate = today,
                     Reward = reward,
-                    Streak = currentStreak.CurrentStreak,
+                    Streak = streak,
                     CreatedAt = DateTime.UtcNow
                 });
 
-                await _walletRepository.SaveAsync();
-
-                
+                await _context.SaveChangesAsync();
 
                 return new ClaimRewardResponse
                 {
-                    Streak = currentStreak.CurrentStreak,
+                    Streak = streak,
                     Reward = reward,
                     Balance = wallet.Balance,
                     ClaimDate = today
                 };
-            
-            
-
+            });
         }
 
         private DateOnly GetToday()

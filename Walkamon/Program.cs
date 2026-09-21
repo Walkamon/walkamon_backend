@@ -428,9 +428,10 @@ builder.Services
 
                 var user = await userRepository.GetByIdAsync(userId);
 
-                if (user == null)
+                if (user == null || user.DeletedAt != null ||
+                    !string.Equals(user.StatusCode, "active", StringComparison.OrdinalIgnoreCase))
                 {
-                    context.Fail("User not found");
+                    context.Fail("Account is not active");
                     return;
                 }
 

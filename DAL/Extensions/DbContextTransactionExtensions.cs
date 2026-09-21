@@ -54,6 +54,8 @@ public static class DbContextTransactionExtensions
             catch
             {
                 await transaction.RollbackAsync();
+                // A retried unit must reload database state, not reuse rolled-back balances/entities.
+                context.ChangeTracker.Clear();
                 throw;
             }
         });
