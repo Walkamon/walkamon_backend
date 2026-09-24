@@ -2988,11 +2988,26 @@ public sealed class ValidatedStepService : IValidatedStepService
         if (userPet == null)
             return null;
 
+        if (userPet.PetBond <= 0 || userPet.PetLifeForce <= 0)
+            throw new AppSystemException("Pet care stat maximums are not configured correctly.");
+
+        // Pet stat maximums can exceed 100 after evolution, whereas EXP tiers
+        // expect a percentage in the range 0..100.
+        var bondPercent = (int)Math.Clamp(
+            (long)userPet.CurrentPetBond * 100 / userPet.PetBond, 0L, 100L);
+        var lifeForcePercent = (int)Math.Clamp(
+            (long)userPet.CurrentPetLifeForce * 100 / userPet.PetLifeForce, 0L, 100L);
+
+        var actualExp = StepExperienceReward.CalculateActualExperience(
+            expToAdd,
+            bondPercent,
+            lifeForcePercent);
+
         var previousLevel = userPet.Level;
         StepExperienceReward.ApplyExperience(
             userPet,
             userPet.Pet,
-            expToAdd,
+            actualExp,
             expIncreasePerLevel,
             AsUtc(now));
         return userPet.Level > previousLevel ? userPet.Level : null;
